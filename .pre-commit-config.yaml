@@ -37,7 +37,7 @@ repos:
     hooks:
       - id: pytest-check
         name: pytest-check
-        entry: bash -c 'uv run pytest abides-core/tests abides-markets/tests --ignore=abides-markets/tests/test_gym_runner.py'
+        entry: bash -c 'uv run pytest abides-core/tests abides-markets/tests'
         language: system
         pass_filenames: false
         always_run: true

@@ -6,19 +6,17 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "coloredlogs>=15.0.1",
+    "gymnasium>=1.0.0",
     "matplotlib>=3.9.0",
     "numpy>=2.0.0",
     "pandas>=2.2.0",
     "psutil>=6.0.0",
+    "ray[rllib]>=2.40.0",
     "scipy>=1.14.0",
     "tqdm>=4.67.0",
 ]
 
 [project.optional-dependencies]
-gym = [
-    "gymnasium>=0.29.0",
-    "ray[rllib]>=2.9.0",
-]
 dev = [
     "black>=24.10.0",
     "isort>=5.13.0",

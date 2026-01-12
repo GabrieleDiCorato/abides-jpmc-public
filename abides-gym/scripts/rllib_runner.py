@@ -5,6 +5,8 @@ from abides_gym.envs.markets_execution_environment_v0 import (
     SubGymMarketsExecutionEnv_v0,
 )
 from ray import tune
+from ray.air import CheckpointConfig, RunConfig
+from ray.tune import Tuner
 from ray.tune.integration.wandb import WandbLoggerCallback
 from ray.tune.registry import register_env
 
@@ -32,14 +34,9 @@ train_batch_size=32, sample_batch_size=4, timesteps_per_iteration=1000 -> worker
 """
 
 name_xp = "dqn_execution_v1_10"
-tune.run(
+tuner = Tuner(
     "DQN",
-    name=name_xp,
-    resume=False,
-    stop={"training_iteration": 100},
-    checkpoint_at_end=True,
-    checkpoint_freq=20,
-    config={
+    param_space={
         "callbacks": MyCallbacks,
         "env": "markets-execution-v0",
         "env_config": {
@@ -71,12 +68,21 @@ tune.run(
         "framework": "torch",
         "observation_filter": "MeanStdFilter",
     },
-    callbacks=[
-        WandbLoggerCallback(
-            project="abides_markets_execution_abm",
-            group=name_xp,
-            api_key=api_key,
-            log_config=False,
-        )
-    ],
+    run_config=RunConfig(
+        name=name_xp,
+        stop={"training_iteration": 100},
+        checkpoint_config=CheckpointConfig(
+            checkpoint_at_end=True,
+            checkpoint_frequency=20,
+        ),
+        callbacks=[
+            WandbLoggerCallback(
+                project="abides_markets_execution_abm",
+                group=name_xp,
+                api_key=api_key,
+                log_config=False,
+            )
+        ],
+    ),
 )
+results = tuner.fit()

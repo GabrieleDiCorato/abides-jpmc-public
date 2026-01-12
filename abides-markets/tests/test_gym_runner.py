@@ -1,4 +1,5 @@
 # Import to register environments
+import abides_gym  # noqa: F401 - Import needed to register environments
 import gymnasium as gym
 
 

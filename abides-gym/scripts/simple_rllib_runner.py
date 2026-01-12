@@ -4,6 +4,8 @@ from abides_gym.envs.markets_execution_environment_v0 import (
     SubGymMarketsExecutionEnv_v0,
 )
 from ray import tune
+from ray.air import CheckpointConfig, RunConfig
+from ray.tune import Tuner
 from ray.tune.registry import register_env
 
 # Example to run RLlib in simple mode
@@ -30,14 +32,9 @@ train_batch_size=32, sample_batch_size=4, timesteps_per_iteration=1000 -> worker
 """
 
 name_xp = "dqn_execution_v1_10"
-tune.run(
+tuner = Tuner(
     "DQN",
-    name=name_xp,
-    resume=False,
-    stop={"training_iteration": 100},  # "episode_reward_mean": 2e6,
-    checkpoint_at_end=True,
-    checkpoint_freq=20,
-    config={
+    param_space={
         "env": "markets-execution-v0",
         "env_config": {
             "mkt_close": "16:00:00",
@@ -68,4 +65,13 @@ tune.run(
         "framework": "torch",
         "observation_filter": "MeanStdFilter",
     },
+    run_config=RunConfig(
+        name=name_xp,
+        stop={"training_iteration": 100},  # "episode_reward_mean": 2e6,
+        checkpoint_config=CheckpointConfig(
+            checkpoint_at_end=True,
+            checkpoint_frequency=20,
+        ),
+    ),
 )
+results = tuner.fit()

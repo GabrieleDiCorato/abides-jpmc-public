@@ -2,6 +2,8 @@ import ray
 import wandb
 from abides_gym.envs.markets_execution_custom_metrics import MyCallbacks
 from ray import tune
+from ray.air import CheckpointConfig, RunConfig
+from ray.tune import Tuner
 from ray.tune.integration.wandb import WandbLoggerCallback
 
 api_key = wandb.api.api_key
@@ -21,14 +23,9 @@ train_batch_size=32, sample_batch_size=4, timesteps_per_iteration=1000 -> worker
 """
 
 name_xp = "dqn_execution_v1_11"
-tune.run(
+tuner = Tuner(
     "DQN",
-    name=name_xp,
-    resume=False,
-    stop={"training_iteration": 100},  # "episode_reward_mean": 2e6,
-    checkpoint_at_end=True,
-    checkpoint_freq=20,
-    config={
+    param_space={
         "callbacks": MyCallbacks,
         # Environment stuff
         "env": "markets-execution-v0",  # "CartPole-v1"markets-execution-v0
@@ -61,12 +58,21 @@ tune.run(
         "framework": "torch",
         "observation_filter": "MeanStdFilter",
     },
-    callbacks=[
-        WandbLoggerCallback(
-            project="abides_markets_execution_abm",
-            group=name_xp,  # if not specified will be trainable name (here DQN)
-            api_key=api_key,
-            log_config=False,
-        )
-    ],
+    run_config=RunConfig(
+        name=name_xp,
+        stop={"training_iteration": 100},  # "episode_reward_mean": 2e6,
+        checkpoint_config=CheckpointConfig(
+            checkpoint_at_end=True,
+            checkpoint_frequency=20,
+        ),
+        callbacks=[
+            WandbLoggerCallback(
+                project="abides_markets_execution_abm",
+                group=name_xp,  # if not specified will be trainable name (here DQN)
+                api_key=api_key,
+                log_config=False,
+            )
+        ],
+    ),
 )
+results = tuner.fit()
