@@ -3,32 +3,34 @@ name = "abides-jpmc-public"
 version = "0.1.0"
 description = "ABIDES: Agent-Based Interactive Discrete Event Simulation environment"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "coloredlogs>=15.0.1",
-    "gymnasium>=0.29.0",
-    "matplotlib>=3.5.0",
-    "numpy>=1.22.0,<2.0.0",
-    "pandas>=1.2.4",
-    "psutil>=5.8.0",
-    "scipy>=1.10.0",
-    "tqdm>=4.61.1",
-    "ray[rllib]>=2.9.0",
+    "matplotlib>=3.9.0",
+    "numpy>=2.0.0",
+    "pandas>=2.2.0",
+    "psutil>=6.0.0",
+    "scipy>=1.14.0",
+    "tqdm>=4.67.0",
 ]
 
 [project.optional-dependencies]
+gym = [
+    "gymnasium>=0.29.0",
+    "ray[rllib]>=2.9.0",
+]
 dev = [
-    "black>=24.1.0",
+    "black>=24.10.0",
     "isort>=5.13.0",
-    "mypy>=1.8.0",
-    "p-tqdm>=1.3.3",
-    "pre-commit>=2.13",
-    "pytest>=7.0.0",
-    "pytest-cov>=2.12.1",
-    "ruff>=0.1.15",
-    "sphinx>=3.5.4",
-    "sphinx-autodoc-typehints>=1.12.0",
-    "sphinx-book-theme>=0.0.42",
+    "mypy>=1.13.0",
+    "p-tqdm>=1.4.0",
+    "pre-commit>=4.0.0",
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "sphinx>=8.0.0",
+    "sphinx-autodoc-typehints>=2.5.0",
+    "sphinx-book-theme>=1.1.0",
 ]
 
 [project.scripts]
