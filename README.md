@@ -41,6 +41,12 @@ The project is currently broken down into 3 parts: ABIDES-Core, ABIDES-Markets a
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+## About this Fork
+
+This work extends ABIDES (Byrd & Balch, 2019), originally developed
+at Georgia Tech and later maintained by J.P. Morgan Chase. Due to
+the archived status of the [original repository](https://github.com/jpmorganchase/abides-jpmc-public), a [modernized fork](https://github.com/GabrieleDiCorato/abides-jpmc-public) was created with updated dependencies and UV dependency management. See CHANGELOG.md for details.
+
 <!-- CITING -->
 ## Citing ABIDES
 

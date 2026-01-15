@@ -1,3 +1,58 @@
+2026-01 Release v1.1.0
+==================
+
+
+Other Changes
+-------------
+
+* Added the POVExecutionAgent implementation, which was referenced but missing, to restore RMSC03 env
+* Fixed the version_testing suite of non-regression tests
+    * Removed hardcoded comparison between specific commits
+    * Restored logging to enable extracting runtime metrics for testing
+
+
+Dependency Updates
+-------------
+
+This fork modernizes the archived `abides-jpmc-public` project with updated dependencies for compatibility with current Python ecosystems.
+
+### Core Dependencies
+
+| Package | Original Version | Updated Version | Notes |
+|---------|-----------------|-----------------|-------|
+| coloredlogs | 15.0.1 | ≥15.0.1 | Maintained compatibility |
+| gym | 0.18.0 | **gymnasium ≥1.0.0** | **Migrated to maintained fork** |
+| numpy | 1.22.0 | **≥2.0.0** | **Major version update** |
+| pandas | 1.2.4 | **≥2.2.0** | **Major version update** |
+| pomegranate | 0.14.5 | **Removed** | **Deprecated dependency** |
+| psutil | 5.8.0 | ≥6.0.0 | Major version update |
+| ray[rllib] | 1.7.0 | **≥2.40.0** | **Major version update** |
+| scipy | 1.10.0 | **≥1.14.0** | Minor version update |
+| tqdm | 4.61.1 | ≥4.67.0 | Minor version update |
+| p_tqdm | 1.3.3 | ≥1.4.0 (dev) | Moved to optional dev dependencies |
+| matplotlib | N/A | **≥3.9.0** | **New dependency added** |
+
+### Development Dependencies
+
+| Package | Original Version | Updated Version | Notes |
+|---------|-----------------|-----------------|-------|
+| pre-commit | 2.13 | ≥4.0.0 | Major version update |
+| pytest | 6.2.4 | ≥8.3.0 | Major version update |
+| pytest-cov | 2.12.1 | ≥6.0.0 | Major version update |
+| sphinx | 3.5.4 | ≥8.0.0 | Major version update |
+| sphinx-autodoc-typehints | 1.12.0 | ≥2.5.0 | Major version update |
+| sphinx-book-theme | 0.0.42 | ≥1.1.0 | Major version update |
+
+### Breaking Changes
+
+- **gym → gymnasium**: OpenAI Gym is deprecated. All code using `gym` has been migrated to `gymnasium` (the maintained fork).
+- **pomegranate removed**: This probabilistic modeling library is no longer actively maintained and has been removed.
+- **numpy 2.0**: Includes breaking changes in the C API and some deprecated functions removed.
+- **pandas 2.x**: Various API changes and performance improvements.
+
+
+
+
 2021-10-15 Release
 ==================
 
