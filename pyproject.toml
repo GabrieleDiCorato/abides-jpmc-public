@@ -1,6 +1,6 @@
 [project]
 name = "abides-jpmc-public"
-version = "0.1.0"
+version = "v1.1.0"
 description = "ABIDES: Agent-Based Interactive Discrete Event Simulation environment"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=2.0.0",
     "pandas>=2.2.0",
     "psutil>=6.0.0",
+    "pytest>=9.0.2",
     "ray[rllib]>=2.40.0",
     "scipy>=1.14.0",
     "tqdm>=4.67.0",
@@ -21,6 +22,7 @@ dev = [
     "black>=24.10.0",
     "isort>=5.13.0",
     "mypy>=1.13.0",
+    "nb-clean>=4.0.1",
     "p-tqdm>=1.4.0",
     "pre-commit>=4.0.0",
     "pytest>=8.3.0",
@@ -44,3 +46,8 @@ packages = ["abides-core/abides_core", "abides-markets/abides_markets", "abides-
 [tool.pytest.ini_options]
 testpaths = ["abides-core/tests", "abides-markets/tests"]
 python_files = "test_*.py"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+]

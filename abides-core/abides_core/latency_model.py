@@ -57,7 +57,7 @@ class LatencyModel:
     quite rare.  The table below shows example values based on the jitter parameter a (column
     header) and x drawn from a uniform distribution from [0,1] (row header).::
 
-        x \ a  0.001  0.10   0.20   0.30   0.40   0.50   0.60   0.70   0.80   0.90   1.00
+        x\a  0.001  0.10   0.20   0.30   0.40   0.50   0.60   0.70   0.80   0.90   1.00
         0.001  1M     100M   200M   300M   400M   500M   600M   700M   800M   900M   1B
         0.01   1K     100K   200K   300K   400K   500K   600K   700K   800K   900K   1M
         0.05   8.00   800.00 1.6K   2.4K   3.2K   4.0K   4.8K   5.6K   6.4K   7.2K   8.0K
