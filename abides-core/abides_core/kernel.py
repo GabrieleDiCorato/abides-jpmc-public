@@ -652,15 +652,6 @@ class Kernel:
 
         self.messages.put((requested_time, (sender_id, sender_id, WakeupMsg())))
 
-    def get_agent_compute_delay(self, sender_id: int) -> int:
-        """
-        Allows an agent to query its current computation delay.
-
-        Arguments:
-            sender_id: The ID of the agent to get the computational delay for.
-        """
-        return self.agent_computation_delays[sender_id]
-
     def set_agent_compute_delay(self, sender_id: int, requested_delay: int) -> None:
         """
         Called by an agent to update its computation delay.
