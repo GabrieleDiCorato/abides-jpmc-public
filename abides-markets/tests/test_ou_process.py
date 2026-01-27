@@ -8,7 +8,7 @@ from abides_markets.oracles import SparseMeanRevertingOracle
 
 
 def test_ou_process():
-    DATE = int(pd.to_datetime("20210205").to_datetime64())
+    DATE = pd.to_datetime("20210205").value
     MKT_OPEN = DATE + str_to_ns("09:30:00")
     MKT_CLOSE = DATE + str_to_ns("16:00:00")
 

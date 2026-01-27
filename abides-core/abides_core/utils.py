@@ -107,7 +107,16 @@ def str_to_ns(string: str | NanosecondTime) -> NanosecondTime:
     if re.match(r"^[\d.]+m$", string.lower()):
         string = string[:-1] + "min"
 
-    return pd.to_timedelta(string).to_timedelta64().astype("int64")
+    # Handle 'd' as days (deprecated in pandas)
+    if re.match(r"^[\d.]+d$", string.lower()):
+        string = string[:-1] + "D"
+
+    return (
+        pd.to_timedelta(string)
+        .to_timedelta64()
+        .astype("timedelta64[ns]")
+        .astype("int64")
+    )
 
 
 def datetime_str_to_ns(string: str) -> NanosecondTime:
