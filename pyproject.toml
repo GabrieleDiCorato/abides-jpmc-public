@@ -1,6 +1,6 @@
 [project]
 name = "abides-rohan"
-version = "v1.2.3"
+version = "v1.2.4-dev"
 description = "ABIDES: Agent-Based Interactive Discrete Event Simulation environment"
 readme = "README.md"
 requires-python = ">=3.11"

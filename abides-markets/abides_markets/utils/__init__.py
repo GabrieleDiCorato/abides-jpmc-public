@@ -154,15 +154,16 @@ def dollarize(cents: Union[List[int], int]) -> Union[List[str], str]:
 
 
 # LATENCY
-def generate_latency_model(agent_count, latency_type="deterministic"):
+def generate_latency_model(agent_count, random_state, latency_type="deterministic"):
     assert latency_type in [
         "deterministic",
         "no_latency",
     ], "Please select a correct latency_type"
 
-    latency_rstate = np.random.RandomState(
-        seed=np.random.randint(low=0, high=2**32, dtype="uint64")
-    )
+    if random_state is None:
+        raise TypeError("random_state is required for generate_latency_model")
+
+    latency_rstate = random_state
     pairwise = (agent_count, agent_count)
 
     if latency_type == "deterministic":
@@ -186,10 +187,21 @@ def generate_latency_model(agent_count, latency_type="deterministic"):
     return latency_model
 
 
-def config_add_agents(orig_config_state, agents):
+def config_add_agents(orig_config_state, agents, random_state):
+    """
+    Add agents to a configuration state and regenerate the latency model.
+
+    Args:
+        orig_config_state: The original configuration state dictionary
+        agents: List of agents to add
+        random_state: numpy RandomState for generating the latency model
+
+    Returns:
+        Updated configuration state
+    """
     agent_count = len(orig_config_state["agents"])
     orig_config_state["agents"] = orig_config_state["agents"] + agents
     # adding an agent to the config implies modifying the latency model #TODO: tell aymeric
-    lat_mod = generate_latency_model(agent_count + len(agents))
+    lat_mod = generate_latency_model(agent_count + len(agents), random_state)
     orig_config_state["agent_latency_model"] = lat_mod
     return orig_config_state

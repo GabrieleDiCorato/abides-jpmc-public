@@ -47,12 +47,21 @@ def custom_eq(a: Any, b: Any) -> bool:
 
 
 # Utility function to get agent wake up times to follow a U-quadratic distribution.
-def get_wake_time(open_time, close_time, a=0, b=1) -> NanosecondTime:
+def get_wake_time(open_time, close_time, random_state, a=0, b=1) -> NanosecondTime:
     """
     Draw a time U-quadratically distributed between open_time and close_time.
 
     For details on U-quadtratic distribution see https://en.wikipedia.org/wiki/U-quadratic_distribution.
+
+    Args:
+        open_time: Market opening time
+        close_time: Market closing time
+        random_state: numpy RandomState instance for reproducibility
+        a: Lower time limit for distribution support
+        b: Upper time limit for distribution support
     """
+    if random_state is None:
+        raise TypeError("random_state is required for get_wake_time")
 
     def cubic_pow(n: float) -> float:
         """Helper function: returns *real* cube root of a float."""
@@ -69,7 +78,7 @@ def get_wake_time(open_time, close_time, a=0, b=1) -> NanosecondTime:
         result = cubic_pow((3 / alpha) * y - (beta - a) ** 3) + beta
         return result
 
-    uniform_0_1 = np.random.rand()
+    uniform_0_1 = random_state.rand()
     random_multiplier = u_quadratic_inverse_cdf(uniform_0_1)
     wake_time = open_time + random_multiplier * (close_time - open_time)
 

@@ -80,7 +80,9 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
             # Compute the time and value of the first megashock.  Note that while the values are
             # mean-zero, they are intentionally bimodal (i.e. we always want to push the stock
             # some, but we will tend to cancel out via pushes in opposite directions).
-            ms_time_delta = np.random.exponential(scale=1.0 / s["megashock_lambda_a"])
+            ms_time_delta = s["random_state"].exponential(
+                scale=1.0 / s["megashock_lambda_a"]
+            )
             mst = self.mkt_open + ms_time_delta
             msv = s["random_state"].normal(
                 loc=s["megashock_mean"], scale=sqrt(s["megashock_var"])
@@ -199,7 +201,9 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
             # Since we just surpassed the last megashock time, compute the next one, which we might or
             # might not immediately consume.  This works just like the first time (in __init__()).
 
-            mst = pt + int(np.random.exponential(scale=1.0 / s["megashock_lambda_a"]))
+            mst = pt + int(
+                s["random_state"].exponential(scale=1.0 / s["megashock_lambda_a"])
+            )
             msv = s["random_state"].normal(
                 loc=s["megashock_mean"], scale=sqrt(s["megashock_var"])
             )

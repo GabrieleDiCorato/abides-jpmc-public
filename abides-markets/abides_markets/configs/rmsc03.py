@@ -69,8 +69,8 @@ def build_config(
     val_sigma_n = val_r_bar / 10
     symbol = ticker
 
-    ##setting numpy seed
-    np.random.seed(seed)
+    # Create master random state for deriving all component seeds
+    master_rng = np.random.RandomState(seed)
 
     ########################################################################################################################
     ############################################### AGENTS CONFIG ##########################################################
@@ -95,7 +95,7 @@ def build_config(
             "megashock_mean": fund_megashock_mean,
             "megashock_var": fund_megashock_var,
             "random_state": np.random.RandomState(
-                seed=np.random.randint(low=0, high=2**32, dtype="uint64")
+                seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
             ),
         }
     }
@@ -119,6 +119,9 @@ def build_config(
                 pipeline_delay=0,
                 computation_delay=0,
                 stream_history=25_000,
+                random_state=np.random.RandomState(
+                    seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
+                ),
             )
         ]
     )
@@ -129,18 +132,26 @@ def build_config(
     num_noise = num_noise_agents
     noise_mkt_open = historical_date + str_to_ns("09:00:00")
     noise_mkt_close = historical_date + str_to_ns("16:00:00")
-    agents.extend(
-        [
+
+    # Create noise agents with proper random state initialization
+    noise_agents = []
+    for j in range(agent_count, agent_count + num_noise):
+        agent_random_state = np.random.RandomState(
+            seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
+        )
+        noise_agents.append(
             NoiseAgent(
                 id=j,
                 symbol=symbol,
                 starting_cash=starting_cash,
-                wakeup_time=get_wake_time(noise_mkt_open, noise_mkt_close),
+                wakeup_time=get_wake_time(
+                    noise_mkt_open, noise_mkt_close, agent_random_state
+                ),
                 log_orders=log_orders,
+                random_state=agent_random_state,
             )
-            for j in range(agent_count, agent_count + num_noise)
-        ]
-    )
+        )
+    agents.extend(noise_agents)
     agent_count += num_noise
     agent_types.extend(["NoiseAgent"])
 
@@ -158,6 +169,9 @@ def build_config(
                 kappa=val_kappa,
                 lambda_a=val_lambda_a,
                 log_orders=log_orders,
+                random_state=np.random.RandomState(
+                    seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
+                ),
             )
             for j in range(agent_count, agent_count + num_value)
         ]
@@ -203,6 +217,9 @@ def build_config(
                 spread_alpha=mm_spread_alpha,
                 backstop_quantity=mm_backstop_quantity,
                 log_orders=log_orders,
+                random_state=np.random.RandomState(
+                    seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
+                ),
             )
             for idx, j in enumerate(range(agent_count, agent_count + num_mm_agents))
         ]
@@ -224,6 +241,9 @@ def build_config(
                 max_size=10,
                 wake_up_freq=str_to_ns("20s"),
                 log_orders=log_orders,
+                random_state=np.random.RandomState(
+                    seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
+                ),
             )
             for j in range(agent_count, agent_count + num_momentum_agents)
         ]
@@ -259,6 +279,9 @@ def build_config(
         quantity=pov_quantity,
         trade=trade,
         log_orders=True,  # needed for plots so conflicts with others
+        random_state=np.random.RandomState(
+            seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
+        ),
     )
 
     execution_agents = [pov_agent]
@@ -268,11 +291,13 @@ def build_config(
 
     # extract kernel seed here to reproduce the state of random generator in old version
     random_state_kernel = np.random.RandomState(
-        seed=np.random.randint(low=0, high=2**32, dtype="uint64")
+        seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
     )
     # LATENCY
-
-    latency_model = generate_latency_model(agent_count)
+    latency_rng = np.random.RandomState(
+        seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
+    )
+    latency_model = generate_latency_model(agent_count, latency_rng)
     default_computation_delay = 50  # 50 nanoseconds
 
     ##kernel args

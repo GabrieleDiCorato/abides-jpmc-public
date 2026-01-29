@@ -42,12 +42,9 @@ class Agent:
         self.id: int = id
         self.type: str = type or self.__class__.__name__
         self.name: str = name or f"{self.type}_{self.id}"
-        self.random_state: np.random.RandomState = (
-            random_state
-            or np.random.RandomState(
-                seed=np.random.randint(low=0, high=2**32, dtype="uint64")
-            )
-        )
+        if random_state is None:
+            raise ValueError(f"random_state is required for agent {self.name}")
+        self.random_state: np.random.RandomState = random_state
         self.log_events: bool = log_events
         self.log_to_file: bool = log_to_file & log_events
 

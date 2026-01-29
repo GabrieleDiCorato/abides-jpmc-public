@@ -87,15 +87,21 @@ class AbidesGymCoreEnv(gym.Env, ABC):
         )
         # instanciate gym agent and add it to config and gym object
         nextid = len(background_config_state["agents"])
+        # Create random state for gym agent from the environment's random state
+        gym_agent_seed = self.np_random.integers(low=0, high=2**32, dtype="uint64")
+        gym_agent_random_state = np.random.RandomState(seed=gym_agent_seed)
         gym_agent = self.gymAgentConstructor(
             nextid,
             "ABM",
             first_interval=self.first_interval,
             wakeup_interval_generator=self.wakeup_interval_generator,
             state_buffer_length=self.state_buffer_length,
+            random_state=gym_agent_random_state,
             **self.extra_gym_agent_kvargs,
         )
-        config_state = config_add_agents(background_config_state, [gym_agent])
+        config_state = config_add_agents(
+            background_config_state, [gym_agent], gym_agent_random_state
+        )
         self.gym_agent = config_state["agents"][-1]
         # KERNEL
         # instantiate the kernel object
