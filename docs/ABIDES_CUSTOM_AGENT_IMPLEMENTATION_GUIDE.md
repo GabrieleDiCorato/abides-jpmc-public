@@ -109,7 +109,10 @@ end_state = abides.run(config)
 
 If you need to backtest against historical data or generative models (like CGANs) instead of algorithmic mean-reverting data, replace the default oracle.
 
-See `abides-markets/abides_markets/oracles/external_data_oracle.py`.
+> [!IMPORTANT]
+> The `Oracle` base class is an `abc.ABC`. If you build your own oracle from scratch, you must implement both `get_daily_open_price(self, symbol, mkt_open, cents=True)` and `observe_price(self, symbol, current_time, random_state, sigma_n=1000)`.
+
+See `abides-markets/abides_markets/oracles/external_data_oracle.py` for a full-featured example:
 - **Batch mode:** Use `DataFrameProvider` to load full series at initialization.
 - **Point mode:** Implement `PointDataProvider` to query a database or generator on demand (uses LRU cache).
 

@@ -209,6 +209,9 @@ config["agents"].append(adapter)
 
 ## External Oracle — Historical / Generated Data
 
+> [!IMPORTANT]
+> The `Oracle` base class is an `abc.ABC`. Any custom oracle must implement both `get_daily_open_price(...)` and `observe_price(...)`.
+
 ```python
 from abides_markets.oracles import ExternalDataOracle, DataFrameProvider, InterpolationStrategy
 

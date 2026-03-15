@@ -102,7 +102,7 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
 
     def compute_fundamental_at_timestamp(
         self, ts: NanosecondTime, v_adj, symbol: str, pt: NanosecondTime, pv
-    ) -> int:
+    ) -> float:
         """
         Arguments:
           ts: A requested timestamp to which we should advance the fundamental.
@@ -146,16 +146,13 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
         # The process is not permitted to become negative.
         v = max(0, v)
 
-        # For our purposes, the value must be rounded and converted to integer cents.
-        v = int(round(v))
-
-        # Cache the new time and value as the "previous" fundamental values.
+        # Cache the exact unrounded floating-point value to prevent rounding errors across high-frequency polls.
         self.r[symbol] = (ts, v)
 
         # Append the change to the permanent log of fundamental values for this symbol.
         self.f_log[symbol].append({"FundamentalTime": ts, "FundamentalValue": v})
 
-        # Return the new value for the requested timestamp.
+        # Return the new exact value for the requested timestamp.
         return v
 
     def advance_fundamental_value_series(
@@ -277,7 +274,7 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
 
         # Generate a noisy observation of fundamental value at the current time.
         if sigma_n == 0:
-            obs = r_t
+            obs = int(round(r_t))
         else:
             obs = int(round(random_state.normal(loc=r_t, scale=sqrt(sigma_n))))
 
