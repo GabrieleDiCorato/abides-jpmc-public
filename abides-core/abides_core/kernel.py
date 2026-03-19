@@ -15,6 +15,9 @@ from .utils import fmt_ts, str_to_ns
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_START_TIME: int = str_to_ns("09:30:00")
+_DEFAULT_STOP_TIME: int = str_to_ns("16:00:00")
+
 
 class Kernel:
     """
@@ -40,8 +43,8 @@ class Kernel:
     def __init__(
         self,
         agents: List[Agent],
-        start_time: NanosecondTime = str_to_ns("09:30:00"),
-        stop_time: NanosecondTime = str_to_ns("16:00:00"),
+        start_time: NanosecondTime = _DEFAULT_START_TIME,
+        stop_time: NanosecondTime = _DEFAULT_STOP_TIME,
         default_computation_delay: int = 1,
         default_latency: float = 1,
         agent_latency: Optional[List[List[float]]] = None,

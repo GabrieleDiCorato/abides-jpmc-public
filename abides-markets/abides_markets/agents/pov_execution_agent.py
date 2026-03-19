@@ -21,6 +21,8 @@ from .trading_agent import TradingAgent
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_FREQ: int = str_to_ns("1min")
+
 
 class POVExecutionAgent(TradingAgent):
     """
@@ -57,7 +59,7 @@ class POVExecutionAgent(TradingAgent):
         starting_cash: int,
         start_time: NanosecondTime,
         end_time: NanosecondTime,
-        freq: NanosecondTime = str_to_ns("1min"),
+        freq: NanosecondTime = _DEFAULT_FREQ,
         lookback_period: Optional[Union[NanosecondTime, str]] = None,
         pov: float = 0.1,
         direction: Side = Side.BID,

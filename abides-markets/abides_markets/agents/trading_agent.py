@@ -653,7 +653,7 @@ class TradingAgent(FinancialAgent):
             self.send_message_batch(self.exchange_id, messages)
 
     def cancel_order(
-        self, order: LimitOrder, tag: Optional[str] = None, metadata: dict = {}
+        self, order: LimitOrder, tag: Optional[str] = None, metadata: Optional[dict] = None
     ) -> None:
         """
         Used by derived classes of TradingAgent to cancel a limit order.
@@ -665,7 +665,8 @@ class TradingAgent(FinancialAgent):
             tag:
             metadata:
         """
-
+        if metadata is None:
+            metadata = {}
         if isinstance(order, LimitOrder):
             self.send_message(self.exchange_id, CancelOrderMsg(order, tag, metadata))
             if self.log_orders:
@@ -687,7 +688,7 @@ class TradingAgent(FinancialAgent):
         order: LimitOrder,
         quantity: int,
         tag: Optional[str] = None,
-        metadata: dict = {},
+        metadata: Optional[dict] = None,
     ) -> None:
         """
         Used by any Trading Agent subclass to modify any existing limit order.
@@ -700,6 +701,8 @@ class TradingAgent(FinancialAgent):
             metadata:
         """
 
+        if metadata is None:
+            metadata = {}
         self.send_message(
             self.exchange_id, PartialCancelOrderMsg(order, quantity, tag, metadata)
         )

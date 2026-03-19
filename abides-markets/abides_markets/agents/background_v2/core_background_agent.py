@@ -28,9 +28,7 @@ class CoreBackgroundAgent(TradingAgent):
         lookback_period: Optional[int] = None,  # for volume subscription
         subscribe: bool = True,
         subscribe_num_levels: Optional[int] = None,
-        wakeup_interval_generator: InterArrivalTimeGenerator = ConstantTimeGenerator(
-            step_duration=str_to_ns("1min")
-        ),
+        wakeup_interval_generator: Optional[InterArrivalTimeGenerator] = None,
         order_size_generator: Optional[OrderSizeModel] = None,
         state_buffer_length: int = 2,
         market_data_buffer_length: int = 5,
@@ -49,6 +47,8 @@ class CoreBackgroundAgent(TradingAgent):
             random_state=random_state,
         )
         self.symbol: str = symbol
+        if wakeup_interval_generator is None:
+            wakeup_interval_generator = ConstantTimeGenerator(step_duration=str_to_ns("1min"))
         # Frequency of agent data subscription up in ns-1
         self.subscribe_freq: int = subscribe_freq
         self.subscribe: bool = subscribe

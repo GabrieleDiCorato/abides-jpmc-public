@@ -5,6 +5,8 @@ from abides_core import Message, NanosecondTime
 from abides_core.utils import str_to_ns
 
 from ...messages.marketdata import L2SubReqMsg, MarketDataMsg
+
+_DEFAULT_WAKE_UP_FREQ: int = str_to_ns("60s")
 from ...messages.query import QuerySpreadResponseMsg
 from ...orders import Side
 from ..trading_agent import TradingAgent
@@ -27,7 +29,7 @@ class MomentumAgent(TradingAgent):
         random_state: Optional[np.random.RandomState] = None,
         min_size=20,
         max_size=50,
-        wake_up_freq: NanosecondTime = str_to_ns("60s"),
+        wake_up_freq: NanosecondTime = _DEFAULT_WAKE_UP_FREQ,
         poisson_arrival=True,
         order_size_model=None,
         subscribe=False,
