@@ -6,7 +6,7 @@ import numpy as np
 from abides_core import NanosecondTime
 from abides_core.generators import ConstantTimeGenerator, InterArrivalTimeGenerator
 from abides_core.utils import str_to_ns
-from abides_markets.agents.background_v2.core_background_agent import (
+from abides_markets.agents.background.core_background_agent import (
     CoreBackgroundAgent,
 )
 from abides_markets.orders import Order
