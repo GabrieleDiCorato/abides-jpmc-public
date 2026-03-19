@@ -1,5 +1,7 @@
 """Tests for Kernel correctness fixes."""
 
+import heapq
+
 import numpy as np
 from abides_core.agent import Agent
 from abides_core.kernel import Kernel
@@ -93,7 +95,7 @@ class TestMessageBatchDelay:
         # Enqueue a single message from agent 0 to agent 1
         deliver_at = t + 1  # just past agent's current time
         kernel.current_time = kernel.start_time  # reset so runner loop proceeds
-        kernel.messages.put((deliver_at, (0, 1, Message())))
+        heapq.heappush(kernel.messages, (deliver_at, (0, 1, Message())))
 
         kernel.runner()
 
@@ -110,7 +112,7 @@ class TestMessageBatchDelay:
         n_messages = 10
         batch = MessageBatch(messages=[Message() for _ in range(n_messages)])
         kernel.current_time = kernel.start_time
-        kernel.messages.put((deliver_at, (0, 1, batch)))
+        heapq.heappush(kernel.messages, (deliver_at, (0, 1, batch)))
 
         kernel.runner()
 

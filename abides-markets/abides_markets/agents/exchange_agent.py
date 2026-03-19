@@ -57,7 +57,6 @@ from ..orders import Side
 from .financial_agent import FinancialAgent
 
 logger = logging.getLogger(__name__)
-pd.set_option("display.max_rows", 500)
 
 
 class ExchangeAgent(FinancialAgent):
@@ -402,6 +401,7 @@ class ExchangeAgent(FinancialAgent):
                         and data_sub.__class__ == message.__class__
                     ):
                         self.data_subscriptions[message.symbol].remove(data_sub)
+                        break
 
             else:
                 logger.debug(

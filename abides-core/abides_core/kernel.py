@@ -1,6 +1,6 @@
+import heapq
 import logging
 import os
-import queue
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Type
 
@@ -64,7 +64,7 @@ class Kernel:
 
         # A single message queue to keep everything organized by increasing
         # delivery timestamp.
-        self.messages: queue.PriorityQueue[(int, str, Message)] = queue.PriorityQueue()
+        self.messages: List[Tuple[int, Tuple[int, int, Message]]] = []
 
         # Timestamp at which the Kernel was created.  Primarily used to
         # create a unique log directory for this run.  Also used to
@@ -263,7 +263,7 @@ class Kernel:
         logger.debug("--- Kernel Event Queue begins ---")
         logger.debug(
             "Kernel will start processing messages. Queue length: {}".format(
-                len(self.messages.queue)
+                len(self.messages)
             )
         )
 
@@ -297,12 +297,12 @@ class Kernel:
         # be again, because agents only "wake" in response to messages), or until
         # the kernel stop time is reached.
         while (
-            not self.messages.empty()
+            self.messages
             and self.current_time
             and (self.current_time <= self.stop_time)
         ):
             # Get the next message in timestamp order (delivery time) and extract it.
-            self.current_time, event = self.messages.get()
+            self.current_time, event = heapq.heappop(self.messages)
             assert self.current_time is not None
 
             sender_id, recipient_id, message = event
@@ -338,11 +338,12 @@ class Kernel:
                 # delay the wakeup until the agent can act again.
                 if self.agent_current_times[recipient_id] > self.current_time:
                     # Push the wakeup call back into the PQ with a new time.
-                    self.messages.put(
+                    heapq.heappush(
+                        self.messages,
                         (
                             self.agent_current_times[recipient_id],
                             (sender_id, recipient_id, message),
-                        )
+                        ),
                     )
                     if self.show_trace_messages:
                         logger.debug(
@@ -383,11 +384,12 @@ class Kernel:
                 # delay the message until the agent can act again.
                 if self.agent_current_times[recipient_id] > self.current_time:
                     # Push the message back into the PQ with a new time.
-                    self.messages.put(
+                    heapq.heappush(
+                        self.messages,
                         (
                             self.agent_current_times[recipient_id],
                             (sender_id, recipient_id, message),
-                        )
+                        ),
                     )
                     if self.show_trace_messages:
                         logger.debug(
@@ -428,7 +430,7 @@ class Kernel:
                         self.current_time, sender_id, message
                     )
 
-        if self.messages.empty():
+        if not self.messages:
             logger.debug("--- Kernel Event Queue empty ---")
 
         if self.current_time and (self.current_time > self.stop_time):
@@ -604,7 +606,7 @@ class Kernel:
                 )
 
         # Finally drop the message in the queue with priority == delivery time.
-        self.messages.put((deliver_at, (sender_id, recipient_id, message)))
+        heapq.heappush(self.messages, (deliver_at, (sender_id, recipient_id, message)))
 
         if self.show_trace_messages:
             logger.debug(
@@ -651,7 +653,7 @@ class Kernel:
                 )
             )
 
-        self.messages.put((requested_time, (sender_id, sender_id, WakeupMsg())))
+        heapq.heappush(self.messages, (requested_time, (sender_id, sender_id, WakeupMsg())))
 
     def set_agent_compute_delay(self, sender_id: int, requested_delay: int) -> None:
         """
