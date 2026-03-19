@@ -45,7 +45,7 @@ class Kernel:
         default_computation_delay: int = 1,
         default_latency: float = 1,
         agent_latency: Optional[List[List[float]]] = None,
-        latency_noise: List[float] = [1.0],
+        latency_noise: Optional[List[float]] = None,
         agent_latency_model: Optional[LatencyModel] = None,
         skip_log: bool = True,
         seed: Optional[int] = None,
@@ -176,7 +176,7 @@ class Kernel:
         # distribution with the peak at zero.  By default there is no noise
         # (100% chance to add zero ns extra delay).  Format is a list with
         # list index = ns extra delay, value = probability of this delay.
-        self.latency_noise: List[float] = latency_noise
+        self.latency_noise: List[float] = latency_noise if latency_noise is not None else [1.0]
 
         # The kernel maintains an accumulating additional delay parameter
         # for the current agent.  This is applied to each message sent
