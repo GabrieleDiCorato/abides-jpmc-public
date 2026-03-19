@@ -167,8 +167,8 @@ class Kernel:
         # agents.
         if agent_latency is None:
             self.agent_latency: List[List[float]] = [
-                [default_latency] * len(self.agents)
-            ] * len(self.agents)
+                [default_latency] * len(self.agents) for _ in range(len(self.agents))
+            ]
         else:
             self.agent_latency = agent_latency
 
@@ -402,27 +402,28 @@ class Kernel:
                 self.agent_current_times[recipient_id] = self.current_time
 
                 # Deliver the message.
+                # Apply computation delay ONCE per delivery (not per
+                # individual message inside a batch).
+                self.agent_current_times[recipient_id] += (
+                    self.agent_computation_delays[recipient_id]
+                    + self.current_agent_additional_delay
+                )
+
                 if isinstance(message, MessageBatch):
                     messages = message.messages
                 else:
                     messages = [message]
 
-                for message in messages:
-                    # Delay the agent by its computation delay plus any transient additional delay requested.
-                    self.agent_current_times[recipient_id] += (
-                        self.agent_computation_delays[recipient_id]
-                        + self.current_agent_additional_delay
+                if self.show_trace_messages:
+                    logger.debug(
+                        "After receive_message return, agent {} delayed from {} to {}".format(
+                            recipient_id,
+                            fmt_ts(self.current_time),
+                            fmt_ts(self.agent_current_times[recipient_id]),
+                        )
                     )
 
-                    if self.show_trace_messages:
-                        logger.debug(
-                            "After receive_message return, agent {} delayed from {} to {}".format(
-                                recipient_id,
-                                fmt_ts(self.current_time),
-                                fmt_ts(self.agent_current_times[recipient_id]),
-                            )
-                        )
-
+                for message in messages:
                     self.agents[recipient_id].receive_message(
                         self.current_time, sender_id, message
                     )
