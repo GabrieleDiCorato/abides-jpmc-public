@@ -145,7 +145,7 @@ class Agent:
         event_type: str,
         event: Any = "",
         append_summary_log: bool = False,
-        deepcopy_event: bool = True,
+        deepcopy_event: bool = False,
     ) -> None:
         """
         Adds an event to this agent's log.

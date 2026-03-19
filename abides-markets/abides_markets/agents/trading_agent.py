@@ -221,7 +221,7 @@ class TradingAgent(FinancialAgent):
 
         if self.first_wake:
             # Log initial holdings.
-            self.logEvent("HOLDINGS_UPDATED", self.holdings)
+            self.logEvent("HOLDINGS_UPDATED", self.holdings, deepcopy_event=True)
             self.first_wake = False
 
             # Tell the exchange we want to be sent the final prices when the market closes.
@@ -789,7 +789,7 @@ class TradingAgent(FinancialAgent):
 
         logger.debug(f"After order execution, agent open orders: {self.orders}")
 
-        self.logEvent("HOLDINGS_UPDATED", self.holdings)
+        self.logEvent("HOLDINGS_UPDATED", self.holdings, deepcopy_event=True)
 
     def order_accepted(self, order: LimitOrder) -> None:
         """
@@ -863,7 +863,7 @@ class TradingAgent(FinancialAgent):
             f"After order partial cancellation, agent open orders: {self.orders}"
         )
 
-        self.logEvent("HOLDINGS_UPDATED", self.holdings)
+        self.logEvent("HOLDINGS_UPDATED", self.holdings, deepcopy_event=True)
 
     def order_modified(self, order: LimitOrder) -> None:
         """
@@ -890,7 +890,7 @@ class TradingAgent(FinancialAgent):
 
         logger.debug(f"After order modification, agent open orders: {self.orders}")
 
-        self.logEvent("HOLDINGS_UPDATED", self.holdings)
+        self.logEvent("HOLDINGS_UPDATED", self.holdings, deepcopy_event=True)
 
     def order_replaced(self, old_order: LimitOrder, new_order: LimitOrder) -> None:
         """
@@ -921,7 +921,7 @@ class TradingAgent(FinancialAgent):
         logger.debug(f"After order replacement, agent open orders: {self.orders}")
 
         # After execution, log holdings.
-        self.logEvent("HOLDINGS_UPDATED", self.holdings)
+        self.logEvent("HOLDINGS_UPDATED", self.holdings, deepcopy_event=True)
 
     def market_closed(self) -> None:
         """
