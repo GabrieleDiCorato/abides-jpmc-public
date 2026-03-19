@@ -644,9 +644,11 @@ class OrderBook:
         if len(self.bids) == 0:
             return None
         index = 0
-        while not self.bids[index].total_quantity > 0:
+        while index < len(self.bids) and not self.bids[index].total_quantity > 0:
             index += 1
-        return self.bids[0].price, self.bids[0].total_quantity
+        if index >= len(self.bids):
+            return None
+        return self.bids[index].price, self.bids[index].total_quantity
 
     def get_l1_ask_data(self) -> Optional[Tuple[int, int]]:
         """Returns the current best ask price of the book and the volume at this price."""
@@ -654,8 +656,10 @@ class OrderBook:
         if len(self.asks) == 0:
             return None
         index = 0
-        while not self.asks[index].total_quantity > 0:
+        while index < len(self.asks) and not self.asks[index].total_quantity > 0:
             index += 1
+        if index >= len(self.asks):
+            return None
         return self.asks[index].price, self.asks[index].total_quantity
 
     def get_l2_bid_data(self, depth: int = sys.maxsize) -> List[Tuple[int, int]]:

@@ -1,4 +1,4 @@
-from abides_markets.orders import MarketOrder, Side
+from abides_markets.orders import LimitOrder, MarketOrder, Side
 
 from . import SYMBOL, TIME, setup_book_with_orders
 
@@ -25,6 +25,26 @@ def test_get_l1_bid_ask_data():
 
     assert book.get_l1_bid_data() == (200, 70)
     assert book.get_l1_ask_data() == (300, 80)
+
+
+def test_get_l1_bid_data_uses_correct_index():
+    """Regression: get_l1_bid_data must use the skipped index, not hardcoded 0."""
+    book, _, _ = setup_book_with_orders(
+        bids=[
+            (100, [10]),
+            (200, [20]),
+        ],
+        asks=[],
+    )
+
+    # Best bid is at price 200
+    assert book.get_l1_bid_data() == (200, 20)
+
+    # Now consume all quantity at price 200 with a matching market order.
+    # After execution, the top-of-book bid is price 100.
+    book.handle_market_order(MarketOrder(2, TIME, SYMBOL, 20, Side.ASK))
+
+    assert book.get_l1_bid_data() == (100, 10)
 
 
 def test_get_l2_bid_ask_data():
