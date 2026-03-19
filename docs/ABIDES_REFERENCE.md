@@ -249,6 +249,23 @@ if self.last_trade.get(self.symbol) is not None:
 
 ---
 
+## logEvent Default: No Deep Copy
+
+`logEvent(event_type, event, deepcopy_event=False)` logs agent events to the event log. The default is **no deep copy** — if you log a mutable object (e.g. `self.holdings`) and modify it later, the log entry will reflect the *final* state, not the state at log time.
+
+```python
+# BAD — holdings dict will be mutated after logging
+self.logEvent("SNAPSHOT", self.holdings)
+
+# GOOD — snapshot captured at log time
+self.logEvent("SNAPSHOT", self.holdings, deepcopy_event=True)
+
+# OK — immutable values don't need deepcopy
+self.logEvent("TRADE", {"price": price, "qty": qty})
+```
+
+---
+
 ## Full Reference
 
 - `docs/ABIDES_LLM_INTEGRATION_GOTCHAS.md` — all None/NaN traps, safe patterns

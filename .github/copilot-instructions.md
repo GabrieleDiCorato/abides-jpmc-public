@@ -40,3 +40,5 @@ See: `abides-markets/abides_markets/oracles/`
 - `docs/ABIDES_LLM_INTEGRATION_GOTCHAS.md` — all None/NaN traps, safe patterns
 - `docs/ABIDES_CUSTOM_AGENT_IMPLEMENTATION_GUIDE.md` — full adapter pattern
 - `docs/ABIDES_DATA_EXTRACTION.md` — parsing logs (`parse_logs_df`) and L1/L2 book history
+- `docs/PARALLEL_SIMULATION_GUIDE.md` — multiprocessing, RNG hierarchy, log layout
+- `docs/ABIDES_REMEDIATION_PLAN.md` — changelog of performance/correctness fixes
