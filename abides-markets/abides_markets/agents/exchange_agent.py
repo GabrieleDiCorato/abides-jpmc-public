@@ -580,7 +580,7 @@ class ExchangeAgent(FinancialAgent):
                 self.order_books[message.order.symbol].handle_limit_order(
                     deepcopy(message.order)
                 )
-                self.publish_order_book_data()
+                self.publish_order_book_data(message.order.symbol)
 
         elif isinstance(message, MarketOrderMsg):
             logger.debug(
@@ -596,7 +596,7 @@ class ExchangeAgent(FinancialAgent):
                 self.order_books[message.order.symbol].handle_market_order(
                     deepcopy(message.order)
                 )
-                self.publish_order_book_data()
+                self.publish_order_book_data(message.order.symbol)
 
         elif isinstance(message, CancelOrderMsg):
             tag = message.tag
@@ -615,7 +615,7 @@ class ExchangeAgent(FinancialAgent):
                 self.order_books[message.order.symbol].cancel_order(
                     deepcopy(message.order), tag, metadata
                 )
-                self.publish_order_book_data()
+                self.publish_order_book_data(message.order.symbol)
 
         elif isinstance(message, PartialCancelOrderMsg):
             tag = message.tag
@@ -635,7 +635,7 @@ class ExchangeAgent(FinancialAgent):
                 self.order_books[message.order.symbol].partial_cancel_order(
                     deepcopy(message.order), message.quantity, tag, metadata
                 )
-                self.publish_order_book_data()
+                self.publish_order_book_data(message.order.symbol)
 
         elif isinstance(message, ModifyOrderMsg):
             old_order = message.old_order
@@ -655,7 +655,7 @@ class ExchangeAgent(FinancialAgent):
                 self.order_books[old_order.symbol].modify_order(
                     deepcopy(old_order), deepcopy(new_order)
                 )
-                self.publish_order_book_data()
+                self.publish_order_book_data(old_order.symbol)
 
         elif isinstance(message, ReplaceOrderMsg):
             agent_id = message.agent_id
@@ -676,9 +676,9 @@ class ExchangeAgent(FinancialAgent):
                 self.order_books[order.symbol].replace_order(
                     agent_id, deepcopy(order), deepcopy(new_order)
                 )
-                self.publish_order_book_data()
+                self.publish_order_book_data(order.symbol)
 
-    def publish_order_book_data(self) -> None:
+    def publish_order_book_data(self, symbol: str) -> None:
         """
         The exchange agents sends an order book update to the agents using the
         subscription API if one of the following conditions are met:
@@ -687,28 +687,34 @@ class ExchangeAgent(FinancialAgent):
         2) order book update timestamp > last time agent was updated AND the orderbook
            update time stamp is greater than the last agent update time stamp by a
            period more than that specified in the freq parameter.
+
+        Arguments:
+            symbol: Only publish updates for this symbol's subscriptions.
         """
 
-        for symbol, data_subs in self.data_subscriptions.items():
-            book = self.order_books[symbol]
+        data_subs = self.data_subscriptions.get(symbol, [])
+        if not data_subs:
+            return
 
-            for data_sub in data_subs:
-                if isinstance(data_sub, self.FrequencyBasedSubscription):
-                    messages = self.handle_frequency_based_data_subscription(
-                        symbol, data_sub
-                    )
-                elif isinstance(data_sub, self.EventBasedSubscription):
-                    messages = self.handle_event_based_data_subscription(
-                        symbol, data_sub
-                    )
-                else:
-                    raise Exception("Got invalid data subscription object")
+        book = self.order_books[symbol]
 
-                for message in messages:
-                    self.send_message(data_sub.agent_id, message)
+        for data_sub in data_subs:
+            if isinstance(data_sub, self.FrequencyBasedSubscription):
+                messages = self.handle_frequency_based_data_subscription(
+                    symbol, data_sub
+                )
+            elif isinstance(data_sub, self.EventBasedSubscription):
+                messages = self.handle_event_based_data_subscription(
+                    symbol, data_sub
+                )
+            else:
+                raise Exception("Got invalid data subscription object")
 
-                if len(messages) > 0:
-                    data_sub.last_update_ts = book.last_update_ts
+            for message in messages:
+                self.send_message(data_sub.agent_id, message)
+
+            if len(messages) > 0:
+                data_sub.last_update_ts = book.last_update_ts
 
     def handle_frequency_based_data_subscription(
         self, symbol: str, data_sub: "ExchangeAgent.FrequencyBasedSubscription"
