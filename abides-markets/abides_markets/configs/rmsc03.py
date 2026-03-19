@@ -94,13 +94,13 @@ def build_config(
             "megashock_lambda_a": fund_megashock_lambda_a,
             "megashock_mean": fund_megashock_mean,
             "megashock_var": fund_megashock_var,
-            "random_state": np.random.RandomState(
-                seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
-            ),
         }
     }
 
-    oracle = SparseMeanRevertingOracle(mkt_open, mkt_close, symbols)
+    oracle_random_state = np.random.RandomState(
+        seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
+    )
+    oracle = SparseMeanRevertingOracle(mkt_open, mkt_close, symbols, oracle_random_state)
 
     # 1) Exchange Agent
 

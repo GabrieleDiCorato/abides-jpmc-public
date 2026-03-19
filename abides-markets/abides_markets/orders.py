@@ -1,3 +1,4 @@
+import itertools
 import sys
 from abc import ABC, abstractmethod
 from copy import deepcopy
@@ -28,7 +29,7 @@ class Order(ABC):
     Specific order types will inherit from this (like LimitOrder).
     """
 
-    _order_id_counter: int = 0
+    _order_id_generator = itertools.count(0)
 
     @abstractmethod
     def __init__(
@@ -69,8 +70,7 @@ class Order(ABC):
         self.side: Side = side
 
         if order_id is None:
-            order_id = Order._order_id_counter
-            Order._order_id_counter += 1
+            order_id = next(Order._order_id_generator)
 
         self.order_id: int = order_id
 

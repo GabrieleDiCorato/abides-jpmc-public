@@ -33,12 +33,14 @@ class MeanRevertingOracle(Oracle):
         mkt_open: NanosecondTime,
         mkt_close: NanosecondTime,
         symbols: Dict[str, Dict[str, Any]],
+        random_state: np.random.RandomState,
     ) -> None:
         # Symbols must be a dictionary of dictionaries with outer keys as symbol names and
         # inner keys: r_bar, kappa, sigma_s.
         self.mkt_open: NanosecondTime = mkt_open
         self.mkt_close: NanosecondTime = mkt_close
         self.symbols: Dict[str, Dict[str, Any]] = symbols
+        self.random_state: np.random.RandomState = random_state
 
         # The dictionary r holds the fundamenal value series for each symbol.
         self.r: Dict[str, pd.Series] = {}
@@ -88,7 +90,7 @@ class MeanRevertingOracle(Oracle):
         r[0] = r_bar
 
         # Predetermine the random shocks for all time steps (at once, for computation speed).
-        shock = np.random.normal(scale=sigma_s, size=(r.shape[0]))
+        shock = self.random_state.normal(scale=sigma_s, size=(r.shape[0]))
 
         # Compute the mean reverting fundamental value series.
         for t in range(1, r.shape[0]):

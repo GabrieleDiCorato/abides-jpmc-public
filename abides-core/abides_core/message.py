@@ -1,3 +1,4 @@
+import itertools
 from dataclasses import dataclass, field
 from typing import ClassVar, List
 
@@ -19,12 +20,11 @@ class Message:
     # these with stochasticity, but guarantee uniqueness somehow, to make delivery of
     # orders at the same exact timestamp "random" instead of "arbitrary" (FIFO among
     # tied times) as it currently is.
-    __message_id_counter: ClassVar[int] = 1
+    _message_id_generator = itertools.count(1)
     message_id: int = field(init=False)
 
     def __post_init__(self):
-        self.message_id: int = Message.__message_id_counter
-        Message.__message_id_counter += 1
+        self.message_id: int = next(Message._message_id_generator)
 
     def __lt__(self, other: "Message") -> bool:
         # Required by Python3 for this object to be placed in a priority queue.

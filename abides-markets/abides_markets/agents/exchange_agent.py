@@ -594,7 +594,7 @@ class ExchangeAgent(FinancialAgent):
             else:
                 # Hand the market order to the order book for processing.
                 self.order_books[message.order.symbol].handle_market_order(
-                    deepcopy(message.order)
+                    message.order
                 )
                 self.publish_order_book_data(message.order.symbol)
 
@@ -613,7 +613,7 @@ class ExchangeAgent(FinancialAgent):
             else:
                 # Hand the order to the order book for processing.
                 self.order_books[message.order.symbol].cancel_order(
-                    deepcopy(message.order), tag, metadata
+                    message.order, tag, metadata
                 )
                 self.publish_order_book_data(message.order.symbol)
 
@@ -633,7 +633,7 @@ class ExchangeAgent(FinancialAgent):
                 )
             else:
                 self.order_books[message.order.symbol].partial_cancel_order(
-                    deepcopy(message.order), message.quantity, tag, metadata
+                    message.order, message.quantity, tag, metadata
                 )
                 self.publish_order_book_data(message.order.symbol)
 
@@ -653,7 +653,7 @@ class ExchangeAgent(FinancialAgent):
                 )
             else:
                 self.order_books[old_order.symbol].modify_order(
-                    deepcopy(old_order), deepcopy(new_order)
+                    old_order, new_order
                 )
                 self.publish_order_book_data(old_order.symbol)
 
@@ -674,7 +674,7 @@ class ExchangeAgent(FinancialAgent):
                 )
             else:
                 self.order_books[order.symbol].replace_order(
-                    agent_id, deepcopy(order), deepcopy(new_order)
+                    agent_id, order, deepcopy(new_order)
                 )
                 self.publish_order_book_data(order.symbol)
 

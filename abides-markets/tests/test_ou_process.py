@@ -42,8 +42,7 @@ def test_ou_process():
     for seed in range(ntraces):
         ## create random state and ou oracle
         random_state = np.random.RandomState(seed)
-        symbols[stock_name]["random_state"] = random_state
-        oracle = SparseMeanRevertingOracle(MKT_OPEN, MKT_CLOSE, symbols)
+        oracle = SparseMeanRevertingOracle(MKT_OPEN, MKT_CLOSE, symbols, random_state)
 
         ## Compute the fundamental value
         out_df = {"minute": [], "price": []}

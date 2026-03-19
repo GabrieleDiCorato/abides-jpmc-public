@@ -2,7 +2,6 @@ import datetime as dt
 import logging
 from typing import Any, Dict, Optional
 
-import coloredlogs
 import numpy as np
 
 from .kernel import Kernel
@@ -30,9 +29,9 @@ def run(
         kernel_seed: simulation seed
         kernel_random_state: simulation random state
     """
-    coloredlogs.install(
+    logging.basicConfig(
         level=config["stdout_log_level"],
-        fmt="[%(process)d] %(levelname)s %(name)s %(message)s",
+        format="[%(process)d] %(levelname)s %(name)s %(message)s",
     )
 
     kernel = Kernel(

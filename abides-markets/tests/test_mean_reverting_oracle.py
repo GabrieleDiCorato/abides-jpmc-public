@@ -22,8 +22,8 @@ SYMBOLS = {"TEST": {"r_bar": R_BAR, "kappa": 0.05, "sigma_s": 100}}
 
 
 def _make_oracle(seed=42):
-    np.random.seed(seed)
-    return MeanRevertingOracle(MKT_OPEN, MKT_CLOSE, SYMBOLS)
+    random_state = np.random.RandomState(seed)
+    return MeanRevertingOracle(MKT_OPEN, MKT_CLOSE, SYMBOLS, random_state)
 
 
 class TestMeanRevertingOracleConstruction:
