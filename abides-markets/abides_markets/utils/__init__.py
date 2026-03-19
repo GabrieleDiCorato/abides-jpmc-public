@@ -197,7 +197,7 @@ def config_add_agents(orig_config_state, agents, random_state):
     """
     agent_count = len(orig_config_state["agents"])
     orig_config_state["agents"] = orig_config_state["agents"] + agents
-    # adding an agent to the config implies modifying the latency model #TODO: tell aymeric
+    # adding an agent to the config implies regenerating the latency model for the full fleet
     lat_mod = generate_latency_model(agent_count + len(agents), random_state)
     orig_config_state["agent_latency_model"] = lat_mod
     return orig_config_state
