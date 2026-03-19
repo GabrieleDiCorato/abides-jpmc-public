@@ -279,10 +279,10 @@ class AdaptiveMarketMakerAgent(TradingAgent):
             ):
                 bid, _, ask, _ = self.get_known_bid_ask(self.symbol)
                 if bid and ask:
-                    mid = int((ask + bid) / 2)
+                    mid = (ask + bid) // 2
                     self.last_mid = mid
                     if self.is_adaptive:
-                        spread = int(ask - bid)
+                        spread = ask - bid
                         self._adaptive_update_spread(spread)
 
                     self.state["AWAITING_SPREAD"] = False
@@ -317,10 +317,10 @@ class AdaptiveMarketMakerAgent(TradingAgent):
                     else None
                 )
                 if bid and ask:
-                    mid = int((ask + bid) / 2)
+                    mid = (ask + bid) // 2
                     self.last_mid = mid
                     if self.is_adaptive:
-                        spread = int(ask - bid)
+                        spread = ask - bid
                         self._adaptive_update_spread(spread)
 
                     self.state["AWAITING_MARKET_DATA"] = False

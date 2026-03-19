@@ -300,7 +300,7 @@ class Kernel:
         # the kernel stop time is reached.
         while (
             self.messages
-            and self.current_time
+            and self.current_time is not None
             and (self.current_time <= self.stop_time)
         ):
             # Get the next message in timestamp order (delivery time) and extract it.
@@ -642,11 +642,8 @@ class Kernel:
 
         if self.current_time and (requested_time < self.current_time):
             raise ValueError(
-                "set_wakeup() called with requested time not in future",
-                "current_time:",
-                self.current_time,
-                "requested_time:",
-                requested_time,
+                f"set_wakeup() called with requested time not in future: "
+                f"current_time: {self.current_time}, requested_time: {requested_time}"
             )
 
         if self.show_trace_messages:
@@ -679,17 +676,15 @@ class Kernel:
         # requested_delay should be in whole nanoseconds.
         if not isinstance(requested_delay, int):
             raise ValueError(
-                "Requested computation delay must be whole nanoseconds.",
-                "requested_delay:",
-                requested_delay,
+                f"Requested computation delay must be whole nanoseconds. "
+                f"requested_delay: {requested_delay}"
             )
 
         # requested_delay must be non-negative.
         if requested_delay < 0:
             raise ValueError(
-                "Requested computation delay must be non-negative nanoseconds.",
-                "requested_delay:",
-                requested_delay,
+                f"Requested computation delay must be non-negative nanoseconds. "
+                f"requested_delay: {requested_delay}"
             )
 
         self.agent_computation_delays[sender_id] = requested_delay
@@ -711,17 +706,15 @@ class Kernel:
         # additional_delay should be in whole nanoseconds.
         if not isinstance(additional_delay, int):
             raise ValueError(
-                "Additional delay must be whole nanoseconds.",
-                "additional_delay:",
-                additional_delay,
+                f"Additional delay must be whole nanoseconds. "
+                f"additional_delay: {additional_delay}"
             )
 
         # additional_delay must be non-negative.
         if additional_delay < 0:
             raise ValueError(
-                "Additional delay must be non-negative nanoseconds.",
-                "additional_delay:",
-                additional_delay,
+                f"Additional delay must be non-negative nanoseconds. "
+                f"additional_delay: {additional_delay}"
             )
 
         self.current_agent_additional_delay += additional_delay

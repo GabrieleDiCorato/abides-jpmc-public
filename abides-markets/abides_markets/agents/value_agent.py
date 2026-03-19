@@ -248,8 +248,8 @@ class ValueAgent(TradingAgent):
             elif r_T >= mid:
                 # fundamental belief that price will go up, buy order
                 buy = True
-                p = (
-                    ask - adjust_int
+                p = max(
+                    1, ask - adjust_int
                 )  # submit a market order to buy, a limit order inside the spread or deeper in the book
         else:
             # initialize randomly

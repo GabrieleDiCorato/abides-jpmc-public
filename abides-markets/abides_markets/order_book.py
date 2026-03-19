@@ -550,7 +550,7 @@ class OrderBook:
 
             self.last_update_ts = self.owner.current_time
 
-            if self.owner.book_logging is True is not None:
+            if self.owner.book_logging:
                 # append current OB state to book_log2
                 self.append_book_log2()
 

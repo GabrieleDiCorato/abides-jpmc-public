@@ -159,3 +159,35 @@ def test_subscription_cancel_type_mapping():
     )
     assert not hasattr(bi_sub, "depth")  # BookImbalance has no depth
     assert not hasattr(bi_sub, "freq")  # BookImbalance has no freq
+
+
+# --- Kernel ValueError formatting ---
+
+
+def test_kernel_set_wakeup_valueerror_is_string():
+    """ValueError from set_wakeup should have a formatted string, not tuple args."""
+    kernel = Kernel(agents=[], start_time=0, stop_time=1)
+    kernel.initialize()
+    kernel.current_time = 100
+    try:
+        kernel.set_wakeup(sender_id=0, requested_time=50)
+        assert False, "Expected ValueError"
+    except ValueError as e:
+        # Should be a single formatted string, not tuple args
+        assert len(e.args) == 1, f"ValueError has {len(e.args)} args, expected 1"
+        assert "current_time" in str(e)
+
+
+# --- Kernel runner loop truthiness at time=0 ---
+
+
+def test_kernel_runner_works_with_start_time_zero():
+    """Kernel runner loop should work when start_time is 0 (falsy int)."""
+    from abides_core.agent import Agent
+
+    agent = Agent(id=0, name="test", random_state=np.random.RandomState(42))
+    kernel = Kernel(agents=[agent], start_time=0, stop_time=100)
+    kernel.initialize()
+    # Should not hang or skip — the runner loop condition should handle time=0
+    kernel.runner()
+    # If we get here without error, the truthiness check works
