@@ -1,26 +1,28 @@
+"""Compare the current branch against a past commit to detect regressions.
+
+Usage:
+    python test_current_vs_pastcommit.py <baseline_sha> [options]
+
+    --with-log       Compare order books (slower, requires exchange logging)
+    --configs        Comma-separated configs to test (default: rmsc04,rmsc03)
+    --end-times      Comma-separated end times (default: 10:00:00,12:00:00,16:00:00)
+    --seeds          Number of seeds to test (default: 40)
+"""
+
+import argparse
 import pathlib
 import sys
 
+ROOT_PATH = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_PATH))
 
-def get_path(level):
-    path = pathlib.Path(__file__).parent.absolute()
-    path = str(path)
-    if level == 0:
-        return path
-    else:
-        path = path.split("/")[:-level]
-        return ("/").join(path)
-
-
-root_path_abides = get_path(1)
-sys.path.insert(0, root_path_abides)
 import version_testing.test_config as test_config
 
+# The CLI entry point used by the current codebase.
+ABIDES_SCRIPT = "abides_cmd.py"
 
-def generate_parameter_dict(
-    seed, config, end_time, with_log
-):  # can add for varying parameters
 
+def generate_parameter_dict(seed, config, end_time, with_log, baseline_sha):
     if with_log:
         log_orders = True
         exchange_log_orders = True
@@ -32,17 +34,17 @@ def generate_parameter_dict(
 
     parameters = {
         "old": {
-            "sha": "f1968a56fdb55fd7c70be1db052be07cb701a5fb",
-            "script": "abides_cmd.py",
+            "sha": baseline_sha,
+            "script": ABIDES_SCRIPT,
             "config": config,
         },
         "new": {
-            "sha": "f1968a56fdb55fd7c70be1db052be07cb701a5fb",  # CURRENT
-            "script": "abides_cmd.py",
+            "sha": "CURRENT",
+            "script": ABIDES_SCRIPT,
             "config": config,
         },
-        "config_new": config,  # little hack for the analysis #TODO: find a better solution
-        "end-time": end_time,  # little hack for the analysis #TODO: find a better solution
+        "config_new": config,
+        "end-time": end_time,
         "with_log": with_log,
         "shared": {
             "end-time": end_time,
@@ -60,7 +62,6 @@ def generate_parameter_dict(
 
 
 def generate_command(parameters):
-
     specific_command_old = (
         f"{parameters['old']['script']} -config {parameters['old']['config']}"
     )
@@ -68,31 +69,45 @@ def generate_command(parameters):
         f"{parameters['new']['script']} -config {parameters['new']['config']}"
     )
 
-    shared_command = [f"--{key} {val}" for key, val in parameters["shared"].items()]
-    shared_command = " ".join(shared_command)
+    shared_command = " ".join(
+        f"--{key} {val}" for key, val in parameters["shared"].items()
+    )
     command_old = "python3 -W ignore -u " + specific_command_old + " " + shared_command
     command_new = "python3 -W ignore -u " + specific_command_new + " " + shared_command
-    # f"python3 -u {parameter_dict['script']} -c {parameter_dict['config_old']} -t ABM -d 20200603 --end-time {parameters['end-time']}:00:00 -s {parameters['seed']} "
     return {"old": command_old, "new": command_new}
 
 
-if __name__ == "__main__":
-
-    with_log = (
-        False  # if no log, then there is no checking of OB - only measure the timing
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Compare current code against a past commit for regression testing."
     )
-    configs = ["rmsc04", "rmsc03"]  # , 'rmsc04_function']'rmsc03_aymeric',
-    end_times = ["10:00:00", "12:00:00", "16:00:00"]  #'11, '12:00:00', '16:00:00'
+    parser.add_argument("baseline_sha", help="Git SHA of the baseline commit to compare against")
+    parser.add_argument("--with-log", action="store_true", help="Compare order books (slower)")
+    parser.add_argument(
+        "--configs", default="rmsc04,rmsc03", help="Comma-separated configs (default: rmsc04,rmsc03)"
+    )
+    parser.add_argument(
+        "--end-times",
+        default="10:00:00,12:00:00,16:00:00",
+        help="Comma-separated end times (default: 10:00:00,12:00:00,16:00:00)",
+    )
+    parser.add_argument("--seeds", type=int, default=40, help="Number of seeds (default: 40)")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    configs = [c.strip() for c in args.configs.split(",")]
+    end_times = [t.strip() for t in args.end_times.split(",")]
 
     LIST_PARAMETERS = [
-        generate_parameter_dict(seed, config, end_time, with_log)
-        for seed in range(1, 41)
+        generate_parameter_dict(seed, config, end_time, args.with_log, args.baseline_sha)
+        for seed in range(1, args.seeds + 1)
         for config in configs
         for end_time in end_times
     ]
     assert len(LIST_PARAMETERS) > 0, "Enter at least one parameters dictionary"
 
-    # test_config.run_test(LIST_PARAMETERS[0])
-    # result_list = test_config.run_imap_unordered_multiprocessing(func=test_config.run_test, argument_list=LIST_PARAMETERS)
-    varying_parameters = ["config", "end-time"]  #'end-time'
+    varying_parameters = ["config", "end-time"]
     test_config.run_tests(LIST_PARAMETERS, varying_parameters)

@@ -2,32 +2,20 @@ import datetime as dt
 import itertools
 import os
 import pathlib
+import tempfile
 
 import pandas as pd
 from p_tqdm import p_map
 
+ROOT_PATH = pathlib.Path(__file__).resolve().parent.parent
+TMP_DIR = pathlib.Path(tempfile.gettempdir()) / "abides_version_testing"
 
-def get_path(level):
-    path = pathlib.Path(__file__).parent.absolute()
-    path = str(path)
-    if level == 0:
-        return path
-    else:
-        path = path.split("/")[:-level]
-        return ("/").join(path)
-
-
-root_path_abides = get_path(1)
-root_path_ec2 = get_path(3)
-
-os.chdir(root_path_abides)
+os.chdir(ROOT_PATH)
 import sys
 
-sys.path.insert(0, root_path_abides)
+sys.path.insert(0, str(ROOT_PATH))
 
 import version_testing.runasof as runasof
-
-# TODO: use different end time in the new config
 
 
 def get_paths(parameters):
@@ -38,31 +26,22 @@ def get_paths(parameters):
 
 def run_test(test_):
     parameters, old_new_flag = test_
-    # run test for one parameter dictionnary
     specific_path, specific_path_underscore = get_paths(parameters)
 
-    # compute a unique stamp for log folder
     now = dt.datetime.now()
     stamp = now.strftime("%Y%m%d%H%M%S")
 
-    # run old sha
     time = runasof.run_command(
         parameters["command"][old_new_flag],
         commit_sha=parameters[old_new_flag]["sha"],
         specific_path_underscore=specific_path_underscore,
-        git_path=root_path_abides,
+        git_path=str(ROOT_PATH),
         old_new_flag=old_new_flag,
         pass_logdir_sha=(
             "--log_dir",
-            lambda x: root_path_ec2
-            + f"/tmp/{old_new_flag}_{stamp}/"
-            + x
-            + "/"
-            + specific_path,
+            lambda x: str(TMP_DIR / f"{old_new_flag}_{stamp}" / x / specific_path),
         ),
     )
-
-    # output = parameters
 
     output = {}
 
@@ -71,11 +50,13 @@ def run_test(test_):
     output["end-time"] = parameters["shared"]["end-time"]
     output["seed"] = parameters["shared"]["seed"]
     output["time"] = time
-    ## compare order book logs from the simulations
     if parameters["with_log"]:
-        path_to_ob = (
-            root_path_ec2
-            + f"/tmp/{old_new_flag}_{stamp}/{parameters[old_new_flag]['sha']}/{specific_path}/ORDERBOOK_ABM_FULL.bz2"
+        path_to_ob = str(
+            TMP_DIR
+            / f"{old_new_flag}_{stamp}"
+            / parameters[old_new_flag]["sha"]
+            / specific_path
+            / "ORDERBOOK_ABM_FULL.bz2"
         )
     else:
         path_to_ob = "no_log"
