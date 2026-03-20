@@ -1,0 +1,92 @@
+"""abides_markets.simulation — typed simulation runner and result wrapper.
+
+Public API
+----------
+Runner functions::
+
+    from abides_markets.simulation import run_simulation, run_batch
+
+    result = run_simulation(config)
+    results = run_batch([cfg1, cfg2], n_workers=4)
+
+Result models::
+
+    from abides_markets.simulation import (
+        SimulationResult,
+        SimulationMetadata,
+        MarketSummary,
+        L1Close,
+        LiquidityMetrics,
+        L1Snapshots,
+        L2Snapshots,
+        AgentData,
+    )
+
+Extraction profile::
+
+    from abides_markets.simulation import ResultProfile
+
+    result = run_simulation(config, profile=ResultProfile.QUANT)
+
+Custom extractors::
+
+    from abides_markets.simulation import FunctionExtractor, BaseResultExtractor
+
+    ext = FunctionExtractor("n_agents", lambda e: len(e["agents"]))
+    result = run_simulation(config, extractors=[ext])
+
+DataFrame schemas (Pandera)::
+
+    from abides_markets.simulation import (
+        L1DataFrameSchema,
+        L2DataFrameSchema,
+        RawLogsSchema,
+        OrderLogsSchema,
+    )
+"""
+
+from .extractors import BaseResultExtractor, FunctionExtractor, ResultExtractor
+from .profiles import ResultProfile
+from .result import (
+    AgentData,
+    L1Close,
+    L1Snapshots,
+    L2Snapshots,
+    LiquidityMetrics,
+    MarketSummary,
+    SimulationMetadata,
+    SimulationResult,
+)
+from .runner import run_batch, run_simulation
+from .schemas import (
+    L1DataFrameSchema,
+    L2DataFrameSchema,
+    OrderLogsSchema,
+    RawLogsSchema,
+)
+
+__all__ = [
+    # Runner
+    "run_simulation",
+    "run_batch",
+    # Result models
+    "SimulationResult",
+    "SimulationMetadata",
+    "MarketSummary",
+    "L1Close",
+    "LiquidityMetrics",
+    "L1Snapshots",
+    "L2Snapshots",
+    "AgentData",
+    # Profile
+    "ResultProfile",
+    # Extractors
+    "ResultExtractor",
+    "BaseResultExtractor",
+    "FunctionExtractor",
+    # Schemas
+    "L1DataFrameSchema",
+    "L2DataFrameSchema",
+    "RawLogsSchema",
+    "OrderLogsSchema",
+]

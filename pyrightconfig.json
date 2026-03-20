@@ -1,0 +1,7 @@
+{
+  "extraPaths": ["abides-core", "abides-markets", "abides-gym"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic"
+}
