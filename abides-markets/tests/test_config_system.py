@@ -807,3 +807,322 @@ class TestCompilerEdgeCases:
         config = SimulationBuilder().from_template("rmsc04").seed(42).build()
         runtime = compile(config)
         assert runtime["agent_latency_model"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Agent class registration tests
+# ---------------------------------------------------------------------------
+
+
+class TestAgentClassRegistration:
+    """Tests for agent_class on registry entries."""
+
+    def test_builtin_agents_have_agent_class(self):
+        """All built-in agents should have agent_class set."""
+        from abides_markets.agents import (
+            AdaptiveMarketMakerAgent,
+            MomentumAgent,
+            NoiseAgent,
+            POVExecutionAgent,
+            ValueAgent,
+        )
+
+        assert registry.get("noise").agent_class is NoiseAgent
+        assert registry.get("value").agent_class is ValueAgent
+        assert registry.get("momentum").agent_class is MomentumAgent
+        assert registry.get("adaptive_market_maker").agent_class is AdaptiveMarketMakerAgent
+        assert registry.get("pov_execution").agent_class is POVExecutionAgent
+
+    def test_register_without_agent_class(self):
+        """Registering without agent_class should still work (backward compat)."""
+        from abides_markets.config_system.agent_configs import BaseAgentConfig
+
+        class DummyConfig2(BaseAgentConfig):
+            pass
+
+        registry.register("_test_dummy_noclass", DummyConfig2, category="background")
+        try:
+            entry = registry.get("_test_dummy_noclass")
+            assert entry.agent_class is None
+        finally:
+            if "_test_dummy_noclass" in registry._entries:
+                del registry._entries["_test_dummy_noclass"]
+
+    def test_register_agent_decorator_with_agent_class(self):
+        """@register_agent decorator should pass agent_class through."""
+        from abides_markets.config_system.agent_configs import BaseAgentConfig
+
+        class FakeAgent2:
+            pass
+
+        class FakeConfig2(BaseAgentConfig):
+            pass
+
+        registry.register(
+            "_test_fake_with_class", FakeConfig2,
+            category="strategy",
+            agent_class=FakeAgent2,
+        )
+        try:
+            entry = registry.get("_test_fake_with_class")
+            assert entry.agent_class is FakeAgent2
+        finally:
+            if "_test_fake_with_class" in registry._entries:
+                del registry._entries["_test_fake_with_class"]
+
+
+# ---------------------------------------------------------------------------
+# Auto-generated create_agents tests
+# ---------------------------------------------------------------------------
+
+
+class TestAutoGenCreateAgents:
+    """Tests for the auto-generated create_agents() on BaseAgentConfig."""
+
+    def test_no_agent_class_raises(self):
+        """Config with no registered agent_class and no override should raise."""
+        from abides_markets.config_system.agent_configs import (
+            AgentCreationContext,
+            BaseAgentConfig,
+        )
+
+        config = BaseAgentConfig()
+        context = AgentCreationContext(
+            ticker="TEST", mkt_open=0, mkt_close=0,
+            log_orders=False, oracle_r_bar=100_000, date_ns=0,
+        )
+        rng = np.random.RandomState(42)
+        with pytest.raises(NotImplementedError, match="no registered agent_class"):
+            config.create_agents(count=1, id_start=0, master_rng=rng, context=context)
+
+    def test_noise_agent_auto_gen(self):
+        """NoiseAgentConfig should create NoiseAgent via auto-gen."""
+        from abides_markets.agents import NoiseAgent
+        from abides_markets.config_system.agent_configs import (
+            AgentCreationContext,
+            NoiseAgentConfig,
+        )
+
+        config = NoiseAgentConfig()
+        context = AgentCreationContext(
+            ticker="ABM",
+            mkt_open=34_200_000_000_000,  # 09:30:00 in ns
+            mkt_close=36_000_000_000_000,  # 10:00:00 in ns
+            log_orders=True,
+            oracle_r_bar=100_000,
+            date_ns=0,
+        )
+        rng = np.random.RandomState(42)
+        agents = config.create_agents(count=3, id_start=5, master_rng=rng, context=context)
+
+        assert len(agents) == 3
+        assert all(isinstance(a, NoiseAgent) for a in agents)
+        assert agents[0].id == 5
+        assert agents[1].id == 6
+        assert agents[2].id == 7
+        assert "NoiseAgent" in agents[0].name
+
+    def test_value_agent_sigma_n_default(self):
+        """ValueAgentConfig should default sigma_n to r_bar / 100."""
+        from abides_markets.agents import ValueAgent
+        from abides_markets.config_system.agent_configs import (
+            AgentCreationContext,
+            ValueAgentConfig,
+        )
+
+        config = ValueAgentConfig(r_bar=200_000)
+        context = AgentCreationContext(
+            ticker="ABM", mkt_open=34_200_000_000_000,
+            mkt_close=36_000_000_000_000, log_orders=False,
+            oracle_r_bar=200_000, date_ns=0,
+        )
+        rng = np.random.RandomState(42)
+        agents = config.create_agents(count=1, id_start=1, master_rng=rng, context=context)
+
+        assert len(agents) == 1
+        assert isinstance(agents[0], ValueAgent)
+        assert agents[0].sigma_n == 2000.0  # 200_000 / 100
+
+    def test_momentum_agent_wake_up_freq_converted(self):
+        """MomentumAgentConfig should convert wake_up_freq from string to ns."""
+        from abides_markets.agents import MomentumAgent
+        from abides_markets.config_system.agent_configs import (
+            AgentCreationContext,
+            MomentumAgentConfig,
+        )
+
+        config = MomentumAgentConfig(wake_up_freq="37s")
+        context = AgentCreationContext(
+            ticker="ABM", mkt_open=34_200_000_000_000,
+            mkt_close=36_000_000_000_000, log_orders=False,
+            oracle_r_bar=100_000, date_ns=0,
+        )
+        rng = np.random.RandomState(42)
+        agents = config.create_agents(count=1, id_start=1, master_rng=rng, context=context)
+
+        assert len(agents) == 1
+        assert isinstance(agents[0], MomentumAgent)
+
+    def test_log_orders_override(self):
+        """Per-agent log_orders should override context-level."""
+        from abides_markets.config_system.agent_configs import (
+            AgentCreationContext,
+            ValueAgentConfig,
+        )
+
+        config = ValueAgentConfig(log_orders=True)
+        context = AgentCreationContext(
+            ticker="ABM", mkt_open=34_200_000_000_000,
+            mkt_close=36_000_000_000_000, log_orders=False,
+            oracle_r_bar=100_000, date_ns=0,
+        )
+        rng = np.random.RandomState(42)
+        agents = config.create_agents(count=1, id_start=1, master_rng=rng, context=context)
+        assert agents[0].log_orders is True
+
+    def test_log_orders_fallback_to_context(self):
+        """When log_orders is None, should use context value."""
+        from abides_markets.config_system.agent_configs import (
+            AgentCreationContext,
+            ValueAgentConfig,
+        )
+
+        config = ValueAgentConfig(log_orders=None)
+        context = AgentCreationContext(
+            ticker="ABM", mkt_open=34_200_000_000_000,
+            mkt_close=36_000_000_000_000, log_orders=True,
+            oracle_r_bar=100_000, date_ns=0,
+        )
+        rng = np.random.RandomState(42)
+        agents = config.create_agents(count=1, id_start=1, master_rng=rng, context=context)
+        assert agents[0].log_orders is True
+
+
+# ---------------------------------------------------------------------------
+# Parameter inheritance tests
+# ---------------------------------------------------------------------------
+
+
+class TestParameterInheritance:
+    """Tests for config parameter inheritance through class hierarchy."""
+
+    def test_subclass_inherits_base_fields(self):
+        """Subclass should have base class fields (starting_cash, log_orders, etc)."""
+        from abides_markets.config_system.agent_configs import NoiseAgentConfig
+
+        fields = NoiseAgentConfig.model_fields
+        assert "starting_cash" in fields
+        assert "log_orders" in fields
+        assert "computation_delay" in fields
+        # Plus its own fields
+        assert "noise_mkt_open_offset" in fields
+        assert "noise_mkt_close_time" in fields
+
+    def test_extra_fields_rejected(self):
+        """Unknown parameters should be rejected (Pydantic extra=forbid)."""
+        from abides_markets.config_system.agent_configs import ValueAgentConfig
+
+        with pytest.raises(ValueError):
+            ValueAgentConfig(nonexistent_param=42)
+
+    def test_custom_config_inherits_base(self):
+        """Custom configs extending BaseAgentConfig should inherit all base fields."""
+        from abides_markets.config_system.agent_configs import BaseAgentConfig
+
+        class CustomConfig(BaseAgentConfig):
+            custom_param: float = 0.5
+
+        config = CustomConfig(starting_cash=5_000_000, custom_param=0.8)
+        assert config.starting_cash == 5_000_000
+        assert config.custom_param == 0.8
+
+        # extra=forbid should be inherited
+        with pytest.raises(ValueError):
+            CustomConfig(unknown=True)
+
+    def test_two_level_inheritance(self):
+        """Two levels of inheritance should compose fields correctly."""
+        from abides_markets.config_system.agent_configs import BaseAgentConfig
+
+        class MidLevel(BaseAgentConfig):
+            mid_param: int = 10
+
+        class LeafLevel(MidLevel):
+            leaf_param: str = "hello"
+
+        config = LeafLevel(starting_cash=1_000_000, mid_param=20, leaf_param="world")
+        assert config.starting_cash == 1_000_000
+        assert config.mid_param == 20
+        assert config.leaf_param == "world"
+
+
+# ---------------------------------------------------------------------------
+# Eager validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestEagerValidation:
+    """Tests for build-time parameter validation."""
+
+    def test_build_rejects_unknown_agent_type(self):
+        """build() should reject unregistered agent types."""
+        builder = SimulationBuilder().from_template("rmsc04").seed(42)
+        builder._data["agents"]["nonexistent_type"] = {
+            "enabled": True,
+            "count": 5,
+            "params": {},
+        }
+        with pytest.raises(ValueError, match="not registered"):
+            builder.build()
+
+    def test_build_rejects_unknown_agent_params(self):
+        """build() should reject unknown parameters for registered agents."""
+        builder = (
+            SimulationBuilder()
+            .from_template("rmsc04")
+            .seed(42)
+            .enable_agent("noise", count=10, totally_fake_param=999)
+        )
+        with pytest.raises(ValueError, match="Invalid parameters.*noise"):
+            builder.build()
+
+    def test_build_accepts_valid_params(self):
+        """build() should accept valid parameters."""
+        config = (
+            SimulationBuilder()
+            .from_template("rmsc04")
+            .seed(42)
+            .enable_agent("value", count=10, r_bar=150_000, kappa=2e-15)
+            .build()
+        )
+        assert config.agents["value"].params["r_bar"] == 150_000
+
+    def test_build_disabled_agents_not_validated(self):
+        """Disabled agents should not be validated."""
+        builder = SimulationBuilder().from_template("rmsc04").seed(42)
+        builder._data["agents"]["nonexistent_type"] = {
+            "enabled": False,
+            "count": 5,
+            "params": {"bad": True},
+        }
+        # Should not raise
+        config = builder.build()
+        assert config.agents["nonexistent_type"].enabled is False
+
+    def test_validate_config_catches_bad_params(self):
+        """validate_config() should catch invalid agent params."""
+        config_dict = config_to_dict(
+            SimulationBuilder().from_template("rmsc04").seed(42).build()
+        )
+        config_dict["agents"]["noise"]["params"]["totally_fake"] = 42
+        result = validate_config(config_dict)
+        assert result["valid"] is False
+        assert any("noise" in e for e in result["errors"])
+
+    def test_validate_config_passes_for_valid(self):
+        """validate_config() should pass for valid configs."""
+        config_dict = config_to_dict(
+            SimulationBuilder().from_template("rmsc04").seed(42).build()
+        )
+        result = validate_config(config_dict)
+        assert result["valid"] is True

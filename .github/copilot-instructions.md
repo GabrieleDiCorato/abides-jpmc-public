@@ -34,6 +34,9 @@ See: `docs/ABIDES_CUSTOM_AGENT_IMPLEMENTATION_GUIDE.md`
 
 ## Declarative config system
 Use `SimulationBuilder` + `compile()` for new simulations.
+Register agents with `@register_agent(name, agent_class=..., category=...)`.
+Config fields map to constructor args by name; override `_prepare_constructor_kwargs()` for computed args.
+`build()` eagerly validates agent params — unknown fields are rejected immediately.
 See: `docs/ABIDES_CONFIG_SYSTEM.md` and `notebooks/demo_Config_System.ipynb`
 
 ## External data / oracle injection

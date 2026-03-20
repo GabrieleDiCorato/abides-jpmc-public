@@ -18,6 +18,7 @@ class AgentRegistryEntry:
     config_model: type  # Pydantic BaseModel subclass (BaseAgentConfig)
     category: str  # "background", "strategy", "execution", "market_maker"
     description: str = ""
+    agent_class: type | None = None  # The ABIDES agent class to instantiate
 
 
 class AgentRegistry:
@@ -43,6 +44,7 @@ class AgentRegistry:
         config_model: type,
         category: str = "background",
         description: str = "",
+        agent_class: type | None = None,
     ) -> None:
         """Register an agent type.
 
@@ -52,6 +54,8 @@ class AgentRegistry:
                           and a ``create_agents()`` factory method.
             category: One of "background", "strategy", "execution", "market_maker".
             description: Human-readable description for AI discoverability.
+            agent_class: The ABIDES agent class to instantiate. When provided,
+                         ``BaseAgentConfig`` can auto-generate ``create_agents()``.
         """
         if name in self._entries:
             raise ValueError(f"Agent type '{name}' is already registered")
@@ -60,6 +64,7 @@ class AgentRegistry:
             config_model=config_model,
             category=category,
             description=description,
+            agent_class=agent_class,
         )
 
     def get(self, name: str) -> AgentRegistryEntry:
@@ -106,19 +111,26 @@ def register_agent(
     name: str,
     category: str = "background",
     description: str = "",
+    agent_class: type | None = None,
 ):
     """Decorator to register an agent config model in the global registry.
 
     Usage::
 
-        @register_agent("my_agent", category="strategy", description="My custom agent")
+        @register_agent("my_agent", category="strategy",
+                        agent_class=MyAgent, description="My custom agent")
         class MyAgentConfig(BaseAgentConfig):
             threshold: float = 0.05
             ...
     """
 
     def decorator(cls: type) -> type:
-        registry.register(name, cls, category=category, description=description)
+        registry.register(
+            name, cls,
+            category=category,
+            description=description,
+            agent_class=agent_class,
+        )
         return cls
 
     return decorator

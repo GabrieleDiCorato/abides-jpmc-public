@@ -190,15 +190,19 @@ config, which the Kernel applies on initialization.
 Agent types self-register via the `@register_agent` decorator or
 `registry.register()`. Built-in agents are registered at import time.
 
+When an `agent_class` is provided at registration, `BaseAgentConfig`
+auto-generates the `create_agents()` factory by inspecting the agent
+constructor and mapping config fields to constructor args by name.
+
 ### Registered built-in agents
 
-| Name | Category | Config class |
-|------|----------|-------------|
-| `noise` | background | `NoiseAgentConfig` |
-| `value` | background | `ValueAgentConfig` |
-| `momentum` | strategy | `MomentumAgentConfig` |
-| `adaptive_market_maker` | market_maker | `AdaptiveMarketMakerConfig` |
-| `pov_execution` | execution | `POVExecutionAgentConfig` |
+| Name | Category | Config class | Agent class |
+|------|----------|-------------|-------------|
+| `noise` | background | `NoiseAgentConfig` | `NoiseAgent` |
+| `value` | background | `ValueAgentConfig` | `ValueAgent` |
+| `momentum` | strategy | `MomentumAgentConfig` | `MomentumAgent` |
+| `adaptive_market_maker` | market_maker | `AdaptiveMarketMakerConfig` | `AdaptiveMarketMakerAgent` |
+| `pov_execution` | execution | `POVExecutionAgentConfig` | `POVExecutionAgent` |
 
 ### Registering a custom agent
 
@@ -206,14 +210,48 @@ Agent types self-register via the `@register_agent` decorator or
 from pydantic import Field
 from abides_markets.config_system import BaseAgentConfig, register_agent
 
-@register_agent("my_strategy", category="strategy", description="My custom strategy")
+@register_agent("my_strategy", category="strategy",
+                agent_class=MyAgent, description="My custom strategy")
 class MyStrategyConfig(BaseAgentConfig):
     threshold: float = Field(default=0.05)
-    computation_delay: int = Field(default=100)  # optional per-agent delay
+    wake_up_freq: str = Field(default="30s")
 
-    def create_agents(self, count, id_start, master_rng, context):
-        # Return a list of agent instances
-        ...
+    def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
+        from abides_core.utils import str_to_ns
+        kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
+        return kwargs
+```
+
+Parameters follow standard Pydantic conventions:
+- **Required**: Fields without defaults → must be provided in config
+- **Optional**: Fields with defaults → inherited from base or overridden
+- **Inherited**: Subclass fields extend base class fields (`starting_cash`, `log_orders`, `computation_delay`)
+- **Validated**: Unknown fields are rejected (`extra="forbid"`)
+
+### Auto-generated factories
+
+When `agent_class` is provided at registration, the base `create_agents()`
+implementation:
+
+1. Inspects the agent constructor via `inspect.signature()`
+2. Maps config field names → constructor parameter names
+3. Injects context arguments: `id`, `name`, `type`, `symbol`, `random_state`
+4. Calls `_prepare_constructor_kwargs()` for computed args (e.g., duration string → nanoseconds)
+5. Instantiates `count` agents with sequential IDs
+
+Override `_prepare_constructor_kwargs()` for non-trivial mappings.
+Override `create_agents()` entirely for agents that don't follow the pattern.
+
+### Eager parameter validation
+
+`build()` validates agent parameters at build-time (not just at compile-time):
+
+```python
+# This raises ValueError immediately — no need to wait until compile()
+config = (SimulationBuilder()
+    .from_template("rmsc04")
+    .enable_agent("noise", count=10, unknown_param=42)
+    .build())  # ← raises ValueError: Invalid parameters for agent type 'noise'
 ```
 
 ---

@@ -153,10 +153,39 @@ class SimulationBuilder:
     def build(self) -> SimulationConfig:
         """Validate and return the SimulationConfig.
 
+        Performs two-phase validation:
+        1. Validates the overall config structure via Pydantic.
+        2. Validates each agent group's params against its registered config model,
+           catching unknown parameters, type errors, and missing required fields
+           at build-time rather than compile-time.
+
         Raises:
             pydantic.ValidationError: If the configuration is invalid.
         """
-        return SimulationConfig.model_validate(self._data)
+        from abides_markets.config_system.registry import registry
+
+        config = SimulationConfig.model_validate(self._data)
+
+        # Eager validation: validate agent params against registry config models
+        for agent_name, group in config.agents.items():
+            if not group.enabled:
+                continue
+            try:
+                entry = registry.get(agent_name)
+            except KeyError as e:
+                raise ValueError(
+                    f"Agent type '{agent_name}' is not registered. "
+                    f"Available types: {', '.join(registry.registered_names())}"
+                ) from e
+            # Instantiate the config model to validate params
+            try:
+                entry.config_model(**group.params)
+            except Exception as e:
+                raise ValueError(
+                    f"Invalid parameters for agent type '{agent_name}': {e}"
+                ) from e
+
+        return config
 
     def to_dict(self) -> dict[str, Any]:
         """Return the raw config dict (before validation)."""

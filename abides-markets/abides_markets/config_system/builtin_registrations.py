@@ -4,6 +4,13 @@ This module is imported by ``config_system.__init__`` to ensure all
 standard agents are available without explicit user action.
 """
 
+from abides_markets.agents import (
+    AdaptiveMarketMakerAgent,
+    MomentumAgent,
+    NoiseAgent,
+    POVExecutionAgent,
+    ValueAgent,
+)
 from abides_markets.config_system.agent_configs import (
     AdaptiveMarketMakerConfig,
     MomentumAgentConfig,
@@ -22,6 +29,7 @@ def _register_builtins() -> None:
     registry.register(
         name="noise",
         config_model=NoiseAgentConfig,
+        agent_class=NoiseAgent,
         category="background",
         description=(
             "Simple agent that wakes once at a random time and places "
@@ -32,6 +40,7 @@ def _register_builtins() -> None:
     registry.register(
         name="value",
         config_model=ValueAgentConfig,
+        agent_class=ValueAgent,
         category="background",
         description=(
             "Bayesian learner that estimates fundamental value from noisy "
@@ -42,6 +51,7 @@ def _register_builtins() -> None:
     registry.register(
         name="momentum",
         config_model=MomentumAgentConfig,
+        agent_class=MomentumAgent,
         category="strategy",
         description=(
             "Trend-follower using 20-bar vs 50-bar moving average crossover. "
@@ -52,6 +62,7 @@ def _register_builtins() -> None:
     registry.register(
         name="adaptive_market_maker",
         config_model=AdaptiveMarketMakerConfig,
+        agent_class=AdaptiveMarketMakerAgent,
         category="market_maker",
         description=(
             "Market maker using inventory-skewed ladder strategy with "
@@ -63,6 +74,7 @@ def _register_builtins() -> None:
     registry.register(
         name="pov_execution",
         config_model=POVExecutionAgentConfig,
+        agent_class=POVExecutionAgent,
         category="execution",
         description=(
             "Percentage-of-volume execution agent that sizes orders based "

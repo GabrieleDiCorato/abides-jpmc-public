@@ -1,14 +1,21 @@
 """Pydantic config models for each built-in agent type.
 
-Each model declares the agent-specific parameters with sensible defaults
-(matching rmsc04 where applicable) and a ``create_agents()`` factory method
-that instantiates actual ABIDES agent objects.
+Each model declares the agent-specific parameters as Pydantic fields.
+Parameters are inherited through the config class hierarchy. The base class
+auto-generates ``create_agents()`` by inspecting the registered ``agent_class``
+constructor and mapping fields by name. Subclasses can override
+``_prepare_constructor_kwargs()`` for computed arguments that aren't simple
+field-to-parameter mappings.
+
+Required vs. optional parameters follow Pydantic semantics: fields with
+defaults are optional; fields without defaults are mandatory.
 """
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
-from typing import Union
+from typing import Any, Union
 
 import numpy as np
 from abides_core import NanosecondTime
@@ -28,13 +35,20 @@ class AgentCreationContext:
     mkt_close: NanosecondTime
     log_orders: bool
     oracle_r_bar: int  # for derived params like SIGMA_N
+    date_ns: NanosecondTime = 0  # date component in nanoseconds
 
 
 # ---------------------------------------------------------------------------
 # Base config
 # ---------------------------------------------------------------------------
 class BaseAgentConfig(BaseModel):
-    """Common fields shared by all trading-agent configs."""
+    """Common fields shared by all trading-agent configs.
+
+    When a ``agent_class`` is registered in the registry, the default
+    ``create_agents()`` implementation auto-maps config fields to the
+    agent constructor by matching parameter names. Override
+    ``_prepare_constructor_kwargs()`` for computed arguments.
+    """
 
     model_config = {"extra": "forbid"}
 
@@ -54,6 +68,110 @@ class BaseAgentConfig(BaseModel):
         ),
     )
 
+    # Fields excluded from automatic constructor mapping
+    _EXCLUDE_FROM_KWARGS: frozenset[str] = frozenset(
+        {"computation_delay"}
+    )
+
+    def create_agents(
+        self,
+        count: int,
+        id_start: int,
+        master_rng: np.random.RandomState,
+        context: AgentCreationContext,
+    ) -> list:
+        """Create agent instances. Auto-generated from registry agent_class.
+
+        If the registry entry for this config model has an ``agent_class``,
+        the base implementation inspects the constructor signature,
+        maps config fields → constructor args by name, injects
+        context-provided args (id, name, type, symbol, etc.), and calls
+        ``_prepare_constructor_kwargs()`` for any final transformations.
+
+        Subclasses may override this entirely for non-standard instantiation.
+        """
+        # Look up the agent_class from the registry
+        agent_cls = self._resolve_agent_class()
+        if agent_cls is None:
+            raise NotImplementedError(
+                f"{type(self).__name__} has no registered agent_class "
+                "and does not override create_agents()."
+            )
+
+        # Discover which parameters the constructor accepts
+        sig = inspect.signature(agent_cls.__init__)
+        accepted_params = set(sig.parameters.keys()) - {"self"}
+
+        log = self.log_orders if self.log_orders is not None else context.log_orders
+
+        # Collect config fields that map to constructor params
+        base_kwargs: dict[str, Any] = {}
+        for field_name, _field_info in type(self).model_fields.items():
+            if field_name in self._EXCLUDE_FROM_KWARGS:
+                continue
+            if field_name == "log_orders":
+                base_kwargs["log_orders"] = log
+            elif field_name in accepted_params:
+                base_kwargs[field_name] = getattr(self, field_name)
+
+        agents = []
+        for j in range(id_start, id_start + count):
+            agent_rng = np.random.RandomState(
+                seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
+            )
+            # Start with the mapped fields, then add context injections
+            kwargs = dict(base_kwargs)
+            kwargs["id"] = j
+            kwargs["name"] = f"{agent_cls.__name__} {j}"
+            kwargs["type"] = agent_cls.__name__
+            kwargs["random_state"] = agent_rng
+            if "symbol" in accepted_params:
+                kwargs["symbol"] = context.ticker
+
+            # Let subclasses transform / add computed args
+            kwargs = self._prepare_constructor_kwargs(
+                kwargs, j, agent_rng, context
+            )
+
+            # Filter to only accepted params (in case hook added extras)
+            kwargs = {k: v for k, v in kwargs.items() if k in accepted_params}
+
+            agents.append(agent_cls(**kwargs))
+        return agents
+
+    def _prepare_constructor_kwargs(
+        self,
+        kwargs: dict[str, Any],
+        agent_id: int,
+        agent_rng: np.random.RandomState,
+        context: AgentCreationContext,
+    ) -> dict[str, Any]:
+        """Hook for subclasses to modify constructor kwargs before instantiation.
+
+        Override this to add computed arguments (e.g. wakeup_time),
+        convert string durations to nanoseconds, or inject dependencies
+        like OrderSizeModel.
+
+        Args:
+            kwargs: Current kwargs dict (config fields + context injections).
+            agent_id: The agent's sequential ID.
+            agent_rng: Per-agent RNG instance.
+            context: Shared compiler context.
+
+        Returns:
+            Modified kwargs dict.
+        """
+        return kwargs
+
+    def _resolve_agent_class(self) -> type | None:
+        """Look up the agent_class from the registry for this config model."""
+        from abides_markets.config_system.registry import registry
+
+        for entry in registry._entries.values():
+            if entry.config_model is type(self):
+                return entry.agent_class
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Noise Agent
@@ -70,45 +188,25 @@ class NoiseAgentConfig(BaseAgentConfig):
         description="Time-of-day for noise wakeup window end.",
     )
 
-    def create_agents(
-        self,
-        count: int,
-        id_start: int,
-        master_rng: np.random.RandomState,
-        context: AgentCreationContext,
-    ) -> list:
-        from abides_markets.agents import NoiseAgent
+    _EXCLUDE_FROM_KWARGS: frozenset[str] = frozenset(
+        {"computation_delay", "noise_mkt_open_offset", "noise_mkt_close_time"}
+    )
+
+    def _prepare_constructor_kwargs(
+        self, kwargs, agent_id, agent_rng, context
+    ):
         from abides_markets.models import OrderSizeModel
 
-        log = self.log_orders if self.log_orders is not None else context.log_orders
-        order_size_model = OrderSizeModel()
-
         noise_mkt_open = context.mkt_open + str_to_ns(self.noise_mkt_open_offset)
-        # Parse close time relative to the date (mkt_open contains the date component)
-        date_ns = context.mkt_open - str_to_ns("09:30:00")
-        noise_mkt_close = date_ns + str_to_ns(self.noise_mkt_close_time)
+        noise_mkt_close = context.date_ns + str_to_ns(self.noise_mkt_close_time)
 
-        agents = []
-        for j in range(id_start, id_start + count):
-            agent_rng = np.random.RandomState(
-                seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
-            )
-            agents.append(
-                NoiseAgent(
-                    id=j,
-                    name=f"NoiseAgent {j}",
-                    type="NoiseAgent",
-                    symbol=context.ticker,
-                    starting_cash=self.starting_cash,
-                    wakeup_time=get_wake_time(
-                        noise_mkt_open, noise_mkt_close, agent_rng
-                    ),
-                    log_orders=log,
-                    order_size_model=order_size_model,
-                    random_state=agent_rng,
-                )
-            )
-        return agents
+        kwargs["wakeup_time"] = get_wake_time(
+            noise_mkt_open, noise_mkt_close, agent_rng
+        )
+        kwargs["order_size_model"] = OrderSizeModel()
+        kwargs["name"] = f"NoiseAgent {agent_id}"
+        kwargs["type"] = "NoiseAgent"
+        return kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -134,40 +232,17 @@ class ValueAgentConfig(BaseAgentConfig):
         description="Observation noise variance. Defaults to r_bar / 100.",
     )
 
-    def create_agents(
-        self,
-        count: int,
-        id_start: int,
-        master_rng: np.random.RandomState,
-        context: AgentCreationContext,
-    ) -> list:
-        from abides_markets.agents import ValueAgent
+    def _prepare_constructor_kwargs(
+        self, kwargs, agent_id, agent_rng, context
+    ):
         from abides_markets.models import OrderSizeModel
 
-        log = self.log_orders if self.log_orders is not None else context.log_orders
-        order_size_model = OrderSizeModel()
-        sigma_n = self.sigma_n if self.sigma_n is not None else self.r_bar / 100
-
-        agents = [
-            ValueAgent(
-                id=j,
-                name=f"Value Agent {j}",
-                type="ValueAgent",
-                symbol=context.ticker,
-                starting_cash=self.starting_cash,
-                sigma_n=sigma_n,
-                r_bar=self.r_bar,
-                kappa=self.kappa,
-                lambda_a=self.lambda_a,
-                log_orders=log,
-                order_size_model=order_size_model,
-                random_state=np.random.RandomState(
-                    seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
-                ),
-            )
-            for j in range(id_start, id_start + count)
-        ]
-        return agents
+        if kwargs.get("sigma_n") is None:
+            kwargs["sigma_n"] = self.r_bar / 100
+        kwargs["order_size_model"] = OrderSizeModel()
+        kwargs["name"] = f"Value Agent {agent_id}"
+        kwargs["type"] = "ValueAgent"
+        return kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -187,40 +262,16 @@ class MomentumAgentConfig(BaseAgentConfig):
         description="If True, wakeup intervals are Poisson-distributed.",
     )
 
-    def create_agents(
-        self,
-        count: int,
-        id_start: int,
-        master_rng: np.random.RandomState,
-        context: AgentCreationContext,
-    ) -> list:
-        from abides_markets.agents import MomentumAgent
+    def _prepare_constructor_kwargs(
+        self, kwargs, agent_id, agent_rng, context
+    ):
         from abides_markets.models import OrderSizeModel
 
-        log = self.log_orders if self.log_orders is not None else context.log_orders
-        order_size_model = OrderSizeModel()
-        freq_ns = str_to_ns(self.wake_up_freq)
-
-        agents = [
-            MomentumAgent(
-                id=j,
-                name=f"MOMENTUM_AGENT_{j}",
-                type="MomentumAgent",
-                symbol=context.ticker,
-                starting_cash=self.starting_cash,
-                min_size=self.min_size,
-                max_size=self.max_size,
-                wake_up_freq=freq_ns,
-                poisson_arrival=self.poisson_arrival,
-                log_orders=log,
-                order_size_model=order_size_model,
-                random_state=np.random.RandomState(
-                    seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
-                ),
-            )
-            for j in range(id_start, id_start + count)
-        ]
-        return agents
+        kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
+        kwargs["order_size_model"] = OrderSizeModel()
+        kwargs["name"] = f"MOMENTUM_AGENT_{agent_id}"
+        kwargs["type"] = "MomentumAgent"
+        return kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -263,45 +314,13 @@ class AdaptiveMarketMakerConfig(BaseAgentConfig):
         default=0, description="Orders at the outermost level."
     )
 
-    def create_agents(
-        self,
-        count: int,
-        id_start: int,
-        master_rng: np.random.RandomState,
-        context: AgentCreationContext,
-    ) -> list:
-        from abides_markets.agents import AdaptiveMarketMakerAgent
-
-        log = self.log_orders if self.log_orders is not None else context.log_orders
-        freq_ns = str_to_ns(self.wake_up_freq)
-
-        agents = [
-            AdaptiveMarketMakerAgent(
-                id=j,
-                name=f"ADAPTIVE_POV_MARKET_MAKER_AGENT_{j}",
-                type="AdaptivePOVMarketMakerAgent",
-                symbol=context.ticker,
-                starting_cash=self.starting_cash,
-                pov=self.pov,
-                min_order_size=self.min_order_size,
-                window_size=self.window_size,
-                num_ticks=self.num_ticks,
-                wake_up_freq=freq_ns,
-                poisson_arrival=self.poisson_arrival,
-                cancel_limit_delay=self.cancel_limit_delay,
-                skew_beta=self.skew_beta,
-                price_skew_param=self.price_skew_param,
-                level_spacing=self.level_spacing,
-                spread_alpha=self.spread_alpha,
-                backstop_quantity=self.backstop_quantity,
-                log_orders=log,
-                random_state=np.random.RandomState(
-                    seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
-                ),
-            )
-            for j in range(id_start, id_start + count)
-        ]
-        return agents
+    def _prepare_constructor_kwargs(
+        self, kwargs, agent_id, agent_rng, context
+    ):
+        kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
+        kwargs["name"] = f"ADAPTIVE_POV_MARKET_MAKER_AGENT_{agent_id}"
+        kwargs["type"] = "AdaptivePOVMarketMakerAgent"
+        return kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -329,42 +348,21 @@ class POVExecutionAgentConfig(BaseAgentConfig):
         default=True, description="If False, only logs without trading."
     )
 
-    def create_agents(
-        self,
-        count: int,
-        id_start: int,
-        master_rng: np.random.RandomState,
-        context: AgentCreationContext,
-    ) -> list:
-        from abides_markets.agents import POVExecutionAgent
+    _EXCLUDE_FROM_KWARGS: frozenset[str] = frozenset(
+        {"computation_delay", "start_time_offset", "end_time_offset", "freq", "direction"}
+    )
+
+    def _prepare_constructor_kwargs(
+        self, kwargs, agent_id, agent_rng, context
+    ):
         from abides_markets.orders import Side
 
-        log = self.log_orders if self.log_orders is not None else context.log_orders
         freq_ns = str_to_ns(self.freq)
-        direction = Side.BID if self.direction.upper() == "BID" else Side.ASK
-        exec_start = context.mkt_open + str_to_ns(self.start_time_offset)
-        exec_end = context.mkt_close - str_to_ns(self.end_time_offset)
-
-        agents = [
-            POVExecutionAgent(
-                id=j,
-                name=f"POV_EXECUTION_AGENT_{j}",
-                type="ExecutionAgent",
-                symbol=context.ticker,
-                starting_cash=self.starting_cash,
-                start_time=exec_start,
-                end_time=exec_end,
-                freq=freq_ns,
-                lookback_period=freq_ns,
-                pov=self.pov,
-                direction=direction,
-                quantity=self.quantity,
-                trade=self.trade,
-                log_orders=log,
-                random_state=np.random.RandomState(
-                    seed=master_rng.randint(low=0, high=2**32, dtype="uint64")
-                ),
-            )
-            for j in range(id_start, id_start + count)
-        ]
-        return agents
+        kwargs["freq"] = freq_ns
+        kwargs["lookback_period"] = freq_ns
+        kwargs["start_time"] = context.mkt_open + str_to_ns(self.start_time_offset)
+        kwargs["end_time"] = context.mkt_close - str_to_ns(self.end_time_offset)
+        kwargs["direction"] = Side.BID if self.direction.upper() == "BID" else Side.ASK
+        kwargs["name"] = f"POV_EXECUTION_AGENT_{agent_id}"
+        kwargs["type"] = "ExecutionAgent"
+        return kwargs

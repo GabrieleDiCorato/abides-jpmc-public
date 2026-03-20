@@ -71,6 +71,7 @@ def compile(config: SimulationConfig) -> dict[str, Any]:
         mkt_close=mkt_close,
         log_orders=config.simulation.log_orders,
         oracle_r_bar=oracle_r_bar,
+        date_ns=date_ns,
     )
 
     # ── Agents ────────────────────────────────────────────────────
@@ -217,6 +218,6 @@ def _build_oracle(config, mkt_open, mkt_close, oracle_rng):
 def _get_oracle_r_bar(config) -> int:
     """Extract r_bar from oracle config for derived parameters."""
     oc = config.market.oracle
-    if hasattr(oc, "r_bar"):
+    if isinstance(oc, (SparseMeanRevertingOracleConfig, MeanRevertingOracleConfig)):
         return oc.r_bar
     return 100_000  # default fallback

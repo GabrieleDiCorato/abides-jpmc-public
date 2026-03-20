@@ -99,15 +99,32 @@ def get_config_schema() -> dict[str, Any]:
 def validate_config(config_dict: dict[str, Any]) -> dict[str, Any]:
     """Validate a config dict and return a result.
 
+    Performs two-phase validation:
+    1. Validates the overall config structure via Pydantic.
+    2. Validates each agent group's params against its registered config model.
+
     Returns:
         ``{"valid": True}`` if valid, or
         ``{"valid": False, "errors": [...]}`` with validation error details.
     """
     try:
-        SimulationConfig.model_validate(config_dict)
-        return {"valid": True}
+        config = SimulationConfig.model_validate(config_dict)
     except Exception as e:
         return {"valid": False, "errors": [str(e)]}
+
+    errors = []
+    for agent_name, group in config.agents.items():
+        if not group.enabled:
+            continue
+        try:
+            entry = registry.get(agent_name)
+            entry.config_model(**group.params)
+        except Exception as e:
+            errors.append(f"Agent '{agent_name}': {e}")
+
+    if errors:
+        return {"valid": False, "errors": errors}
+    return {"valid": True}
 
 
 __all__ = [
