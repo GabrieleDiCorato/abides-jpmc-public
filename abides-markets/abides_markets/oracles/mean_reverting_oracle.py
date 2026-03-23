@@ -1,5 +1,6 @@
 import datetime as dt
 import logging
+import warnings
 from math import sqrt
 from typing import Any, Dict
 
@@ -10,6 +11,8 @@ from abides_core import NanosecondTime
 from .oracle import Oracle
 
 logger = logging.getLogger(__name__)
+
+_MAX_STEPS = 1_000_000
 
 
 class MeanRevertingOracle(Oracle):
@@ -26,7 +29,13 @@ class MeanRevertingOracle(Oracle):
     This oracle uses the nanoseconds portion of the current simulation time as
     discrete "time steps".  A suggestion: to keep wallclock runtime reasonable,
     have the agents operate for only ~1000 nanoseconds, but interpret nanoseconds
-    as seconds or minutes."""
+    as seconds or minutes.
+
+    .. deprecated::
+        Use :class:`SparseMeanRevertingOracle` instead.  This oracle pre-generates
+        a nanosecond-resolution time series and will OOM for any realistic trading
+        day (6.5 h ≈ 2.34×10¹³ steps).
+    """
 
     def __init__(
         self,
@@ -35,6 +44,22 @@ class MeanRevertingOracle(Oracle):
         symbols: Dict[str, Dict[str, Any]],
         random_state: np.random.RandomState,
     ) -> None:
+        warnings.warn(
+            "MeanRevertingOracle is deprecated — use SparseMeanRevertingOracle "
+            "for real-time-scale simulations.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        n_steps = mkt_close - mkt_open
+        if n_steps > _MAX_STEPS:
+            raise ValueError(
+                f"MeanRevertingOracle: time range of {n_steps:,} ns exceeds the "
+                f"maximum of {_MAX_STEPS:,}.  Pre-generating a nanosecond-resolution "
+                f"series this large would exhaust memory.  "
+                f"Use SparseMeanRevertingOracle instead."
+            )
+
         # Symbols must be a dictionary of dictionaries with outer keys as symbol names and
         # inner keys: r_bar, kappa, sigma_s.
         self.mkt_open: NanosecondTime = mkt_open
