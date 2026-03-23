@@ -1,13 +1,16 @@
 """Tests for MeanRevertingOracle.
 
-MeanRevertingOracle is currently dead code (no config instantiates it directly,
-only SparseMeanRevertingOracle is used), but it is a public class and base for
-SparseMeanRevertingOracle. These tests exercise the fixed pd.date_range call
-and the .loc access pattern with integer nanosecond keys.
+MeanRevertingOracle is deprecated in favour of SparseMeanRevertingOracle.
+These tests exercise the fixed pd.date_range call, the .loc access pattern
+with integer nanosecond keys, and the safety guards (step-count limit and
+deprecation warning).
 """
+
+import warnings
 
 import numpy as np
 import pandas as pd
+import pytest
 from abides_core.utils import datetime_str_to_ns, str_to_ns
 from abides_markets.oracles.mean_reverting_oracle import MeanRevertingOracle
 
@@ -23,7 +26,9 @@ SYMBOLS = {"TEST": {"r_bar": R_BAR, "kappa": 0.05, "sigma_s": 100}}
 
 def _make_oracle(seed=42):
     random_state = np.random.RandomState(seed)
-    return MeanRevertingOracle(MKT_OPEN, MKT_CLOSE, SYMBOLS, random_state)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return MeanRevertingOracle(MKT_OPEN, MKT_CLOSE, SYMBOLS, random_state)
 
 
 class TestMeanRevertingOracleConstruction:
@@ -102,3 +107,27 @@ class TestMeanRevertingOracleReproducibility:
         oracle_a = _make_oracle(seed=42)
         oracle_b = _make_oracle(seed=99)
         assert not oracle_a.r["TEST"].equals(oracle_b.r["TEST"])
+
+
+# --- Safety guards ---
+
+
+class TestMeanRevertingOracleSafety:
+    def test_rejects_large_time_range(self):
+        """Constructing with > 1 000 000 steps should raise ValueError."""
+        rng = np.random.RandomState(42)
+        with pytest.raises(ValueError, match="exceeds the maximum"):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                MeanRevertingOracle(MKT_OPEN, MKT_OPEN + 2_000_000, SYMBOLS, rng)
+
+    def test_deprecation_warning(self):
+        """Construction should emit a DeprecationWarning."""
+        rng = np.random.RandomState(42)
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            MeanRevertingOracle(MKT_OPEN, MKT_CLOSE, SYMBOLS, rng)
+
+    def test_small_range_still_works(self):
+        """A 1000-step range should still construct successfully."""
+        oracle = _make_oracle()
+        assert len(oracle.r["TEST"]) == 1000
