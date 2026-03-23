@@ -13,25 +13,43 @@ composable templates.
 ## Quick Start
 
 ```python
-from abides_markets.config_system import SimulationBuilder, compile
-from abides_core import abides
+from abides_markets.config_system import SimulationBuilder
+from abides_markets.simulation import run_simulation
 
-# Build a config from a template
+# Build an immutable config from a template
 config = (SimulationBuilder()
     .from_template("rmsc04")
     .market(ticker="AAPL")
     .seed(42)
     .build())
 
-# Compile to Kernel runtime dict
-runtime = compile(config)
+# run_simulation() compiles a fresh runtime dict internally, runs the
+# simulation, and returns a typed, immutable SimulationResult.
+result = run_simulation(config)
+```
 
-# Run the simulation
-# abides.run() deep-copies agents and oracle on every call, so the same
-# runtime dict can be passed to run() multiple times and will always produce
-# identical, reproducible results.
+The same `SimulationConfig` can be passed to `run_simulation()` any number
+of times — each call compiles fresh agents and oracle, so results are always
+reproducible.
+
+<details>
+<summary>Low-level path (direct Kernel access)</summary>
+
+```python
+from abides_markets.config_system import SimulationBuilder, compile
+from abides_core import abides
+
+config = (SimulationBuilder()
+    .from_template("rmsc04")
+    .market(ticker="AAPL")
+    .seed(42)
+    .build())
+
+runtime = compile(config)       # fresh runtime dict — consumed once
 end_state = abides.run(runtime)
 ```
+
+</details>
 
 ---
 
@@ -318,29 +336,33 @@ all work with either approach.
 
 ---
 
-## Runtime Idempotency
+## Runtime Lifecycle
 
-`abides.run()` deep-copies the agent list and oracle from the runtime dict
-before each simulation run. This means:
+`SimulationConfig` is an immutable Pydantic model — it can be reused, serialized,
+and shared freely.  Each call to `compile()` (or `run_simulation()`, which calls
+`compile()` internally) instantiates a fresh set of agents and oracle objects.
 
-- **The same `runtime` dict can be passed to `abides.run()` multiple times** —
-  each call starts with a clean, unmodified slate.
-- Results are **reproducible**: calling `abides.run(runtime)` twice with a fixed
-  seed produces identical outcomes both times.
-- This is particularly useful in **Jupyter notebooks** where a cell containing
-  `abides.run(runtime)` can be re-executed without needing to re-run the
-  compile step.
+- **`run_simulation(config)`** (recommended): compiles, runs, and returns an
+  immutable `SimulationResult`.  Safe to call repeatedly on the same config.
+- **`compile()` + `abides.run()`** (low-level): the runtime dict is **consumed
+  once** — agents accumulate state during the run, so the dict must not be
+  reused.  Call `compile()` again for a fresh dict.
 
 ```python
-runtime = compile(config)          # compile once
+from abides_markets.simulation import run_simulation
 
-end1 = abides.run(runtime)         # first run  — 48 564 messages
-end2 = abides.run(runtime)         # second run — 48 564 messages (identical)
-assert end1["agents"][0].order_books["ABM"] is not end2["agents"][0].order_books["ABM"]
-# Each run received its own deep-copied agent objects
+# Recommended: config is reusable, each call compiles fresh agents
+result1 = run_simulation(config)   # first run
+result2 = run_simulation(config)   # second run — identical results
 ```
 
-> **Performance note:** For simulations with very large agent counts
-> (≫ 10 000 agents), the one-time deep-copy at run start adds a small but
-> measurable overhead.  In that case, call `compile()` once per run and pass
-> a fresh `runtime` dict each time instead of reusing the same one.
+For the low-level path, call `compile()` once per run:
+
+```python
+from abides_markets.config_system import compile
+from abides_core import abides
+
+runtime = compile(config)          # fresh runtime dict
+end_state = abides.run(runtime)    # consumes the dict
+# Do NOT reuse `runtime` — call compile() again for another run.
+```

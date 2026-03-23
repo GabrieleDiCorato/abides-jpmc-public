@@ -30,6 +30,10 @@ from abides_markets.utils import generate_latency_model
 def compile(config: SimulationConfig) -> dict[str, Any]:
     """Compile a declarative SimulationConfig into a Kernel-compatible runtime dict.
 
+    Each call creates **fresh** agent and oracle instances.  The returned dict
+    is consumed once by ``abides.run()`` — do not reuse it.  Call ``compile()``
+    again (or use ``run_simulation()``) for another run.
+
     The output dict matches the format returned by ``rmsc04.build_config()``::
 
         {

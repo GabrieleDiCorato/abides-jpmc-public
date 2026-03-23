@@ -7,7 +7,8 @@ compiles down to the existing runtime dict that ``Kernel`` expects.
 
 Quick start::
 
-    from abides_markets.config_system import SimulationBuilder, compile
+    from abides_markets.config_system import SimulationBuilder
+    from abides_markets.simulation import run_simulation
 
     config = (SimulationBuilder()
         .from_template("rmsc04")
@@ -15,10 +16,7 @@ Quick start::
         .seed(42)
         .build())
 
-    runtime = compile(config)
-
-    from abides_core import abides
-    end_state = abides.run(runtime)
+    result = run_simulation(config)  # compiles fresh agents, returns SimulationResult
 
 AI discoverability::
 

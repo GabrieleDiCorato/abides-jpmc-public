@@ -33,7 +33,8 @@ Implement `TradingStrategy` → wrap in `AbidesStrategyAdapter(TradingAgent)`.
 See: `docs/ABIDES_CUSTOM_AGENT_IMPLEMENTATION_GUIDE.md`
 
 ## Declarative config system
-Use `SimulationBuilder` + `compile()` for new simulations.
+Use `SimulationBuilder` to build a `SimulationConfig`, then `run_simulation(config)` from `abides_markets.simulation`.
+The low-level path is `compile(config)` → `abides.run(runtime)` — the runtime dict is consumed once (do not reuse).
 Register agents with `@register_agent(name, agent_class=..., category=...)`.
 Config fields map to constructor args by name; override `_prepare_constructor_kwargs()` for computed args.
 `build()` eagerly validates agent params — unknown fields are rejected immediately.

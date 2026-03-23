@@ -27,11 +27,50 @@ The `Message` and `Order` ID generators use `itertools.count()`, which is GIL-sa
 
 ---
 
-## 2. Safe Parallel Usage with `multiprocessing` (Recommended)
+## 2. Using `run_batch()` (Recommended)
 
-Using separate processes avoids all shared-state issues because each process gets its own copy of class variables, global PRNG, and logging configuration.
+The simplest way to run simulations in parallel is `run_batch()` from
+`abides_markets.simulation`.  It accepts a list of `SimulationConfig` objects,
+spawns worker processes, compiles each config independently, and returns a list
+of immutable `SimulationResult` objects in input order.
 
-### 2.1 Minimal Example
+```python
+from abides_markets.config_system import SimulationBuilder
+from abides_markets.simulation import run_batch
+
+configs = [
+    SimulationBuilder().from_template("rmsc04").seed(s).build()
+    for s in range(1, 9)
+]
+
+results = run_batch(configs)      # uses all available CPUs by default
+
+for r in results:
+    print(f"Seed {r.metadata.seed}: {r.markets['ABM'].l1_close}")
+```
+
+Each worker compiles its own runtime dict from the provided config — no shared
+state, unique log directories (UUID-based by default), and fully deterministic
+given the seed.  The returned `SimulationResult` objects are frozen Pydantic
+models safe to share across threads.
+
+For finer control over extraction, pass a `profile` or `extractors`:
+
+```python
+from abides_markets.simulation import run_batch, ResultProfile
+
+results = run_batch(configs, profile=ResultProfile.QUANT, n_workers=4)
+```
+
+---
+
+## 3. Manual Parallelism with `multiprocessing`
+
+For cases where you need direct control over the worker processes (e.g.,
+custom logging, non-standard return values), you can use `multiprocessing`
+directly with the low-level `compile()` → `abides.run()` path.
+
+### 3.1 Minimal Example
 
 ```python
 import multiprocessing as mp
@@ -92,7 +131,7 @@ if __name__ == "__main__":
     main()
 ```
 
-### 2.2 Using `concurrent.futures.ProcessPoolExecutor`
+### 3.2 Using `concurrent.futures.ProcessPoolExecutor`
 
 ```python
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -116,7 +155,7 @@ def main():
             print(f"Seed {seed}: done")
 ```
 
-### 2.3 Using `p_tqdm` (already used in codebase for testing)
+### 3.3 Using `p_tqdm` (already used in codebase for testing)
 
 ```python
 from p_tqdm import p_map
@@ -130,9 +169,9 @@ results = p_map(
 
 ---
 
-## 3. Critical Rules for Safe Parallel Runs
+## 4. Critical Rules for Safe Parallel Runs
 
-### 3.1 Always pass a unique `log_dir`
+### 4.1 Always pass a unique `log_dir`
 
 The Kernel defaults `log_dir` to `str(int(datetime.now().timestamp()))`. Two simulations started within the same second will **overwrite each other's log files**. Always provide an explicit, unique `log_dir`:
 
@@ -140,7 +179,7 @@ The Kernel defaults `log_dir` to `str(int(datetime.now().timestamp()))`. Two sim
 run(config=config, log_dir=f"experiment_42/seed_{seed}")
 ```
 
-### 3.2 Always pass an explicit seed or `random_state`
+### 4.2 Always pass an explicit seed or `random_state`
 
 The config builders (`rmsc03.build_config()`, `rmsc04.build_config()`) accept a `seed` parameter and derive all component-level `RandomState` objects from it deterministically. Always provide it:
 
@@ -151,13 +190,13 @@ end_state = run(config=config, kernel_seed=42)
 
 If you omit the seed/random_state, fallback paths hit the **global numpy PRNG** (`np.random.randint()`), which is not reproducible and not safe even across sequential runs.
 
-### 3.3 Both oracles use injected `RandomState`
+### 4.3 Both oracles use injected `RandomState`
 
 Both `MeanRevertingOracle` and `SparseMeanRevertingOracle` accept and use an injected `random_state` parameter — neither calls the global `np.random` PRNG. Results are fully deterministic given the seed.
 
 `SparseMeanRevertingOracle` (used by `rmsc03` and `rmsc04`) additionally derives per-symbol `RandomState` objects. **Either oracle is safe for parallel runs.**
 
-### 3.4 Configure logging at the top level
+### 4.4 Configure logging at the top level
 
 The `abides_core.abides.run()` function does **not** configure logging. If you want colored log output, call `coloredlogs.install()` yourself at program startup (the CLI script `abides-core/scripts/abides` does this). In multiprocessing, each process has its own logger state, so log output from multiple processes will be interleaved on stdout unless you add per-process file handlers.
 
@@ -182,7 +221,7 @@ def run_one_simulation(args):
     return run(config=config, log_dir=log_dir, kernel_seed=seed)
 ```
 
-### 3.5 Return values must be picklable
+### 4.5 Return values must be picklable
 
 `multiprocessing` serializes return values via `pickle`. The full `end_state` dictionary contains `Agent` objects, pandas DataFrames, and numpy arrays — these are generally picklable, but large. Extract only what you need:
 
@@ -199,7 +238,7 @@ def run_one_simulation(args):
     }
 ```
 
-### 3.6 Gym environments
+### 4.6 Gym environments
 
 Each `AbidesGymCoreEnv.reset()` creates a fresh `Kernel` and full agent set. Gym environments are designed for sequential use (one env = one simulation at a time). To run multiple gym environments in parallel, use multiple processes — each with its own env instance. **Do not share gym env instances across threads.**
 
@@ -219,7 +258,7 @@ def run_gym_episode(seed):
 
 ---
 
-## 4. RNG Hierarchy (How Seeds Flow)
+## 5. RNG Hierarchy (How Seeds Flow)
 
 Understanding the RNG design helps ensure reproducibility:
 
@@ -246,7 +285,7 @@ build_config(seed=42)
 
 ---
 
-## 5. File Layout for Logs
+## 6. File Layout for Logs
 
 When `skip_log=False`, each simulation writes:
 
@@ -263,7 +302,7 @@ For parallel runs, ensure each simulation has a unique `log_dir` to avoid file c
 
 ---
 
-## 6. Common Pitfalls
+## 7. Common Pitfalls
 
 | Pitfall | Consequence | Prevention |
 |---|---|---|

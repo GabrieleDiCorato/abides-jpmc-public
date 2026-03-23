@@ -135,15 +135,28 @@ _For more examples, please refer to the notebooks in the `notebooks/` directory.
 ### Using the Declarative Config System (recommended):
 
 ```python
+from abides_markets.config_system import SimulationBuilder
+from abides_markets.simulation import run_simulation
+
+config = SimulationBuilder().from_template("rmsc04").seed(0).build()
+result = run_simulation(config)
+
+print(result.metadata)           # seed, timing, tickers
+print(result.markets["ABM"])     # per-ticker summary
+```
+
+`run_simulation()` compiles a fresh runtime dict internally, runs the
+simulation, and returns an immutable `SimulationResult`.  The same
+`SimulationConfig` can be passed to `run_simulation()` any number of times.
+
+For the low-level path (direct Kernel access):
+
+```python
 from abides_markets.config_system import SimulationBuilder, compile
 from abides_core import abides
 
 config = SimulationBuilder().from_template("rmsc04").seed(0).build()
-runtime = compile(config)
-
-# abides.run() deep-copies agents and oracle on every call,
-# so the same runtime dict can be re-run and will always
-# produce identical, reproducible results.
+runtime = compile(config)       # fresh runtime dict — consumed once
 end_state = abides.run(runtime)
 ```
 
