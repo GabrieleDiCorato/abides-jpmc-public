@@ -10,6 +10,32 @@ Agent Bug Fixes
 * Fixed MomentumAgent `KeyError` on empty order book: replaced bare dict access
   `self.known_bids[self.symbol]` with safe `.get(self.symbol, [])`
 
+Quant Review Fixes
+------------------
+
+* Fixed `TradingAgent.get_known_bid_ask()` return type: `float | None` corrected to
+  `int | None` — prices are always integer cents
+* Fixed `TradingAgent.get_known_bid_ask_midpoint()` `KeyError` on missing symbol:
+  bare `self.known_bids[symbol]` replaced with safe `.get(symbol, [])`
+* Fixed `TradingAgent.mark_to_market()` `KeyError` on missing last trade: two bare
+  `self.last_trade[symbol]` accesses replaced with safe `.get(symbol)` with None guard
+* Removed dead `if log_orders is None:` block in `TradingAgent.__init__()` — the
+  constructor parameter already defaults to `True`, this branch was unreachable
+* Fixed `ExchangeAgent` duplicate `isinstance(data_sub, self.L3DataSubscription)`
+  check in `publish_data_to_subscribers()`
+* Fixed `ExchangeAgent.metric_trackers` crash when `use_metric_tracker=False`:
+  attribute now always initialised (as empty dict when unused)
+* Normalised `ValueAgent` buy/sell direction variable from `int` (0/1) to `bool`;
+  replaced `buy == 1` comparison with truthiness check
+* Normalised `NoiseAgent` buy/sell direction: renamed `buy_indicator` to `buy`,
+  converted from `int` to `bool`
+* Fixed `MomentumAgent` MA values stored as floats via `.round(2)`: replaced with
+  `int(round(...))` to maintain integer-cent price convention
+* Fixed `AdaptiveMarketMakerAgent` poll-mode wakeup discarding `initialise_state()`
+  return value — result now assigned to `self.state`
+* Fixed `POVExecutionAgent` `last_bid`/`last_ask` type annotations from `float` to
+  `int` — prices are always integer cents
+
 Oracle Fixes
 ------------
 
@@ -29,7 +55,7 @@ MeanRevertingOracle Safety
 Tests
 -----
 
-* Added `test_agent_fixes.py` — 8 regression tests covering all agent and oracle fixes
+* Added `test_agent_fixes.py` — 16 regression tests covering all agent and oracle fixes
 * Added 3 safety tests to `test_mean_reverting_oracle.py` for deprecation warning
   and step-count guard
 

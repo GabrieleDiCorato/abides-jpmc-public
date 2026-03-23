@@ -52,7 +52,7 @@
 |---------|:--------:|--------|
 | **Type annotation bug** | ~~Low~~ | ~~Line 29: `log_orders: float = False` — should be `bool`.~~ **Fixed in v2.0.0.** |
 | `cancel_all_orders()` then immediately re-queries | Medium | Lines 132-138: on every wakeup the agent cancels all open orders and re-places them. This generates 2x message traffic (cancel + new order) instead of amending. With many ValueAgents this multiplies exchange load. |
-| `buy` variable conflation | Low | Line 245: `buy` is set to `True`/`False` in the `if/elif` branches but to `self.random_state.randint(0, 1 + 1)` (integer 0 or 1) in the `else`. Then `Side.BID if buy == 1` — works but is fragile mixed-type logic. |
+| ~~`buy` variable conflation~~ | ~~Low~~ | ~~Line 245: `buy` is set to `True`/`False` in the `if/elif` branches but to `self.random_state.randint(0, 1 + 1)` (integer 0 or 1) in the `else`. Then `Side.BID if buy == 1` — works but is fragile mixed-type logic.~~ **Fixed in v2.0.0** — normalised to `bool` with `bool(self.random_state.randint(0, 2))`. |
 | `type(self) is ValueAgent` guard | Code smell | Same pattern as NoiseAgent. |
 | Hard-coded `depth_spread = 2` | Low | Not configurable via constructor or config system. |
 
@@ -84,7 +84,7 @@
 
 | Concern | Severity | Detail |
 |---------|:--------:|--------|
-| `last_bid`/`last_ask` typed as `Optional[float]` | Low | Lines 132-133: prices should be `Optional[int]` (integer cents). |
+| ~~`last_bid`/`last_ask` typed as `Optional[float]`~~ | ~~Low~~ | ~~Lines 132-133: prices should be `Optional[int]` (integer cents).~~ **Fixed in v2.0.0** — corrected to `Optional[int]`. |
 | Not tracking execution fill prices | Medium | `order_executed` tracks quantity but not price. Cannot compute VWAP of executed fills for slippage analysis. |
 | Market orders only | Design | Uses exclusively market orders for fills. A production POV agent should also support limit orders with active crossing for better price improvement. |
 | No urgency parameter | Design | Real POV algos have urgency controls (e.g., ramp rate near close). |
@@ -94,7 +94,7 @@
 | Concern | Severity | Detail |
 |---------|:--------:|--------|
 | `deepcopy` on every order placement | Medium | Lines 556, 611, 647: every `place_limit_order`/`place_market_order` deep-copies the order. Performance cost scales linearly with order flow. |
-| `mark_to_market` KeyError risk | Medium | Lines 1160/1164: `self.last_trade[symbol]` will raise `KeyError` if no trade has occurred for a held symbol. |
+| ~~`mark_to_market` KeyError risk~~ | ~~Medium~~ | ~~Lines 1160/1164: `self.last_trade[symbol]` will raise `KeyError` if no trade has occurred for a held symbol.~~ **Fixed in v2.0.0** — replaced with safe `.get(symbol)` + None guard. |
 | Self-comment: "ugly way" at line 197 | Low | Result tracking via kernel dict is acknowledged tech debt. |
 
 ---
@@ -131,7 +131,7 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 
 2. **No agent-level circuit breaker**: If a strategy enters a pathological loop (e.g., MomentumAgent accumulating 100,000 shares), nothing stops it.
 
-3. **Unsafe dictionary access patterns**: Multiple agents access `self.known_bids[symbol]` directly instead of `.get(symbol, [])`, risking `KeyError` at runtime.
+3. **~~Unsafe dictionary access patterns~~**: ~~Multiple agents access `self.known_bids[symbol]` directly instead of `.get(symbol, [])`, risking `KeyError` at runtime.~~ **Fixed in v2.0.0** — `TradingAgent.get_known_bid_ask_midpoint()` and `TradingAgent.mark_to_market()` now use safe `.get()` access.
 
 ---
 
@@ -144,6 +144,17 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 | Change `self.state["MARKET_DATA"]` → `self.state["AWAITING_MARKET_DATA"]` | `adaptive_market_maker_agent.py` | 326 | ✅ v2.0.0 |
 | Change `log_orders: float` → `log_orders: bool` | `value_agent.py` | 29 | ✅ v2.0.0 |
 | Use `.get(symbol, [])` in MomentumAgent subscribe mode | `momentum_agent.py` | 101 | ✅ v2.0.0 |
+| Fix `get_known_bid_ask()` return type `float` → `int` | `trading_agent.py` | 1078 | ✅ v2.0.0 |
+| Fix `get_known_bid_ask_midpoint()` bare dict KeyError | `trading_agent.py` | 1199 | ✅ v2.0.0 |
+| Fix `mark_to_market()` bare dict KeyError (×2) | `trading_agent.py` | 1160/1168 | ✅ v2.0.0 |
+| Remove dead `if log_orders is None:` block | `trading_agent.py` | 85 | ✅ v2.0.0 |
+| Fix duplicate `isinstance` L3 check | `exchange_agent.py` | 758 | ✅ v2.0.0 |
+| Init `metric_trackers` when `use_metric_tracker=False` | `exchange_agent.py` | 191 | ✅ v2.0.0 |
+| Normalise `buy` variable to `bool` | `value_agent.py` | 256 | ✅ v2.0.0 |
+| Normalise `buy_indicator` → `buy` as `bool` | `noise_agent.py` | 142 | ✅ v2.0.0 |
+| Fix MA values stored as floats (`.round(2)` → `int(round(...))`) | `momentum_agent.py` | 112 | ✅ v2.0.0 |
+| Fix discarded `initialise_state()` return value | `adaptive_market_maker_agent.py` | 239 | ✅ v2.0.0 |
+| Fix `last_bid`/`last_ask` type `float` → `int` | `pov_execution_agent.py` | 131 | ✅ v2.0.0 |
 
 ### 4.2 New Agent Types to Implement
 
