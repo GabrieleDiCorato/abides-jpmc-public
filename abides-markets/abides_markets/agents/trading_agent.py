@@ -1165,7 +1165,7 @@ class TradingAgent(FinancialAgent):
             self.logEvent(
                 "MARK_TO_MARKET",
                 "{} {} @ {} == {}".format(
-                    shares, symbol, self.last_trade[symbol], value
+                    shares, symbol, self.last_trade.get(symbol), value
                 ),
             )
 
