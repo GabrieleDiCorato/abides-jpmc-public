@@ -98,7 +98,7 @@ class MomentumAgent(TradingAgent):
             and self.state == "AWAITING_MARKET_DATA"
             and isinstance(message, MarketDataMsg)
         ):
-            bids, asks = self.known_bids[self.symbol], self.known_asks[self.symbol]
+            bids, asks = self.known_bids.get(self.symbol, []), self.known_asks.get(self.symbol, [])
             if bids and asks:
                 self.place_orders(bids[0][0], asks[0][0])
             self.state = "AWAITING_MARKET_DATA"
