@@ -1,14 +1,12 @@
 """Tests for critical bug fixes in exchange_agent, trading_agent, kernel, and oracle."""
 
 import numpy as np
-
 from abides_core.kernel import Kernel
 from abides_markets.agents.exchange_agent import ExchangeAgent
 from abides_markets.agents.trading_agent import TradingAgent
 from abides_markets.oracles.sparse_mean_reverting_oracle import (
     SparseMeanRevertingOracle,
 )
-
 
 # --- Kernel has_run ---
 
@@ -132,13 +130,6 @@ def test_oracle_creates_own_copy_of_symbols():
 
 def test_subscription_cancel_type_mapping():
     """Verify the subscription type mapping dict is correct."""
-    from abides_markets.messages.marketdata import (
-        BookImbalanceSubReqMsg,
-        L1SubReqMsg,
-        L2SubReqMsg,
-        L3SubReqMsg,
-        TransactedVolSubReqMsg,
-    )
 
     # Verify that subscription classes exist with expected attributes
     l1_sub = ExchangeAgent.L1DataSubscription(agent_id=0, last_update_ts=0, freq=1)

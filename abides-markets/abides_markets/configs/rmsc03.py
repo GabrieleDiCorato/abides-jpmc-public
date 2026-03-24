@@ -164,7 +164,7 @@ def build_config(
         [
             ValueAgent(
                 id=j,
-                name="Value Agent {}".format(j),
+                name=f"Value Agent {j}",
                 symbol=symbol,
                 starting_cash=starting_cash,
                 sigma_n=val_sigma_n,
@@ -205,7 +205,7 @@ def build_config(
         [
             AdaptiveMarketMakerAgent(
                 id=j,
-                name="ADAPTIVE_POV_MARKET_MAKER_AGENT_{}".format(j),
+                name=f"ADAPTIVE_POV_MARKET_MAKER_AGENT_{j}",
                 type="AdaptivePOVMarketMakerAgent",
                 symbol=symbol,
                 starting_cash=starting_cash,
@@ -237,7 +237,7 @@ def build_config(
         [
             MomentumAgent(
                 id=j,
-                name="MOMENTUM_AGENT_{}".format(j),
+                name=f"MOMENTUM_AGENT_{j}",
                 symbol=symbol,
                 starting_cash=starting_cash,
                 min_size=1,

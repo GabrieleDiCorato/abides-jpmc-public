@@ -1,4 +1,4 @@
-from abides_markets.orders import LimitOrder, MarketOrder, Side
+from abides_markets.orders import MarketOrder, Side
 
 from . import SYMBOL, TIME, setup_book_with_orders
 

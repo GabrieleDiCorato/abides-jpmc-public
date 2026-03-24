@@ -20,7 +20,6 @@ from abides_markets.config_system.agent_configs import (
 )
 from abides_markets.config_system.registry import registry
 
-
 _BUILTIN_NAMES = frozenset(
     {"noise", "value", "momentum", "adaptive_market_maker", "pov_execution"}
 )

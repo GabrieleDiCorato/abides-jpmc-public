@@ -1,11 +1,11 @@
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from ..price_level import PriceLevel
 
 
 ################## STATE MANIPULATION ###############################
-def list_dict_flip(ld: List[Dict[str, Any]]) -> Dict[str, List[Any]]:
+def list_dict_flip(ld: list[dict[str, Any]]) -> dict[str, list[Any]]:
     """
     Utility that returns a dictionnary of list of dictionnary into a dictionary of list
 
@@ -19,7 +19,7 @@ def list_dict_flip(ld: List[Dict[str, Any]]) -> Dict[str, List[Any]]:
     """
     flipped = dict((k, []) for (k, v) in ld[0].items())
     for rs in ld:
-        for k in flipped.keys():
+        for k in flipped:
             flipped[k].append(rs[k])
     return flipped
 
@@ -91,7 +91,7 @@ def ignore_buffers_decorator(func):
 
 ################# ORDERBOOK PRIMITIVES ######################
 def get_mid_price(
-    bids: List[PriceLevel], asks: List[PriceLevel], last_transaction: int
+    bids: list[PriceLevel], asks: list[PriceLevel], last_transaction: int
 ) -> int:
     """
     Utility that computes the mid price from the snapshot of bid and ask side
@@ -113,7 +113,7 @@ def get_mid_price(
         return (bids[0][0] + asks[0][0]) / 2
 
 
-def get_val(book: List[PriceLevel], level: int) -> Tuple[int, int]:
+def get_val(book: list[PriceLevel], level: int) -> tuple[int, int]:
     """
     utility to compute the price and level at the level-th level of the order book
 
@@ -135,7 +135,7 @@ def get_val(book: List[PriceLevel], level: int) -> Tuple[int, int]:
             return 0, 0
 
 
-def get_last_val(book: List[PriceLevel], mid_price: int) -> int:
+def get_last_val(book: list[PriceLevel], mid_price: int) -> int:
     """
     utility to compute the price of the deepest placed order in the side of the order book
 
@@ -152,7 +152,7 @@ def get_last_val(book: List[PriceLevel], mid_price: int) -> int:
         return book[-1][0]
 
 
-def get_volume(book: List[PriceLevel], depth: Optional[int] = None) -> int:
+def get_volume(book: list[PriceLevel], depth: int | None = None) -> int:
     """
     utility to compute the volume placed between the top of the book (depth 0) and the depth
 
@@ -170,10 +170,10 @@ def get_volume(book: List[PriceLevel], depth: Optional[int] = None) -> int:
 
 
 def get_imbalance(
-    bids: List[PriceLevel],
-    asks: List[PriceLevel],
+    bids: list[PriceLevel],
+    asks: list[PriceLevel],
     direction: str = "BUY",
-    depth: Optional[int] = None,
+    depth: int | None = None,
 ) -> float:
     """
     utility to compute the imbalance computed between the top of the book and the depth-th value of depth

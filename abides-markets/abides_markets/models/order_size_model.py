@@ -1,11 +1,12 @@
+from typing import Any
+
 import numpy as np
 from scipy import stats
-from typing import Any, Dict, List
 
 # Order size distribution parameters
 # This replaces the old pomegranate-based GeneralMixtureModel
 # with a simpler numpy/scipy implementation
-ORDER_SIZE_PARAMS: Dict[str, Any] = {
+ORDER_SIZE_PARAMS: dict[str, Any] = {
     "distributions": [
         {"type": "lognormal", "params": {"mean": 2.9, "sigma": 1.2}},
         {"type": "normal", "params": {"loc": 100.0, "scale": 0.15}},
@@ -44,7 +45,7 @@ class OrderSizeModel:
     """
 
     def __init__(self) -> None:
-        self.distributions: List[Dict[str, Any]] = ORDER_SIZE_PARAMS["distributions"]
+        self.distributions: list[dict[str, Any]] = ORDER_SIZE_PARAMS["distributions"]
         self.weights = np.array(ORDER_SIZE_PARAMS["weights"])
         # Normalize weights to sum to 1
         self.weights = self.weights / self.weights.sum()

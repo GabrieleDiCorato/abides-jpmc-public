@@ -1,5 +1,6 @@
 from abc import ABC
-from typing import Any, Callable, Dict, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import abides_markets.agents.utils as markets_agent_utils
 from abides_core import NanosecondTime
@@ -28,12 +29,12 @@ class AbidesGymMarketsEnv(AbidesGymCoreEnv, ABC):
 
     def __init__(
         self,
-        background_config_pair: Tuple[Callable, Optional[Dict[str, Any]]],
+        background_config_pair: tuple[Callable, dict[str, Any] | None],
         wakeup_interval_generator: InterArrivalTimeGenerator,
         starting_cash: int,
         state_buffer_length: int,
         market_data_buffer_length: int,
-        first_interval: Optional[NanosecondTime] = None,
+        first_interval: NanosecondTime | None = None,
         raw_state_pre_process=markets_agent_utils.identity_decorator,
     ) -> None:
         super().__init__(

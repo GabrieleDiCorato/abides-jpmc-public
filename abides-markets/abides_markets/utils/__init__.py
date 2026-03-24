@@ -129,7 +129,7 @@ def restrictdict(d, keys):
     return subdict(d, inter)
 
 
-def dollarize(cents: Union[List[int], int]) -> Union[List[str], str]:
+def dollarize(cents: Union[list[int], int]) -> Union[list[str], str]:
     """Dollarizes int-cents prices for printing.
 
     Defined outside the class for utility access by non-agent classes.
@@ -141,7 +141,7 @@ def dollarize(cents: Union[List[int], int]) -> Union[List[str], str]:
     if isinstance(cents, list):
         return [dollarize(x) for x in cents]
     elif isinstance(cents, (int, np.int64)):
-        return "${:0.2f}".format(cents / 100)
+        return f"${cents / 100:0.2f}"
     else:
         # If cents is already a float, there is an error somewhere.
         raise ValueError(

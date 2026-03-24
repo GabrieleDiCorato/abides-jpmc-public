@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 import numpy as np
 from abides_core import Message, NanosecondTime
 from abides_core.utils import str_to_ns
@@ -24,9 +22,9 @@ class MomentumAgent(TradingAgent):
         id: int,
         symbol,
         starting_cash,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
         min_size=20,
         max_size=50,
         wake_up_freq: NanosecondTime = _DEFAULT_WAKE_UP_FREQ,
@@ -53,9 +51,9 @@ class MomentumAgent(TradingAgent):
 
         self.subscribe = subscribe  # Flag to determine whether to subscribe to data or use polling mechanism
         self.subscription_requested = False
-        self.mid_list: List[float] = []
-        self.avg_20_list: List[float] = []
-        self.avg_50_list: List[float] = []
+        self.mid_list: list[float] = []
+        self.avg_20_list: list[float] = []
+        self.avg_50_list: list[float] = []
         self.log_orders = log_orders
         self.state = "AWAITING_WAKEUP"
 
@@ -98,7 +96,9 @@ class MomentumAgent(TradingAgent):
             and self.state == "AWAITING_MARKET_DATA"
             and isinstance(message, MarketDataMsg)
         ):
-            bids, asks = self.known_bids.get(self.symbol, []), self.known_asks.get(self.symbol, [])
+            bids, asks = self.known_bids.get(self.symbol, []), self.known_asks.get(
+                self.symbol, []
+            )
             if bids and asks:
                 self.place_orders(bids[0][0], asks[0][0])
             self.state = "AWAITING_MARKET_DATA"

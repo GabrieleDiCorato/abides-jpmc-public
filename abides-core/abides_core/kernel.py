@@ -2,7 +2,7 @@ import heapq
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -42,20 +42,20 @@ class Kernel:
 
     def __init__(
         self,
-        agents: List[Agent],
+        agents: list[Agent],
         start_time: NanosecondTime = _DEFAULT_START_TIME,
         stop_time: NanosecondTime = _DEFAULT_STOP_TIME,
         default_computation_delay: int = 1,
         default_latency: float = 1,
-        agent_latency: Optional[List[List[float]]] = None,
-        latency_noise: Optional[List[float]] = None,
-        agent_latency_model: Optional[LatencyModel] = None,
+        agent_latency: list[list[float]] | None = None,
+        latency_noise: list[float] | None = None,
+        agent_latency_model: LatencyModel | None = None,
         skip_log: bool = True,
-        seed: Optional[int] = None,
-        log_dir: Optional[str] = None,
-        custom_properties: Optional[Dict[str, Any]] = None,
-        random_state: Optional[np.random.RandomState] = None,
-        per_agent_computation_delays: Optional[Dict[int, int]] = None,
+        seed: int | None = None,
+        log_dir: str | None = None,
+        custom_properties: dict[str, Any] | None = None,
+        random_state: np.random.RandomState | None = None,
+        per_agent_computation_delays: dict[int, int] | None = None,
     ) -> None:
         custom_properties = custom_properties or {}
 
@@ -68,22 +68,22 @@ class Kernel:
 
         # A single message queue to keep everything organized by increasing
         # delivery timestamp.
-        self.messages: List[Tuple[int, Tuple[int, int, Message]]] = []
+        self.messages: list[tuple[int, tuple[int, int, Message]]] = []
 
         # Timestamp at which the Kernel was created.  Primarily used to
         # create a unique log directory for this run.  Also used to
         # print some elapsed time and messages per second statistics.
         self.kernel_wall_clock_start: datetime = datetime.now()
 
-        self.mean_result_by_agent_type: Dict[str, Any] = {}
-        self.agent_count_by_type: Dict[str, int] = {}
+        self.mean_result_by_agent_type: dict[str, Any] = {}
+        self.agent_count_by_type: dict[str, int] = {}
 
         # The Kernel maintains a summary log to which agents can write
         # information that should be centralized for very fast access
         # by separate statistical summary programs.  Detailed event
         # logging should go only to the agent's individual log.  This
         # is for things like "final position value" and such.
-        self.summary_log: List[Dict[str, Any]] = []
+        self.summary_log: list[dict[str, Any]] = []
         # variable to say if has already run at least once or not
         self.has_run = False
 
@@ -92,10 +92,10 @@ class Kernel:
 
         # agents must be a list of agents for the simulation,
         #        based on class agent.Agent
-        self.agents: List[Agent] = agents
+        self.agents: list[Agent] = agents
 
         # Filter for any ABIDES-Gym agents - does not require dependency on ABIDES-gym.
-        self.gym_agents: List[Agent] = list(
+        self.gym_agents: list[Agent] = list(
             filter(
                 lambda agent: "CoreGymAgent"
                 in [c.__name__ for c in agent.__class__.__bases__],
@@ -115,7 +115,7 @@ class Kernel:
         # special logs after simulation, to obtain needed output without special
         # case code in the Kernel.  Per-agent state should be handled using the
         # provided update_agent_state() method.
-        self.custom_state: Dict[str, Any] = {}
+        self.custom_state: dict[str, Any] = {}
 
         # The kernel start and stop time (first and last timestamp in
         # the simulation, separate from anything like exchange open/close).
@@ -126,7 +126,7 @@ class Kernel:
         self.current_time: NanosecondTime = start_time
 
         # The global seed, NOT used for anything agent-related.
-        self.seed: Optional[int] = seed
+        self.seed: int | None = seed
 
         # Should the Kernel skip writing agent logs?
         self.skip_log: bool = skip_log
@@ -145,7 +145,7 @@ class Kernel:
 
         # This also nicely enforces agents being unable to act before
         # the simulation start_time.
-        self.agent_current_times: List[NanosecondTime] = [self.start_time] * len(
+        self.agent_current_times: list[NanosecondTime] = [self.start_time] * len(
             self.agents
         )
 
@@ -154,7 +154,7 @@ class Kernel:
         # (for itself only).  It represents the time penalty applied to
         # an agent each time it is awakened  (wakeup or recvMsg).  The
         # penalty applies _after_ the agent acts, before it may act again.
-        self.agent_computation_delays: List[int] = [default_computation_delay] * len(
+        self.agent_computation_delays: list[int] = [default_computation_delay] * len(
             self.agents
         )
 
@@ -176,7 +176,7 @@ class Kernel:
         # This matrix defines the communication delay between every pair of
         # agents.
         if agent_latency is None:
-            self.agent_latency: List[List[float]] = [
+            self.agent_latency: list[list[float]] = [
                 [default_latency] * len(self.agents) for _ in range(len(self.agents))
             ]
         else:
@@ -186,7 +186,7 @@ class Kernel:
         # distribution with the peak at zero.  By default there is no noise
         # (100% chance to add zero ns extra delay).  Format is a list with
         # list index = ns extra delay, value = probability of this delay.
-        self.latency_noise: List[float] = (
+        self.latency_noise: list[float] = (
             latency_noise if latency_noise is not None else [1.0]
         )
 
@@ -202,7 +202,7 @@ class Kernel:
 
         logger.debug("Kernel initialized")
 
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> dict[str, Any]:
         """
         Wrapper to run the entire simulation (when not running in ABIDES-Gym mode).
 
@@ -269,14 +269,12 @@ class Kernel:
         self.current_time = self.start_time
 
         logger.debug("--- Kernel Clock started ---")
-        logger.debug("Kernel.current_time is now {}".format(fmt_ts(self.current_time)))
+        logger.debug(f"Kernel.current_time is now {fmt_ts(self.current_time)}")
 
         # Start processing the Event Queue.
         logger.debug("--- Kernel Event Queue begins ---")
         logger.debug(
-            "Kernel will start processing messages. Queue length: {}".format(
-                len(self.messages)
-            )
+            f"Kernel will start processing messages. Queue length: {len(self.messages)}"
         )
 
         # Track starting wall clock time and total message count for stats at the end.
@@ -286,8 +284,8 @@ class Kernel:
         self.has_run = True
 
     def runner(
-        self, agent_actions: Optional[Tuple[Agent, List[Dict[str, Any]]]] = None
-    ) -> Dict[str, Any]:
+        self, agent_actions: tuple[Agent, list[dict[str, Any]]] | None = None
+    ) -> dict[str, Any]:
         """
         Start the simulation and processing of the message queue.
         Possibility to add the optional argument agent_actions. It is a list of dictionaries corresponding
@@ -336,9 +334,7 @@ class Kernel:
             if self.show_trace_messages:
                 logger.debug("--- Kernel Event Queue pop ---")
                 logger.debug(
-                    "Kernel handling {} message for agent {} at time {}".format(
-                        message.type(), recipient_id, self.current_time
-                    )
+                    f"Kernel handling {message.type()} message for agent {recipient_id} at time {self.current_time}"
                 )
 
             self.ttl_messages += 1
@@ -361,11 +357,7 @@ class Kernel:
                     )
                     if self.show_trace_messages:
                         logger.debug(
-                            "After wakeup return, agent {} delayed from {} to {}".format(
-                                recipient_id,
-                                fmt_ts(self.current_time),
-                                fmt_ts(self.agent_current_times[recipient_id]),
-                            )
+                            f"After wakeup return, agent {recipient_id} delayed from {fmt_ts(self.current_time)} to {fmt_ts(self.agent_current_times[recipient_id])}"
                         )
                     continue
 
@@ -384,11 +376,7 @@ class Kernel:
 
                 if self.show_trace_messages:
                     logger.debug(
-                        "After wakeup return, agent {} delayed from {} to {}".format(
-                            recipient_id,
-                            fmt_ts(self.current_time),
-                            fmt_ts(self.agent_current_times[recipient_id]),
-                        )
+                        f"After wakeup return, agent {recipient_id} delayed from {fmt_ts(self.current_time)} to {fmt_ts(self.agent_current_times[recipient_id])}"
                     )
                 # catch kernel interruption signal and return wakeup_result which is the raw state from gym agent
                 if wakeup_result is not None:
@@ -407,9 +395,7 @@ class Kernel:
                     )
                     if self.show_trace_messages:
                         logger.debug(
-                            "Agent in future: message requeued for {}".format(
-                                fmt_ts(self.agent_current_times[recipient_id])
-                            )
+                            f"Agent in future: message requeued for {fmt_ts(self.agent_current_times[recipient_id])}"
                         )
                     continue
 
@@ -432,11 +418,7 @@ class Kernel:
 
                 if self.show_trace_messages:
                     logger.debug(
-                        "After receive_message return, agent {} delayed from {} to {}".format(
-                            recipient_id,
-                            fmt_ts(self.current_time),
-                            fmt_ts(self.agent_current_times[recipient_id]),
-                        )
+                        f"After receive_message return, agent {recipient_id} delayed from {fmt_ts(self.current_time)} to {fmt_ts(self.agent_current_times[recipient_id])}"
                     )
 
                 for message in messages:
@@ -457,7 +439,7 @@ class Kernel:
         else:
             return {"done": True, "result": None}
 
-    def terminate(self) -> Dict[str, Any]:
+    def terminate(self) -> dict[str, Any]:
         """
         Termination of the simulation. Called once the queue is empty, or the gym environement is done, or the simulation
         reached kernel stop time:
@@ -492,11 +474,7 @@ class Kernel:
 
         elapsed_seconds = event_queue_wall_clock_elapsed.total_seconds()
         logger.info(
-            "Event Queue elapsed: {}, messages: {:,}, messages per second: {:0.1f}".format(
-                event_queue_wall_clock_elapsed,
-                self.ttl_messages,
-                self.ttl_messages / elapsed_seconds if elapsed_seconds > 0 else 0,
-            )
+            f"Event Queue elapsed: {event_queue_wall_clock_elapsed}, messages: {self.ttl_messages:,}, messages per second: {self.ttl_messages / elapsed_seconds if elapsed_seconds > 0 else 0:0.1f}"
         )
 
         # The Kernel adds a handful of custom state results for all simulations,
@@ -592,14 +570,7 @@ class Kernel:
             deliver_at = sent_time + int(latency)
             if self.show_trace_messages:
                 logger.debug(
-                    "Kernel applied latency {}, accumulated delay {}, one-time delay {} on send_message from: {} to {}, scheduled for {}".format(
-                        latency,
-                        self.current_agent_additional_delay,
-                        delay,
-                        self.agents[sender_id].name,
-                        self.agents[recipient_id].name,
-                        fmt_ts(deliver_at),
-                    )
+                    f"Kernel applied latency {latency}, accumulated delay {self.current_agent_additional_delay}, one-time delay {delay} on send_message from: {self.agents[sender_id].name} to {self.agents[recipient_id].name}, scheduled for {fmt_ts(deliver_at)}"
                 )
         else:
             latency = self.agent_latency[sender_id][recipient_id]
@@ -609,15 +580,7 @@ class Kernel:
             deliver_at = sent_time + int(latency + noise)
             if self.show_trace_messages:
                 logger.debug(
-                    "Kernel applied latency {}, noise {}, accumulated delay {}, one-time delay {} on send_message from: {} to {}, scheduled for {}".format(
-                        latency,
-                        noise,
-                        self.current_agent_additional_delay,
-                        delay,
-                        self.agents[sender_id].name,
-                        self.agents[recipient_id].name,
-                        fmt_ts(deliver_at),
-                    )
+                    f"Kernel applied latency {latency}, noise {noise}, accumulated delay {self.current_agent_additional_delay}, one-time delay {delay} on send_message from: {self.agents[sender_id].name} to {self.agents[recipient_id].name}, scheduled for {fmt_ts(deliver_at)}"
                 )
 
         # Finally drop the message in the queue with priority == delivery time.
@@ -625,16 +588,12 @@ class Kernel:
 
         if self.show_trace_messages:
             logger.debug(
-                "Sent time: {}, current time {}, computation delay {}".format(
-                    sent_time,
-                    fmt_ts(self.current_time),
-                    self.agent_computation_delays[sender_id],
-                )
+                f"Sent time: {sent_time}, current time {fmt_ts(self.current_time)}, computation delay {self.agent_computation_delays[sender_id]}"
             )
-            logger.debug("Message queued: {}".format(message))
+            logger.debug(f"Message queued: {message}")
 
     def set_wakeup(
-        self, sender_id: int, requested_time: Optional[NanosecondTime] = None
+        self, sender_id: int, requested_time: NanosecondTime | None = None
     ) -> None:
         """
         Called by an agent to receive a "wakeup call" from the kernel at some requested
@@ -660,9 +619,7 @@ class Kernel:
 
         if self.show_trace_messages:
             logger.debug(
-                "Kernel adding wakeup for agent {} at time {}".format(
-                    sender_id, fmt_ts(requested_time)
-                )
+                f"Kernel adding wakeup for agent {sender_id} at time {fmt_ts(requested_time)}"
             )
 
         heapq.heappush(
@@ -741,7 +698,7 @@ class Kernel:
 
         self.current_agent_additional_delay += additional_delay
 
-    def find_agents_by_type(self, agent_type: Type[Agent]) -> List[int]:
+    def find_agents_by_type(self, agent_type: type[Agent]) -> list[int]:
         """
         Returns the IDs of any agents that are of the given type.
 
@@ -754,7 +711,7 @@ class Kernel:
         return [agent.id for agent in self.agents if isinstance(agent, agent_type)]
 
     def write_log(
-        self, sender_id: int, df_log: pd.DataFrame, filename: Optional[str] = None
+        self, sender_id: int, df_log: pd.DataFrame, filename: str | None = None
     ) -> None:
         """
         Called by any agent, usually at the very end of the simulation just before
@@ -786,7 +743,7 @@ class Kernel:
         path = os.path.join(".", "log", self.log_dir)
 
         if filename:
-            file = "{}.bz2".format(filename)
+            file = f"{filename}.bz2"
         else:
             file = "{}.bz2".format(self.agents[sender_id].name.replace(" ", ""))
 

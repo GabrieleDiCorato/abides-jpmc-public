@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import numpy as np
 from abides_core import Message, NanosecondTime
@@ -15,9 +14,9 @@ class ValueAgent(TradingAgent):
     def __init__(
         self,
         id: int,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
         symbol: str = "IBM",
         starting_cash: int = 100_000,
         sigma_n: float = 10_000,
@@ -53,12 +52,12 @@ class ValueAgent(TradingAgent):
 
         # The agent must track its previous wake time, so it knows how many time
         # units have passed.
-        self.prev_wake_time: Optional[NanosecondTime] = None
+        self.prev_wake_time: NanosecondTime | None = None
 
         # Percent of time that the agent will aggress the spread
         self.percent_aggr: float = 0.1
 
-        self.size: Optional[int] = (
+        self.size: int | None = (
             self.random_state.randint(20, 50) if order_size_model is None else None
         )
         self.order_size_model = order_size_model  # Probabilistic model for order size

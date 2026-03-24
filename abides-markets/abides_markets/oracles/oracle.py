@@ -1,12 +1,12 @@
 import abc
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 from abides_core import NanosecondTime
 
 
 class Oracle(abc.ABC):
-    f_log: Dict[str, List[Dict[str, Any]]] = {}
+    f_log: dict[str, list[dict[str, Any]]] = {}
     """Fundamental value log.  Subclasses that track history override in __init__."""
 
     @abc.abstractmethod

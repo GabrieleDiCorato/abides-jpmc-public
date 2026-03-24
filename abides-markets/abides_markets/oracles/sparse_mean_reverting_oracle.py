@@ -1,7 +1,7 @@
 import datetime as dt
 import logging
 from math import exp, sqrt
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -39,7 +39,7 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
         self,
         mkt_open: NanosecondTime,
         mkt_close: NanosecondTime,
-        symbols: Dict[str, Dict[str, Any]],
+        symbols: dict[str, dict[str, Any]],
         random_state: np.random.RandomState,
     ) -> None:
         # Symbols must be a dictionary of dictionaries with outer keys as symbol names and
@@ -47,15 +47,15 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
         self.mkt_open: NanosecondTime = mkt_open
         self.mkt_close: NanosecondTime = mkt_close
 
-        self.symbols: Dict[str, Dict[str, Any]] = {
+        self.symbols: dict[str, dict[str, Any]] = {
             k: dict(v) for k, v in symbols.items()
         }
         self.random_state: np.random.RandomState = random_state
 
-        self.f_log: Dict[str, List[Dict[str, Any]]] = {}
+        self.f_log: dict[str, list[dict[str, Any]]] = {}
 
         # The dictionary r holds the most recent fundamental values for each symbol.
-        self.r: Dict[str, pd.Series] = {}
+        self.r: dict[str, pd.Series] = {}
 
         # The dictionary megashocks holds the time series of megashocks for each symbol.
         # The last one will always be in the future (relative to the current simulation time).
@@ -63,7 +63,7 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
         # Without these, the OU process just makes a noisy return to the mean and then stays there
         # with relatively minor noise.  Here we want them to follow a Poisson process, so we sample
         # from an exponential distribution for the separation intervals.
-        self.megashocks: Dict[str, List[Dict[str, Any]]] = {}
+        self.megashocks: dict[str, list[dict[str, Any]]] = {}
 
         then = dt.datetime.now()
 
@@ -79,9 +79,7 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
                 )
 
             logger.debug(
-                "SparseMeanRevertingOracle computing initial fundamental value for {}".format(
-                    symbol
-                )
+                f"SparseMeanRevertingOracle computing initial fundamental value for {symbol}"
             )
             self.r[symbol] = (mkt_open, s["r_bar"])
             self.f_log[symbol] = [
@@ -108,12 +106,8 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
 
         now = dt.datetime.now()
 
-        logger.debug(
-            "SparseMeanRevertingOracle initialized for symbols {}".format(symbols)
-        )
-        logger.debug(
-            "SparseMeanRevertingOracle initialization took {}".format(now - then)
-        )
+        logger.debug(f"SparseMeanRevertingOracle initialized for symbols {symbols}")
+        logger.debug(f"SparseMeanRevertingOracle initialization took {now - then}")
 
     def compute_fundamental_at_timestamp(
         self, ts: NanosecondTime, v_adj, symbol: str, pt: NanosecondTime, pv
@@ -257,13 +251,11 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
         # price.  Thus we cannot honor a mkt_open that isn't what we already expected.
 
         logger.debug(
-            "Oracle: client requested {} at market open: {}".format(
-                symbol, self.mkt_open
-            )
+            f"Oracle: client requested {symbol} at market open: {self.mkt_open}"
         )
 
         open_price = self.symbols[symbol]["r_bar"]
-        logger.debug("Oracle: market open price was was {}".format(open_price))
+        logger.debug(f"Oracle: market open price was was {open_price}")
 
         return open_price
 
@@ -301,10 +293,8 @@ class SparseMeanRevertingOracle(MeanRevertingOracle):
         else:
             obs = int(round(random_state.normal(loc=r_t, scale=sqrt(sigma_n))))
 
-        logger.debug(
-            "Oracle: current fundamental value is {} at {}".format(r_t, current_time)
-        )
-        logger.debug("Oracle: giving client value observation {}".format(obs))
+        logger.debug(f"Oracle: current fundamental value is {r_t} at {current_time}")
+        logger.debug(f"Oracle: giving client value observation {obs}")
 
         # Reminder: all simulator prices are specified in integer cents.
         return obs
