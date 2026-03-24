@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 import numpy as np
 
@@ -75,8 +75,8 @@ class PoissonTimeGenerator(InterArrivalTimeGenerator):
     def __init__(
         self,
         random_generator: np.random.RandomState,
-        lambda_freq: Optional[float] = None,
-        lambda_time: Optional[float] = None,
+        lambda_freq: float | None = None,
+        lambda_time: float | None = None,
     ) -> None:
         self.random_generator: np.random.RandomState = random_generator
 
@@ -86,7 +86,7 @@ class PoissonTimeGenerator(InterArrivalTimeGenerator):
 
         self.lambda_s: float = lambda_freq or 1 / lambda_time
 
-    def next(self) -> Optional[float]:
+    def next(self) -> float | None:
         """
         returns time delta for next wakeup with time delta following Poisson distribution
         """

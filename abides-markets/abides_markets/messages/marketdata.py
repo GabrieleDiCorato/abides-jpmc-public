@@ -2,7 +2,6 @@ import sys
 from abc import ABC
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Tuple
 
 from abides_core import Message, NanosecondTime
 
@@ -227,8 +226,8 @@ class L1DataMsg(MarketDataMsg):
     # symbol: str
     # last_transaction: int
     # exchange_ts: NanosecondTime
-    bid: Tuple[int, int]
-    ask: Tuple[int, int]
+    bid: tuple[int, int]
+    ask: tuple[int, int]
 
 
 @dataclass
@@ -250,8 +249,8 @@ class L2DataMsg(MarketDataMsg):
     # symbol: str
     # last_transaction: int
     # exchange_ts: NanosecondTime
-    bids: List[Tuple[int, int]]
-    asks: List[Tuple[int, int]]
+    bids: list[tuple[int, int]]
+    asks: list[tuple[int, int]]
 
     # TODO: include requested depth
 
@@ -275,8 +274,8 @@ class L3DataMsg(MarketDataMsg):
     # symbol: str
     # last_transaction: int
     # exchange_ts: NanosecondTime
-    bids: List[Tuple[int, List[int]]]
-    asks: List[Tuple[int, List[int]]]
+    bids: list[tuple[int, list[int]]]
+    asks: list[tuple[int, list[int]]]
 
     # TODO: include requested depth
 

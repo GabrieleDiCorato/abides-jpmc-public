@@ -27,8 +27,8 @@ class FakeExchangeAgent:
 
 
 def setup_book_with_orders(
-    bids: List[Tuple[int, List[int]]] = [], asks: List[Tuple[int, List[int]]] = []
-) -> Tuple[OrderBook, FakeExchangeAgent, List[LimitOrder]]:
+    bids: list[tuple[int, list[int]]] = [], asks: list[tuple[int, list[int]]] = []
+) -> tuple[OrderBook, FakeExchangeAgent, list[LimitOrder]]:
     agent = FakeExchangeAgent()
     book = OrderBook(agent, SYMBOL)
     orders = []

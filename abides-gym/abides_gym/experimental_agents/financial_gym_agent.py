@@ -1,6 +1,6 @@
 from collections import deque
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 from abides_core import NanosecondTime
@@ -45,11 +45,11 @@ class FinancialGymAgent(CoreBackgroundAgent, CoreGymAgent):
         ),
         state_buffer_length: int = 2,
         market_data_buffer_length: int = 5,
-        first_interval: Optional[NanosecondTime] = None,
+        first_interval: NanosecondTime | None = None,
         log_orders: bool = False,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
     ) -> None:
         super().__init__(
             id,
@@ -83,20 +83,20 @@ class FinancialGymAgent(CoreBackgroundAgent, CoreGymAgent):
 
         self.state_buffer_length: int = state_buffer_length
         self.market_data_buffer_length: int = market_data_buffer_length
-        self.first_interval: Optional[NanosecondTime] = first_interval
+        self.first_interval: NanosecondTime | None = first_interval
         # internal variables
         self.has_subscribed: bool = False
-        self.episode_executed_orders: List[Order] = (
+        self.episode_executed_orders: list[Order] = (
             []
         )  # list of executed orders during full episode
 
         # list of executed orders between steps - is reset at every step
-        self.inter_wakeup_executed_orders: List[Order] = []
-        self.parsed_episode_executed_orders: List[Tuple[int, int]] = []  # (price, qty)
-        self.parsed_inter_wakeup_executed_orders: List[Tuple[int, int]] = (
+        self.inter_wakeup_executed_orders: list[Order] = []
+        self.parsed_episode_executed_orders: list[tuple[int, int]] = []  # (price, qty)
+        self.parsed_inter_wakeup_executed_orders: list[tuple[int, int]] = (
             []
         )  # (price, qty)
-        self.parsed_mkt_data: Dict[str, Any] = {}
+        self.parsed_mkt_data: dict[str, Any] = {}
         self.parsed_mkt_data_buffer = deque(maxlen=self.market_data_buffer_length)
         self.parsed_volume_data = {}
         self.parsed_volume_data_buffer = deque(maxlen=self.market_data_buffer_length)
@@ -104,9 +104,9 @@ class FinancialGymAgent(CoreBackgroundAgent, CoreGymAgent):
         # dictionary to track order status:
         # - keys = order_id
         # - value = dictionary {'active'|'cancelled'|'executed', Order, 'active_qty','executed_qty', 'cancelled_qty }
-        self.order_status: Dict[int, Dict[str, Any]] = {}
+        self.order_status: dict[int, dict[str, Any]] = {}
 
-    def act_on_wakeup(self) -> Dict:
+    def act_on_wakeup(self) -> dict:
         """
         Computes next wakeup time, computes the new raw_state and clears the internal step buffers.
         Returns the raw_state to the abides gym environnement (outside of the abides simulation) where the next action will be selected.

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from copy import deepcopy
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -17,14 +18,14 @@ class AbidesGymCoreEnv(gym.Env, ABC):
 
     def __init__(
         self,
-        background_config_pair: Tuple[Callable, Optional[Dict[str, Any]]],
+        background_config_pair: tuple[Callable, dict[str, Any] | None],
         wakeup_interval_generator: InterArrivalTimeGenerator,
         state_buffer_length: int,
-        first_interval: Optional[NanosecondTime] = None,
+        first_interval: NanosecondTime | None = None,
         gymAgentConstructor=None,
     ) -> None:
 
-        self.background_config_pair: Tuple[Callable, Optional[Dict[str, Any]]] = (
+        self.background_config_pair: tuple[Callable, dict[str, Any] | None] = (
             background_config_pair
         )
         if background_config_pair[1] is None:
@@ -41,18 +42,18 @@ class AbidesGymCoreEnv(gym.Env, ABC):
         self.np_random = None
         self._seed = None
 
-        self.state: Optional[np.ndarray] = None
-        self.reward: Optional[float] = None
-        self.terminated: Optional[bool] = None
-        self.truncated: Optional[bool] = None
-        self.info: Optional[Dict[str, Any]] = None
+        self.state: np.ndarray | None = None
+        self.reward: float | None = None
+        self.terminated: bool | None = None
+        self.truncated: bool | None = None
+        self.info: dict[str, Any] | None = None
 
     def reset(
         self,
         *,
-        seed: Optional[int] = None,
-        options: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
         """
         Reset the state of the environment and returns an initial observation.
 
@@ -128,7 +129,7 @@ class AbidesGymCoreEnv(gym.Env, ABC):
         info = self.raw_state_to_info(deepcopy(raw_state["result"]))
         return state, info
 
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """
         The agent takes a step in the environment.
 
@@ -228,7 +229,7 @@ class AbidesGymCoreEnv(gym.Env, ABC):
         ##TODO: look at whether some cleaning functions needed for abides
 
     @abstractmethod
-    def raw_state_to_state(self, raw_state: Dict[str, Any]) -> np.ndarray:
+    def raw_state_to_state(self, raw_state: dict[str, Any]) -> np.ndarray:
         """
         abstract method that transforms a raw state into a state representation
 
@@ -241,7 +242,7 @@ class AbidesGymCoreEnv(gym.Env, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def raw_state_to_reward(self, raw_state: Dict[str, Any]) -> float:
+    def raw_state_to_reward(self, raw_state: dict[str, Any]) -> float:
         """
         abstract method that transforms a raw state into the reward obtained during the step
 
@@ -254,7 +255,7 @@ class AbidesGymCoreEnv(gym.Env, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def raw_state_to_done(self, raw_state: Dict[str, Any]) -> float:
+    def raw_state_to_done(self, raw_state: dict[str, Any]) -> float:
         """
         abstract method that transforms a raw state into the flag if an episode is done
 
@@ -267,7 +268,7 @@ class AbidesGymCoreEnv(gym.Env, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def raw_state_to_update_reward(self, raw_state: Dict[str, Any]) -> bool:
+    def raw_state_to_update_reward(self, raw_state: dict[str, Any]) -> bool:
         """
         abstract method that transforms a raw state into the final step reward update (if needed)
 
@@ -280,7 +281,7 @@ class AbidesGymCoreEnv(gym.Env, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def raw_state_to_info(self, raw_state: Dict[str, Any]) -> Dict[str, Any]:
+    def raw_state_to_info(self, raw_state: dict[str, Any]) -> dict[str, Any]:
         """
         abstract method that transforms a raw state into an info dictionnary
 

@@ -69,9 +69,7 @@ class BaseAgentConfig(BaseModel):
     )
 
     # Fields excluded from automatic constructor mapping
-    _EXCLUDE_FROM_KWARGS: frozenset[str] = frozenset(
-        {"computation_delay"}
-    )
+    _EXCLUDE_FROM_KWARGS: frozenset[str] = frozenset({"computation_delay"})
 
     def create_agents(
         self,
@@ -129,9 +127,7 @@ class BaseAgentConfig(BaseModel):
                 kwargs["symbol"] = context.ticker
 
             # Let subclasses transform / add computed args
-            kwargs = self._prepare_constructor_kwargs(
-                kwargs, j, agent_rng, context
-            )
+            kwargs = self._prepare_constructor_kwargs(kwargs, j, agent_rng, context)
 
             # Filter to only accepted params (in case hook added extras)
             kwargs = {k: v for k, v in kwargs.items() if k in accepted_params}
@@ -192,9 +188,7 @@ class NoiseAgentConfig(BaseAgentConfig):
         {"computation_delay", "noise_mkt_open_offset", "noise_mkt_close_time"}
     )
 
-    def _prepare_constructor_kwargs(
-        self, kwargs, agent_id, agent_rng, context
-    ):
+    def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         from abides_markets.models import OrderSizeModel
 
         noise_mkt_open = context.mkt_open + str_to_ns(self.noise_mkt_open_offset)
@@ -232,9 +226,7 @@ class ValueAgentConfig(BaseAgentConfig):
         description="Observation noise variance. Defaults to r_bar / 100.",
     )
 
-    def _prepare_constructor_kwargs(
-        self, kwargs, agent_id, agent_rng, context
-    ):
+    def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         from abides_markets.models import OrderSizeModel
 
         if kwargs.get("sigma_n") is None:
@@ -262,9 +254,7 @@ class MomentumAgentConfig(BaseAgentConfig):
         description="If True, wakeup intervals are Poisson-distributed.",
     )
 
-    def _prepare_constructor_kwargs(
-        self, kwargs, agent_id, agent_rng, context
-    ):
+    def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         from abides_markets.models import OrderSizeModel
 
         kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
@@ -314,9 +304,7 @@ class AdaptiveMarketMakerConfig(BaseAgentConfig):
         default=0, description="Orders at the outermost level."
     )
 
-    def _prepare_constructor_kwargs(
-        self, kwargs, agent_id, agent_rng, context
-    ):
+    def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
         kwargs["name"] = f"ADAPTIVE_POV_MARKET_MAKER_AGENT_{agent_id}"
         kwargs["type"] = "AdaptivePOVMarketMakerAgent"
@@ -349,12 +337,16 @@ class POVExecutionAgentConfig(BaseAgentConfig):
     )
 
     _EXCLUDE_FROM_KWARGS: frozenset[str] = frozenset(
-        {"computation_delay", "start_time_offset", "end_time_offset", "freq", "direction"}
+        {
+            "computation_delay",
+            "start_time_offset",
+            "end_time_offset",
+            "freq",
+            "direction",
+        }
     )
 
-    def _prepare_constructor_kwargs(
-        self, kwargs, agent_id, agent_rng, context
-    ):
+    def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         from abides_markets.orders import Side
 
         freq_ns = str_to_ns(self.freq)

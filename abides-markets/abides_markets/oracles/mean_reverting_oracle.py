@@ -2,7 +2,7 @@ import datetime as dt
 import logging
 import warnings
 from math import sqrt
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -41,7 +41,7 @@ class MeanRevertingOracle(Oracle):
         self,
         mkt_open: NanosecondTime,
         mkt_close: NanosecondTime,
-        symbols: Dict[str, Dict[str, Any]],
+        symbols: dict[str, dict[str, Any]],
         random_state: np.random.RandomState,
     ) -> None:
         warnings.warn(
@@ -64,11 +64,11 @@ class MeanRevertingOracle(Oracle):
         # inner keys: r_bar, kappa, sigma_s.
         self.mkt_open: NanosecondTime = mkt_open
         self.mkt_close: NanosecondTime = mkt_close
-        self.symbols: Dict[str, Dict[str, Any]] = symbols
+        self.symbols: dict[str, dict[str, Any]] = symbols
         self.random_state: np.random.RandomState = random_state
 
         # The dictionary r holds the fundamenal value series for each symbol.
-        self.r: Dict[str, pd.Series] = {}
+        self.r: dict[str, pd.Series] = {}
 
         then = dt.datetime.now()
 

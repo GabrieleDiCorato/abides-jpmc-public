@@ -1,6 +1,5 @@
 import itertools
 from dataclasses import dataclass, field
-from typing import List
 
 
 @dataclass
@@ -42,7 +41,7 @@ class MessageBatch(Message):
     using this class can help performance.
     """
 
-    messages: List[Message]
+    messages: list[Message]
 
 
 @dataclass

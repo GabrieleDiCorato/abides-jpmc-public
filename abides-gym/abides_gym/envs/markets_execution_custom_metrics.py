@@ -1,5 +1,4 @@
 from collections import defaultdict
-from typing import Dict
 
 import numpy as np
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -20,7 +19,7 @@ class MyCallbacks(DefaultCallbacks):
         *,
         worker: RolloutWorker,
         base_env: BaseEnv,
-        policies: Dict[str, Policy],
+        policies: dict[str, Policy],
         episode: Episode,
         env_index: int,
         **kwargs,
@@ -92,7 +91,7 @@ class MyCallbacks(DefaultCallbacks):
         *,
         worker: RolloutWorker,
         base_env: BaseEnv,
-        policies: Dict[str, Policy],
+        policies: dict[str, Policy],
         episode: Episode,
         env_index: int,
         **kwargs,
@@ -221,9 +220,9 @@ class MyCallbacks(DefaultCallbacks):
         episode: Episode,
         agent_id: str,
         policy_id: str,
-        policies: Dict[str, Policy],
+        policies: dict[str, Policy],
         postprocessed_batch: SampleBatch,
-        original_batches: Dict[str, SampleBatch],
+        original_batches: dict[str, SampleBatch],
         **kwargs,
     ):
         """Called immediately after a policy's postprocess_fn is called.

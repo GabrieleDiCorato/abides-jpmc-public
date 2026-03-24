@@ -830,7 +830,10 @@ class TestAgentClassRegistration:
         assert registry.get("noise").agent_class is NoiseAgent
         assert registry.get("value").agent_class is ValueAgent
         assert registry.get("momentum").agent_class is MomentumAgent
-        assert registry.get("adaptive_market_maker").agent_class is AdaptiveMarketMakerAgent
+        assert (
+            registry.get("adaptive_market_maker").agent_class
+            is AdaptiveMarketMakerAgent
+        )
         assert registry.get("pov_execution").agent_class is POVExecutionAgent
 
     def test_register_without_agent_class(self):
@@ -859,7 +862,8 @@ class TestAgentClassRegistration:
             pass
 
         registry.register(
-            "_test_fake_with_class", FakeConfig2,
+            "_test_fake_with_class",
+            FakeConfig2,
             category="strategy",
             agent_class=FakeAgent2,
         )
@@ -888,8 +892,12 @@ class TestAutoGenCreateAgents:
 
         config = BaseAgentConfig()
         context = AgentCreationContext(
-            ticker="TEST", mkt_open=0, mkt_close=0,
-            log_orders=False, oracle_r_bar=100_000, date_ns=0,
+            ticker="TEST",
+            mkt_open=0,
+            mkt_close=0,
+            log_orders=False,
+            oracle_r_bar=100_000,
+            date_ns=0,
         )
         rng = np.random.RandomState(42)
         with pytest.raises(NotImplementedError, match="no registered agent_class"):
@@ -913,7 +921,9 @@ class TestAutoGenCreateAgents:
             date_ns=0,
         )
         rng = np.random.RandomState(42)
-        agents = config.create_agents(count=3, id_start=5, master_rng=rng, context=context)
+        agents = config.create_agents(
+            count=3, id_start=5, master_rng=rng, context=context
+        )
 
         assert len(agents) == 3
         assert all(isinstance(a, NoiseAgent) for a in agents)
@@ -932,12 +942,17 @@ class TestAutoGenCreateAgents:
 
         config = ValueAgentConfig(r_bar=200_000)
         context = AgentCreationContext(
-            ticker="ABM", mkt_open=34_200_000_000_000,
-            mkt_close=36_000_000_000_000, log_orders=False,
-            oracle_r_bar=200_000, date_ns=0,
+            ticker="ABM",
+            mkt_open=34_200_000_000_000,
+            mkt_close=36_000_000_000_000,
+            log_orders=False,
+            oracle_r_bar=200_000,
+            date_ns=0,
         )
         rng = np.random.RandomState(42)
-        agents = config.create_agents(count=1, id_start=1, master_rng=rng, context=context)
+        agents = config.create_agents(
+            count=1, id_start=1, master_rng=rng, context=context
+        )
 
         assert len(agents) == 1
         assert isinstance(agents[0], ValueAgent)
@@ -953,12 +968,17 @@ class TestAutoGenCreateAgents:
 
         config = MomentumAgentConfig(wake_up_freq="37s")
         context = AgentCreationContext(
-            ticker="ABM", mkt_open=34_200_000_000_000,
-            mkt_close=36_000_000_000_000, log_orders=False,
-            oracle_r_bar=100_000, date_ns=0,
+            ticker="ABM",
+            mkt_open=34_200_000_000_000,
+            mkt_close=36_000_000_000_000,
+            log_orders=False,
+            oracle_r_bar=100_000,
+            date_ns=0,
         )
         rng = np.random.RandomState(42)
-        agents = config.create_agents(count=1, id_start=1, master_rng=rng, context=context)
+        agents = config.create_agents(
+            count=1, id_start=1, master_rng=rng, context=context
+        )
 
         assert len(agents) == 1
         assert isinstance(agents[0], MomentumAgent)
@@ -972,12 +992,17 @@ class TestAutoGenCreateAgents:
 
         config = ValueAgentConfig(log_orders=True)
         context = AgentCreationContext(
-            ticker="ABM", mkt_open=34_200_000_000_000,
-            mkt_close=36_000_000_000_000, log_orders=False,
-            oracle_r_bar=100_000, date_ns=0,
+            ticker="ABM",
+            mkt_open=34_200_000_000_000,
+            mkt_close=36_000_000_000_000,
+            log_orders=False,
+            oracle_r_bar=100_000,
+            date_ns=0,
         )
         rng = np.random.RandomState(42)
-        agents = config.create_agents(count=1, id_start=1, master_rng=rng, context=context)
+        agents = config.create_agents(
+            count=1, id_start=1, master_rng=rng, context=context
+        )
         assert agents[0].log_orders is True
 
     def test_log_orders_fallback_to_context(self):
@@ -989,12 +1014,17 @@ class TestAutoGenCreateAgents:
 
         config = ValueAgentConfig(log_orders=None)
         context = AgentCreationContext(
-            ticker="ABM", mkt_open=34_200_000_000_000,
-            mkt_close=36_000_000_000_000, log_orders=True,
-            oracle_r_bar=100_000, date_ns=0,
+            ticker="ABM",
+            mkt_open=34_200_000_000_000,
+            mkt_close=36_000_000_000_000,
+            log_orders=True,
+            oracle_r_bar=100_000,
+            date_ns=0,
         )
         rng = np.random.RandomState(42)
-        agents = config.create_agents(count=1, id_start=1, master_rng=rng, context=context)
+        agents = config.create_agents(
+            count=1, id_start=1, master_rng=rng, context=context
+        )
         assert agents[0].log_orders is True
 
 

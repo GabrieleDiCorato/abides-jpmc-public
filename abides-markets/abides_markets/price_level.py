@@ -1,5 +1,3 @@
-from typing import Dict, List, Optional, Tuple
-
 from .orders import LimitOrder, Side
 
 
@@ -21,7 +19,7 @@ class PriceLevel:
         side: The side of the market this PriceLevel represents.
     """
 
-    def __init__(self, orders: List[Tuple[LimitOrder, Dict]]) -> None:
+    def __init__(self, orders: list[tuple[LimitOrder, dict]]) -> None:
         """
         Arguments:
             orders: A list of orders, containing both visible and hidden orders that
@@ -33,8 +31,8 @@ class PriceLevel:
                 "At least one LimitOrder must be given when initialising a PriceLevel."
             )
 
-        self.visible_orders: List[Tuple[LimitOrder, Dict]] = []
-        self.hidden_orders: List[Tuple[LimitOrder, Dict]] = []
+        self.visible_orders: list[tuple[LimitOrder, dict]] = []
+        self.hidden_orders: list[tuple[LimitOrder, dict]] = []
 
         self.price: int = orders[0][0].limit_price
         self.side: Side = orders[0][0].side
@@ -42,7 +40,7 @@ class PriceLevel:
         for order, metadata in orders:
             self.add_order(order, metadata)
 
-    def add_order(self, order: LimitOrder, metadata: Optional[Dict] = None) -> None:
+    def add_order(self, order: LimitOrder, metadata: dict | None = None) -> None:
         """
         Adds an order to the correct queue in the price level.
 
@@ -113,7 +111,7 @@ class PriceLevel:
 
         return False
 
-    def remove_order(self, order_id: int) -> Optional[Tuple[LimitOrder, Dict]]:
+    def remove_order(self, order_id: int) -> tuple[LimitOrder, dict] | None:
         """
         Attempts to remove an order from the price level.
 
@@ -133,7 +131,7 @@ class PriceLevel:
 
         return None
 
-    def peek(self) -> Tuple[LimitOrder, Dict]:
+    def peek(self) -> tuple[LimitOrder, dict]:
         """
         Returns the highest priority order in the price level. Visible orders are returned first,
         followed by hidden orders if no visible order exist.
@@ -149,7 +147,7 @@ class PriceLevel:
                 "Can't peek at LimitOrder in PriceLevel as it contains no orders"
             )
 
-    def pop(self) -> Tuple[LimitOrder, Dict]:
+    def pop(self) -> tuple[LimitOrder, dict]:
         """
         Removes the highest priority order in the price level and returns it. Visible
         orders are returned first, followed by hidden orders if no visible order exist.

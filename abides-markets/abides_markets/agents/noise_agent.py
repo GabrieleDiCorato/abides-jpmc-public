@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import numpy as np
 from abides_core import Message, NanosecondTime
@@ -22,13 +21,13 @@ class NoiseAgent(TradingAgent):
         self,
         id: int,
         wakeup_time: NanosecondTime,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
         symbol: str = "IBM",
         starting_cash: int = 100000,
         log_orders: bool = False,
-        order_size_model: Optional[OrderSizeModel] = None,
+        order_size_model: OrderSizeModel | None = None,
     ) -> None:
 
         # Base class init.
@@ -48,9 +47,9 @@ class NoiseAgent(TradingAgent):
 
         # The agent must track its previous wake time, so it knows how many time
         # units have passed.
-        self.prev_wake_time: Optional[NanosecondTime] = None
+        self.prev_wake_time: NanosecondTime | None = None
 
-        self.size: Optional[int] = (
+        self.size: int | None = (
             self.random_state.randint(20, 50) if order_size_model is None else None
         )
 

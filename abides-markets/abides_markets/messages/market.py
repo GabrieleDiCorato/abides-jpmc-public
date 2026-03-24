@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 from abides_core import Message, NanosecondTime
 
@@ -60,4 +59,4 @@ class MarketClosePriceMsg(Message):
         close_prices: A mapping of symbols to closing prices.
     """
 
-    close_prices: Dict[str, Optional[int]]
+    close_prices: dict[str, int | None]

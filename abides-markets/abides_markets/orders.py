@@ -3,7 +3,7 @@ import sys
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 from abides_core import NanosecondTime
 from abides_core.utils import fmt_ts
@@ -39,7 +39,7 @@ class Order(ABC):
         symbol: str,
         quantity: int,
         side: Side,
-        order_id: Optional[int] = None,
+        order_id: int | None = None,
         tag: Any = None,
     ) -> None:
         """
@@ -75,11 +75,11 @@ class Order(ABC):
         self.order_id: int = order_id
 
         # Create placeholder fields that don't get filled in until certain events happen.
-        self.fill_price: Optional[int] = None
+        self.fill_price: int | None = None
 
-        self.tag: Optional[Any] = tag
+        self.tag: Any | None = tag
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         as_dict = deepcopy(self).__dict__
         as_dict["time_placed"] = fmt_ts(self.time_placed)
         return as_dict
@@ -111,8 +111,8 @@ class LimitOrder(Order):
         is_price_to_comply: bool = False,
         insert_by_id: bool = False,
         is_post_only=False,
-        order_id: Optional[int] = None,
-        tag: Optional[Any] = None,
+        order_id: int | None = None,
+        tag: Any | None = None,
     ) -> None:
         super().__init__(
             agent_id, time_placed, symbol, quantity, side, order_id, tag=tag
@@ -129,7 +129,7 @@ class LimitOrder(Order):
     def __str__(self) -> str:
         filled = ""
         if self.fill_price:
-            filled = " (filled @ {})".format(dollarize(self.fill_price))
+            filled = f" (filled @ {dollarize(self.fill_price)})"
 
         # Until we make explicit market orders, we make a few assumptions that EXTREME prices on limit
         # orders are trying to represent a market order.  This only affects printing - they still hit
@@ -185,21 +185,15 @@ class MarketOrder(Order):
         symbol: str,
         quantity: int,
         side: Side,
-        order_id: Optional[int] = None,
-        tag: Optional[Any] = None,
+        order_id: int | None = None,
+        tag: Any | None = None,
     ) -> None:
         super().__init__(
             agent_id, time_placed, symbol, quantity, side, order_id=order_id, tag=tag
         )
 
     def __str__(self) -> str:
-        return "(Agent {} @ {}) : MKT Order {} {} {}".format(
-            self.agent_id,
-            fmt_ts(self.time_placed),
-            self.side.value,
-            self.quantity,
-            self.symbol,
-        )
+        return f"(Agent {self.agent_id} @ {fmt_ts(self.time_placed)}) : MKT Order {self.side.value} {self.quantity} {self.symbol}"
 
     def __repr__(self) -> str:
         return self.__str__()

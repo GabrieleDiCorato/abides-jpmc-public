@@ -39,7 +39,7 @@ Example — point provider from a database::
 """
 
 from enum import Enum
-from typing import Dict, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import pandas as pd
 from abides_core import NanosecondTime
@@ -119,7 +119,7 @@ class DataFrameProvider:
               ``DatetimeIndex`` and integer values (cents).
     """
 
-    def __init__(self, data: Dict[str, pd.Series]) -> None:
+    def __init__(self, data: dict[str, pd.Series]) -> None:
         self._data = data
 
     def get_fundamental_series(

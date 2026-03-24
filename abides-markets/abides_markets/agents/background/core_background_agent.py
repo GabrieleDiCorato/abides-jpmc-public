@@ -1,7 +1,7 @@
 import sys
 from collections import deque
 from copy import deepcopy
-from typing import Any, Deque, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 from abides_core import Message, NanosecondTime
@@ -27,18 +27,18 @@ class CoreBackgroundAgent(TradingAgent):
         symbol: str,
         starting_cash: int,
         subscribe_freq: int = int(1e8),
-        lookback_period: Optional[int] = None,  # for volume subscription
+        lookback_period: int | None = None,  # for volume subscription
         subscribe: bool = True,
-        subscribe_num_levels: Optional[int] = None,
-        wakeup_interval_generator: Optional[InterArrivalTimeGenerator] = None,
-        order_size_generator: Optional[OrderSizeModel] = None,
+        subscribe_num_levels: int | None = None,
+        wakeup_interval_generator: InterArrivalTimeGenerator | None = None,
+        order_size_generator: OrderSizeModel | None = None,
         state_buffer_length: int = 2,
         market_data_buffer_length: int = 5,
-        first_interval: Optional[NanosecondTime] = None,
+        first_interval: NanosecondTime | None = None,
         log_orders: bool = False,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
     ) -> None:
         super().__init__(
             id,
@@ -50,59 +50,65 @@ class CoreBackgroundAgent(TradingAgent):
         )
         self.symbol: str = symbol
         if wakeup_interval_generator is None:
-            wakeup_interval_generator = ConstantTimeGenerator(step_duration=str_to_ns("1min"))
+            wakeup_interval_generator = ConstantTimeGenerator(
+                step_duration=str_to_ns("1min")
+            )
         # Frequency of agent data subscription up in ns-1
         self.subscribe_freq: int = subscribe_freq
         self.subscribe: bool = subscribe
-        self.subscribe_num_levels: Optional[int] = subscribe_num_levels
-        self.first_interval: Optional[NanosecondTime] = first_interval
+        self.subscribe_num_levels: int | None = subscribe_num_levels
+        self.first_interval: NanosecondTime | None = first_interval
         self.wakeup_interval_generator: InterArrivalTimeGenerator = (
             wakeup_interval_generator
         )
-        self.order_size_generator: Optional[OrderSizeModel] = order_size_generator
+        self.order_size_generator: OrderSizeModel | None = order_size_generator
 
         if hasattr(self.wakeup_interval_generator, "random_generator"):
             self.wakeup_interval_generator.random_generator = self.random_state
 
         self.state_buffer_length: int = state_buffer_length
         self.market_data_buffer_length: int = market_data_buffer_length
-        if self.order_size_generator is not None and hasattr(self.order_size_generator, "random_generator"):
+        if self.order_size_generator is not None and hasattr(
+            self.order_size_generator, "random_generator"
+        ):
             self.order_size_generator.random_generator = self.random_state
 
-        self.lookback_period: NanosecondTime = int(self.wakeup_interval_generator.mean())
+        self.lookback_period: NanosecondTime = int(
+            self.wakeup_interval_generator.mean()
+        )
 
         # internal variables
         self.has_subscribed: bool = False
-        self.episode_executed_orders: List[Order] = (
+        self.episode_executed_orders: list[Order] = (
             []
         )  # list of executed orders during full episode
 
         # list of executed orders between steps - is reset at every step
-        self.inter_wakeup_executed_orders: List[Order] = (
+        self.inter_wakeup_executed_orders: list[Order] = (
             []
         )  # list of executed orders between steps - is reset at every step
-        self.parsed_episode_executed_orders: List[Tuple[int, int]] = []  # (price, qty)
-        self.parsed_inter_wakeup_executed_orders: List[Tuple[int, int]] = (
+        self.parsed_episode_executed_orders: list[tuple[int, int]] = []  # (price, qty)
+        self.parsed_inter_wakeup_executed_orders: list[tuple[int, int]] = (
             []
         )  # (price, qty)
-        self.parsed_mkt_data: Dict[str, Any] = {}
-        self.parsed_mkt_data_buffer: Deque[Dict[str, Any]] = deque(
+        self.parsed_mkt_data: dict[str, Any] = {}
+        self.parsed_mkt_data_buffer: deque[dict[str, Any]] = deque(
             maxlen=self.market_data_buffer_length
         )
-        self.parsed_volume_data: Dict[str, Any] = {}
-        self.parsed_volume_data_buffer: Deque[Dict[str, Any]] = deque(
+        self.parsed_volume_data: dict[str, Any] = {}
+        self.parsed_volume_data_buffer: deque[dict[str, Any]] = deque(
             maxlen=self.market_data_buffer_length
         )
-        self.raw_state: Deque[Dict[str, Any]] = deque(maxlen=self.state_buffer_length)
+        self.raw_state: deque[dict[str, Any]] = deque(maxlen=self.state_buffer_length)
         # dictionary to track order status:
         # - keys = order_id
         # - value = dictionary {'active'|'cancelled'|'executed', Order, 'active_qty','executed_qty', 'cancelled_qty }
-        self.order_status: Dict[int, Dict[str, Any]] = {}
+        self.order_status: dict[int, dict[str, Any]] = {}
 
     def kernel_starting(self, start_time: NanosecondTime) -> None:
         super().kernel_starting(start_time)
 
-    def wakeup(self, current_time: NanosecondTime) -> Optional[Any]:  # type: ignore[override]
+    def wakeup(self, current_time: NanosecondTime) -> Any | None:  # type: ignore[override]
         """Agent interarrival wake up times are determined by wakeup_interval_generator"""
         can_trade = super().wakeup(current_time)
         if not self.has_subscribed:
@@ -110,7 +116,11 @@ class CoreBackgroundAgent(TradingAgent):
                 L2SubReqMsg(
                     symbol=self.symbol,
                     freq=self.subscribe_freq,
-                    depth=self.subscribe_num_levels if self.subscribe_num_levels is not None else sys.maxsize,
+                    depth=(
+                        self.subscribe_num_levels
+                        if self.subscribe_num_levels is not None
+                        else sys.maxsize
+                    ),
                 )
             )
             super().request_data_subscription(
@@ -134,7 +144,7 @@ class CoreBackgroundAgent(TradingAgent):
             return raw_state
         return None
 
-    def act_on_wakeup(self) -> Optional[Any]:
+    def act_on_wakeup(self) -> Any | None:
         # Needs type signature
         raise NotImplementedError
 
@@ -168,7 +178,7 @@ class CoreBackgroundAgent(TradingAgent):
         )
         return int(time_first_wakeup)
 
-    def apply_actions(self, actions: List[Dict[str, Any]]) -> None:
+    def apply_actions(self, actions: list[dict[str, Any]]) -> None:
         # take action from kernel in general representation
         # convert in ABIDES-SIMULATOR API
         # print(actions)
@@ -209,10 +219,10 @@ class CoreBackgroundAgent(TradingAgent):
         }
         self.raw_state.append(new)
 
-    def get_raw_state(self) -> Deque[Dict[str, Any]]:
+    def get_raw_state(self) -> deque[dict[str, Any]]:
         return self.raw_state
 
-    def get_parsed_mkt_data(self, message: L2DataMsg) -> Dict[str, Any]:
+    def get_parsed_mkt_data(self, message: L2DataMsg) -> dict[str, Any]:
         # TODO: probaly will need to include what type of subscription in parameters here
         bids = message.bids
         asks = message.asks
@@ -226,7 +236,7 @@ class CoreBackgroundAgent(TradingAgent):
         }
         return mkt_data
 
-    def get_parsed_volume_data(self, message: TransactedVolDataMsg) -> Dict[str, Any]:
+    def get_parsed_volume_data(self, message: TransactedVolDataMsg) -> dict[str, Any]:
         last_transaction = message.last_transaction
         exchange_ts = message.exchange_ts
         bid_volume = message.bid_volume
@@ -242,7 +252,7 @@ class CoreBackgroundAgent(TradingAgent):
         }
         return volume_data
 
-    def get_internal_data(self) -> Dict[str, Any]:
+    def get_internal_data(self) -> dict[str, Any]:
         holdings = self.get_holdings(self.symbol)
         cash = self.get_holdings("CASH")
         inter_wakeup_executed_orders = self.inter_wakeup_executed_orders

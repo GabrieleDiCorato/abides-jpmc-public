@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 import sys
 import warnings
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple, Union
+from typing import Any, Union
 
 import numpy as np
 from abides_core import Message, NanosecondTime
@@ -65,9 +66,9 @@ class TradingAgent(FinancialAgent):
     def __init__(
         self,
         id: int,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
         starting_cash: int = 100000,
         log_orders: bool = False,
     ) -> None:
@@ -75,8 +76,8 @@ class TradingAgent(FinancialAgent):
         super().__init__(id, name, type, random_state)
 
         # We don't yet know when the exchange opens or closes.
-        self.mkt_open: Optional[NanosecondTime] = None
-        self.mkt_close: Optional[NanosecondTime] = None
+        self.mkt_open: NanosecondTime | None = None
+        self.mkt_close: NanosecondTime | None = None
 
         # Log order activity?
         self.log_orders: bool = log_orders
@@ -96,8 +97,8 @@ class TradingAgent(FinancialAgent):
         # Holdings is a dictionary of symbol -> shares.  CASH is a special symbol
         # worth one cent per share.  Orders is a dictionary of active, open orders
         # (not cancelled, not fully executed) keyed by order_id.
-        self.holdings: Dict[str, int] = {"CASH": starting_cash}
-        self.orders: Dict[int, Order] = {}
+        self.holdings: dict[str, int] = {"CASH": starting_cash}
+        self.orders: dict[int, Order] = {}
 
         # The base TradingAgent also tracks last known prices for every symbol
         # for which it has received as QUERY_LAST_TRADE message.  Subclass
@@ -105,14 +106,14 @@ class TradingAgent(FinancialAgent):
         # agent must request pricing when it wants it.  This agent does NOT
         # automatically generate such requests, though it has a helper function
         # that can be used to make it happen.
-        self.last_trade: Dict[str, int] = {}
+        self.last_trade: dict[str, int] = {}
 
         # used in subscription mode to record the timestamp for which the data was current in the ExchangeAgent
-        self.exchange_ts: Dict[str, NanosecondTime] = {}
+        self.exchange_ts: dict[str, NanosecondTime] = {}
 
         # When a last trade price comes in after market close, the trading agent
         # automatically records it as the daily close price for a symbol.
-        self.daily_close_price: Dict[str, int] = {}
+        self.daily_close_price: dict[str, int] = {}
 
         self.nav_diff: int = 0
         self.basket_size: int = 0
@@ -120,19 +121,19 @@ class TradingAgent(FinancialAgent):
         # The agent remembers the last known bids and asks (with variable depth,
         # showing only aggregate volume at each price level) when it receives
         # a response to QUERY_SPREAD.
-        self.known_bids: Dict[str, List[Tuple[int, int]]] = {}
-        self.known_asks: Dict[str, List[Tuple[int, int]]] = {}
+        self.known_bids: dict[str, list[tuple[int, int]]] = {}
+        self.known_asks: dict[str, list[tuple[int, int]]] = {}
 
         # The agent remembers the order history communicated by the exchange
         # when such is requested by an agent (for example, a heuristic belief
         # learning agent).
-        self.stream_history: Dict[str, Any] = {}
+        self.stream_history: dict[str, Any] = {}
 
         # The agent records the total transacted volume in the exchange for a given symbol and lookback period
-        self.transacted_volume: Dict[str, Tuple[int, int]] = {}
+        self.transacted_volume: dict[str, tuple[int, int]] = {}
 
         # Each agent can choose to log the orders executed
-        self.executed_orders: List[Order] = []
+        self.executed_orders: list[Order] = []
 
         # For special logging at the first moment the simulator kernel begins
         # running (which is well after agent init), it is useful to keep a simple
@@ -184,9 +185,7 @@ class TradingAgent(FinancialAgent):
 
         self.logEvent("ENDING_CASH", cash, True)
         logger.debug(
-            "Final holdings for {}: {}. Marked to market: {}".format(
-                self.name, self.fmt_holdings(self.holdings), cash
-            )
+            f"Final holdings for {self.name}: {self.fmt_holdings(self.holdings)}. Marked to market: {cash}"
         )
 
         # Record final results for presentation/debugging.  This is an ugly way
@@ -282,8 +281,8 @@ class TradingAgent(FinancialAgent):
             self.mkt_open = message.mkt_open
             self.mkt_close = message.mkt_close
 
-            logger.debug("Recorded market open: {}".format(fmt_ts(self.mkt_open)))
-            logger.debug("Recorded market close: {}".format(fmt_ts(self.mkt_close)))
+            logger.debug(f"Recorded market open: {fmt_ts(self.mkt_open)}")
+            logger.debug(f"Recorded market close: {fmt_ts(self.mkt_close)}")
 
         elif isinstance(message, MarketClosePriceMsg):
             # Update our local last trade prices with the accurate last trade prices from
@@ -430,7 +429,7 @@ class TradingAgent(FinancialAgent):
         quantity: int,
         side: Side,
         limit_price: int,
-        order_id: Optional[int] = None,
+        order_id: int | None = None,
         is_hidden: bool = False,
         is_price_to_comply: bool = False,
         insert_by_id: bool = False,
@@ -490,9 +489,7 @@ class TradingAgent(FinancialAgent):
 
                 if (new_at_risk > at_risk) and (new_at_risk > self.starting_cash):
                     logger.debug(
-                        "TradingAgent ignored limit order due to at-risk constraints: {}\n{}".format(
-                            order, self.fmt_holdings(self.holdings)
-                        )
+                        f"TradingAgent ignored limit order due to at-risk constraints: {order}\n{self.fmt_holdings(self.holdings)}"
                     )
                     return
 
@@ -507,7 +504,7 @@ class TradingAgent(FinancialAgent):
         quantity: int,
         side: Side,
         limit_price: int,
-        order_id: Optional[int] = None,
+        order_id: int | None = None,
         is_hidden: bool = False,
         is_price_to_comply: bool = False,
         insert_by_id: bool = False,
@@ -559,7 +556,7 @@ class TradingAgent(FinancialAgent):
         symbol: str,
         quantity: int,
         side: Side,
-        order_id: Optional[int] = None,
+        order_id: int | None = None,
         ignore_risk: bool = True,
         tag: Any = None,
     ) -> None:
@@ -598,9 +595,7 @@ class TradingAgent(FinancialAgent):
 
                 if (new_at_risk > at_risk) and (new_at_risk > self.starting_cash):
                     logger.debug(
-                        "TradingAgent ignored market order due to at-risk constraints: {}\n{}".format(
-                            order, self.fmt_holdings(self.holdings)
-                        )
+                        f"TradingAgent ignored market order due to at-risk constraints: {order}\n{self.fmt_holdings(self.holdings)}"
                     )
                     return
             self.orders[order.order_id] = deepcopy(order)
@@ -614,7 +609,7 @@ class TradingAgent(FinancialAgent):
             )
 
     def place_multiple_orders(
-        self, orders: List[Union[LimitOrder, MarketOrder]]
+        self, orders: list[Union[LimitOrder, MarketOrder]]
     ) -> None:
         """
         Used by any Trading Agent subclass to place multiple orders at the same time.
@@ -648,7 +643,10 @@ class TradingAgent(FinancialAgent):
             self.send_message_batch(self.exchange_id, messages)
 
     def cancel_order(
-        self, order: LimitOrder, tag: Optional[str] = None, metadata: Optional[dict] = None
+        self,
+        order: LimitOrder,
+        tag: str | None = None,
+        metadata: dict | None = None,
     ) -> None:
         """
         Used by derived classes of TradingAgent to cancel a limit order.
@@ -682,8 +680,8 @@ class TradingAgent(FinancialAgent):
         self,
         order: LimitOrder,
         quantity: int,
-        tag: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        tag: str | None = None,
+        metadata: dict | None = None,
     ) -> None:
         """
         Used by any Trading Agent subclass to modify any existing limit order.
@@ -950,9 +948,7 @@ class TradingAgent(FinancialAgent):
         self.last_trade[symbol] = price
 
         logger.debug(
-            "Received last trade price of {} for {}.".format(
-                self.last_trade[symbol], symbol
-            )
+            f"Received last trade price of {self.last_trade[symbol]} for {symbol}."
         )
 
         if self.mkt_closed:
@@ -960,17 +956,15 @@ class TradingAgent(FinancialAgent):
             self.daily_close_price[symbol] = self.last_trade[symbol]
 
             logger.debug(
-                "Received daily close price of {} for {}.".format(
-                    self.last_trade[symbol], symbol
-                )
+                f"Received daily close price of {self.last_trade[symbol]} for {symbol}."
             )
 
     def query_spread(
         self,
         symbol: str,
         price: int,
-        bids: List[List[Tuple[int, int]]],
-        asks: List[List[Tuple[int, int]]],
+        bids: list[list[tuple[int, int]]],
+        asks: list[list[tuple[int, int]]],
         book: str,
     ) -> None:
         """
@@ -1001,9 +995,7 @@ class TradingAgent(FinancialAgent):
             best_ask, best_ask_qty = ("No asks", 0)
 
         logger.debug(
-            "Received spread of {} @ {} / {} @ {} for {}".format(
-                best_bid_qty, best_bid, best_ask_qty, best_ask, symbol
-            )
+            f"Received spread of {best_bid_qty} @ {best_bid} / {best_ask_qty} @ {best_ask} for {symbol}"
         )
 
         self.logEvent("BID_DEPTH", bids)
@@ -1062,9 +1054,7 @@ class TradingAgent(FinancialAgent):
     # Utility functions that perform calculations from available knowledge, but implement no
     # particular strategy.
 
-    def get_known_bid_ask(
-        self, symbol: str
-    ) -> tuple[int | None, int, int | None, int]:
+    def get_known_bid_ask(self, symbol: str) -> tuple[int | None, int, int | None, int]:
         """
         Extract the current known bid and asks.
 
@@ -1074,13 +1064,25 @@ class TradingAgent(FinancialAgent):
             symbol: The symbol to query.
         """
 
-        bid = self.known_bids.get(symbol, [])[0][0] if self.known_bids.get(symbol) else None
-        ask = self.known_asks.get(symbol, [])[0][0] if self.known_asks.get(symbol) else None
-        bid_vol = self.known_bids.get(symbol, [])[0][1] if self.known_bids.get(symbol) else 0
-        ask_vol = self.known_asks.get(symbol, [])[0][1] if self.known_asks.get(symbol) else 0
+        bid = (
+            self.known_bids.get(symbol, [])[0][0]
+            if self.known_bids.get(symbol)
+            else None
+        )
+        ask = (
+            self.known_asks.get(symbol, [])[0][0]
+            if self.known_asks.get(symbol)
+            else None
+        )
+        bid_vol = (
+            self.known_bids.get(symbol, [])[0][1] if self.known_bids.get(symbol) else 0
+        )
+        ask_vol = (
+            self.known_asks.get(symbol, [])[0][1] if self.known_asks.get(symbol) else 0
+        )
         return bid, bid_vol, ask, ask_vol
 
-    def get_known_liquidity(self, symbol: str, within: float = 0.00) -> Tuple[int, int]:
+    def get_known_liquidity(self, symbol: str, within: float = 0.00) -> tuple[int, int]:
         """
         Extract the current bid and ask liquidity within a certain proportion of the
         inside bid and ask.  (i.e. within=0.01 means to report total BID shares
@@ -1100,13 +1102,13 @@ class TradingAgent(FinancialAgent):
         bid_liq = self.get_book_liquidity(self.known_bids.get(symbol, []), within)
         ask_liq = self.get_book_liquidity(self.known_asks.get(symbol, []), within)
 
-        logger.debug("Bid/ask liq: {}, {}".format(bid_liq, ask_liq))
-        logger.debug("Known bids: {}".format(self.known_bids.get(symbol, [])))
-        logger.debug("Known asks: {}".format(self.known_asks.get(symbol, [])))
+        logger.debug(f"Bid/ask liq: {bid_liq}, {ask_liq}")
+        logger.debug(f"Known bids: {self.known_bids.get(symbol, [])}")
+        logger.debug(f"Known asks: {self.known_asks.get(symbol, [])}")
 
         return bid_liq, ask_liq
 
-    def get_book_liquidity(self, book: Iterable[Tuple[int, int]], within: float) -> int:
+    def get_book_liquidity(self, book: Iterable[tuple[int, int]], within: float) -> int:
         """
         Helper function for the above.  Checks one side of the known order book.
 
@@ -1121,11 +1123,7 @@ class TradingAgent(FinancialAgent):
 
             # Is this price within "within" proportion of the best price?
             if abs(best - price) <= int(round(best * within)):
-                logger.debug(
-                    "Within {} of {}: {} with {} shares".format(
-                        within, best, price, shares
-                    )
-                )
+                logger.debug(f"Within {within} of {best}: {price} with {shares} shares")
                 liq += shares
 
         return liq
@@ -1164,9 +1162,7 @@ class TradingAgent(FinancialAgent):
 
             self.logEvent(
                 "MARK_TO_MARKET",
-                "{} {} @ {} == {}".format(
-                    shares, symbol, self.last_trade.get(symbol), value
-                ),
+                f"{shares} {symbol} @ {self.last_trade.get(symbol)} == {value}",
             )
 
         self.logEvent("MARKED_TO_MARKET", cash)
@@ -1185,7 +1181,7 @@ class TradingAgent(FinancialAgent):
 
     def get_known_bid_ask_midpoint(
         self, symbol: str
-    ) -> Tuple[Optional[int], Optional[int], Optional[int]]:
+    ) -> tuple[int | None, int | None, int | None]:
         """
         Get the known best bid, ask, and bid/ask midpoint from cached data. No volume.
 
@@ -1232,7 +1228,7 @@ class TradingAgent(FinancialAgent):
         for k, v in sorted(holdings.items()):
             if k == "CASH":
                 continue
-            h += "{}: {}, ".format(k, v)
+            h += f"{k}: {v}, "
 
         # There must always be a CASH entry.
         h += "{}: {}".format("CASH", holdings["CASH"])
