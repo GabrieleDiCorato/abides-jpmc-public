@@ -93,26 +93,3 @@ A CLI entry point is also provided:
 ```bash
 abides path/to/config.py [--param value ...]
 ```
-
-## Module layout
-
-```
-abides-core/
-├── abides_core/
-│   ├── __init__.py          # Public API exports
-│   ├── abides.py            # High-level run() entry point
-│   ├── agent.py             # Base Agent class
-│   ├── kernel.py            # Discrete-event Kernel
-│   ├── message.py           # Message, MessageBatch, WakeupMsg
-│   ├── latency_model.py     # LatencyModel (cubic / deterministic)
-│   ├── generators.py        # Inter-arrival time generators
-│   └── utils.py             # Time conversion & formatting helpers
-├── scripts/
-│   └── abides               # CLI entry point
-└── tests/
-    ├── test_kernel.py
-    ├── test_generators.py
-    ├── test_timestamps.py
-    ├── test_datetime_utils.py
-    └── test_pandas_compat.py
-```
