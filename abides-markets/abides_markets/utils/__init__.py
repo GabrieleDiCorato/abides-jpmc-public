@@ -1,12 +1,13 @@
 import datetime
 import warnings
 from contextlib import contextmanager
-from typing import List, Union
+from typing import Union
 
 import numpy as np
 import pandas as pd
-from abides_core import LatencyModel
 from scipy.spatial.distance import pdist, squareform
+
+from abides_core import LatencyModel
 
 
 # Utility method to flatten nested lists.
@@ -101,7 +102,9 @@ def validate_window_size(s):
         if s.lower() == "adaptive":
             return s.lower()
         else:
-            raise ValueError(f'String {s} must be integer or string "adaptive".')
+            raise ValueError(
+                f'String {s} must be integer or string "adaptive".'
+            ) from None
 
 
 def sigmoid(x, beta):
@@ -125,7 +128,7 @@ def subdict(d, keys):
 
 
 def restrictdict(d, keys):
-    inter = [k for k in d.keys() if k in keys]
+    inter = [k for k in d if k in keys]
     return subdict(d, inter)
 
 

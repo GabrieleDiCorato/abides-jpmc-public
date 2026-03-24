@@ -1,9 +1,10 @@
 import importlib
 from typing import Any
 
-import abides_markets.agents.utils as markets_agent_utils
 import gymnasium as gym
 import numpy as np
+
+import abides_markets.agents.utils as markets_agent_utils
 from abides_core import NanosecondTime
 from abides_core.generators import ConstantTimeGenerator
 from abides_core.utils import str_to_ns
@@ -438,7 +439,7 @@ class SubGymMarketsDailyInvestorEnv_v0(AbidesGymMarketsEnv):
             "bids": {"price": {}, "volume": {}},
         }
 
-        for book, book_name in [(bids, "bids"), (asks, "asks")]:
+        for _book, book_name in [(bids, "bids"), (asks, "asks")]:
             for level in [0, 1, 2]:
                 price, volume = markets_agent_utils.get_val(bids, level)
                 orderbook[book_name]["price"][level] = np.array([price]).reshape(-1)

@@ -42,6 +42,7 @@ from enum import Enum
 from typing import Protocol, runtime_checkable
 
 import pandas as pd
+
 from abides_core import NanosecondTime
 
 # ---------------------------------------------------------------------------

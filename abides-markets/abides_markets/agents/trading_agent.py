@@ -8,6 +8,7 @@ from copy import deepcopy
 from typing import Any, Union
 
 import numpy as np
+
 from abides_core import Message, NanosecondTime
 from abides_core.utils import fmt_ts
 
@@ -1177,7 +1178,7 @@ class TradingAgent(FinancialAgent):
             symbol: The symbol to query.
         """
 
-        return self.holdings[symbol] if symbol in self.holdings else 0
+        return self.holdings.get(symbol, 0)
 
     def get_known_bid_ask_midpoint(
         self, symbol: str

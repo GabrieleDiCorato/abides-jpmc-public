@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from abides_core import Agent, NanosecondTime
 from abides_core.utils import ns_date, str_to_ns
 

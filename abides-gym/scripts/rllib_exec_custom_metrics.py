@@ -1,10 +1,11 @@
 import ray
 import wandb
-from abides_gym.envs.markets_execution_custom_metrics import MyCallbacks
 from ray import tune
 from ray.air import CheckpointConfig, RunConfig
 from ray.tune import Tuner
 from ray.tune.integration.wandb import WandbLoggerCallback
+
+from abides_gym.envs.markets_execution_custom_metrics import MyCallbacks
 
 api_key = wandb.api.api_key
 

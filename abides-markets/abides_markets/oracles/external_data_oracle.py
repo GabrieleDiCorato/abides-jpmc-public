@@ -22,6 +22,7 @@ from typing import Any, Union
 
 import numpy as np
 import pandas as pd
+
 from abides_core import NanosecondTime
 
 from .data_providers import (
@@ -261,10 +262,11 @@ class ExternalDataOracle(Oracle):
             r_t = self._point_lookup(symbol, t)
 
         # Apply observation noise
-        if sigma_n == 0:
-            obs = r_t
-        else:
-            obs = int(round(random_state.normal(loc=r_t, scale=sqrt(sigma_n))))
+        obs = (
+            r_t
+            if sigma_n == 0
+            else int(round(random_state.normal(loc=r_t, scale=sqrt(sigma_n))))
+        )
 
         logger.debug(
             "ExternalDataOracle: fundamental=%d at t=%d, observation=%d",

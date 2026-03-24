@@ -10,8 +10,8 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from abides_core.utils import get_wake_time, str_to_ns
 
+from abides_core.utils import get_wake_time, str_to_ns
 from abides_markets.agents import (
     AdaptiveMarketMakerAgent,
     ExchangeAgent,

@@ -1,6 +1,7 @@
 from abc import ABC
 
 import numpy as np
+
 from abides_core.generators import BaseGenerator
 
 

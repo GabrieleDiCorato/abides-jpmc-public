@@ -1,6 +1,7 @@
 # Import to register environments
-import abides_gym  # noqa: F401 - Import needed to register environments
 import gymnasium as gym
+
+import abides_gym  # noqa: F401 - Import needed to register environments
 
 
 def test_gym_runner_markets_execution():
@@ -11,7 +12,7 @@ def test_gym_runner_markets_execution():
     )
 
     state, info = env.reset(seed=0)
-    for i in range(5):
+    for _i in range(5):
         state, reward, terminated, truncated, info = env.step(0)
     env.step(1)
     env.step(2)
@@ -27,7 +28,7 @@ def test_gym_runner_markets_daily_investor():
     )
 
     state, info = env.reset(seed=0)
-    for i in range(5):
+    for _i in range(5):
         state, reward, terminated, truncated, info = env.step(0)
     env.step(1)
     env.step(2)

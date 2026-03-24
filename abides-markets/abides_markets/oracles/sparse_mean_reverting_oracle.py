@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from abides_core import NanosecondTime
 
 from .mean_reverting_oracle import MeanRevertingOracle

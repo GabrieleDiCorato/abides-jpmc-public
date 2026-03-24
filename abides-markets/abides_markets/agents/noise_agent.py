@@ -1,8 +1,8 @@
 import logging
 
 import numpy as np
-from abides_core import Message, NanosecondTime
 
+from abides_core import Message, NanosecondTime
 from abides_markets.models.order_size_model import OrderSizeModel
 
 from ..messages.query import QuerySpreadResponseMsg
@@ -74,10 +74,7 @@ class NoiseAgent(TradingAgent):
             # Print end of day valuation.
             H = int(round(self.get_holdings(self.symbol), -2) / 100)
 
-            if bid and ask:
-                rT = int(bid + ask) / 2
-            else:
-                rT = self.last_trade[self.symbol]
+            rT = int(bid + ask) / 2 if bid and ask else self.last_trade[self.symbol]
 
             # final (real) fundamental value times shares held.
             surplus = rT * H
@@ -161,22 +158,19 @@ class NoiseAgent(TradingAgent):
         # If our internal state indicates we were waiting for a particular event,
         # check if we can transition to a new state.
 
-        if self.state == "AWAITING_SPREAD":
-            # We were waiting to receive the current spread/book.  Since we don't currently
-            # track timestamps on retained information, we rely on actually seeing a
-            # QUERY_SPREAD response message.
+        if self.state == "AWAITING_SPREAD" and isinstance(
+            message, QuerySpreadResponseMsg
+        ):
+            # This is what we were waiting for.
 
-            if isinstance(message, QuerySpreadResponseMsg):
-                # This is what we were waiting for.
+            # But if the market is now closed, don't advance to placing orders.
+            if self.mkt_closed:
+                return
 
-                # But if the market is now closed, don't advance to placing orders.
-                if self.mkt_closed:
-                    return
-
-                # We now have the information needed to place a limit order with the eta
-                # strategic threshold parameter.
-                self.placeOrder()
-                self.state = "AWAITING_WAKEUP"
+            # We now have the information needed to place a limit order with the eta
+            # strategic threshold parameter.
+            self.placeOrder()
+            self.state = "AWAITING_WAKEUP"
 
     # Internal state and logic specific to this agent subclass.
 

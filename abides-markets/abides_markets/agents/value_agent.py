@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+
 from abides_core import Message, NanosecondTime
 
 from ..messages.query import QuerySpreadResponseMsg
@@ -274,22 +275,19 @@ class ValueAgent(TradingAgent):
         # If our internal state indicates we were waiting for a particular event,
         # check if we can transition to a new state.
 
-        if self.state == "AWAITING_SPREAD":
-            # We were waiting to receive the current spread/book.  Since we don't currently
-            # track timestamps on retained information, we rely on actually seeing a
-            # QUERY_SPREAD response message.
+        if self.state == "AWAITING_SPREAD" and isinstance(
+            message, QuerySpreadResponseMsg
+        ):
+            # This is what we were waiting for.
 
-            if isinstance(message, QuerySpreadResponseMsg):
-                # This is what we were waiting for.
+            # But if the market is now closed, don't advance to placing orders.
+            if self.mkt_closed:
+                return
 
-                # But if the market is now closed, don't advance to placing orders.
-                if self.mkt_closed:
-                    return
-
-                # We now have the information needed to place a limit order with the eta
-                # strategic threshold parameter.
-                self.placeOrder()
-                self.state = "AWAITING_WAKEUP"
+            # We now have the information needed to place a limit order with the eta
+            # strategic threshold parameter.
+            self.placeOrder()
+            self.state = "AWAITING_WAKEUP"
 
         # Cancel all open orders.
         # Return value: did we issue any cancellation requests?

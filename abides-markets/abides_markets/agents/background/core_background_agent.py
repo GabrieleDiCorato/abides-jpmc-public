@@ -4,10 +4,10 @@ from copy import deepcopy
 from typing import Any
 
 import numpy as np
+
 from abides_core import Message, NanosecondTime
 from abides_core.generators import ConstantTimeGenerator, InterArrivalTimeGenerator
 from abides_core.utils import str_to_ns
-
 from abides_markets.agents.trading_agent import TradingAgent
 from abides_markets.messages.marketdata import (
     L2DataMsg,
@@ -160,14 +160,13 @@ class CoreBackgroundAgent(TradingAgent):
         """
         # TODO: will prob need to see for transacted volume if we enrich the state
         super().receive_message(current_time, sender_id, message)
-        if self.subscribe:
-            if isinstance(message, MarketDataMsg):
-                if isinstance(message, L2DataMsg):
-                    self.parsed_mkt_data = self.get_parsed_mkt_data(message)
-                    self.parsed_mkt_data_buffer.append(self.parsed_mkt_data)
-                elif isinstance(message, TransactedVolDataMsg):
-                    self.parsed_volume_data = self.get_parsed_volume_data(message)
-                    self.parsed_volume_data_buffer.append(self.parsed_volume_data)
+        if self.subscribe and isinstance(message, MarketDataMsg):
+            if isinstance(message, L2DataMsg):
+                self.parsed_mkt_data = self.get_parsed_mkt_data(message)
+                self.parsed_mkt_data_buffer.append(self.parsed_mkt_data)
+            elif isinstance(message, TransactedVolDataMsg):
+                self.parsed_volume_data = self.get_parsed_volume_data(message)
+                self.parsed_volume_data_buffer.append(self.parsed_volume_data)
 
     def get_wake_frequency(self) -> NanosecondTime:
         # first wakeup interval from open

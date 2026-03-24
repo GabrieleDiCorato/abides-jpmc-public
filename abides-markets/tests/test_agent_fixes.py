@@ -16,6 +16,7 @@ import inspect
 
 import numpy as np
 import pandas as pd
+
 from abides_core.utils import datetime_str_to_ns, str_to_ns
 from abides_markets.agents.examples.momentum_agent import MomentumAgent
 from abides_markets.agents.market_makers.adaptive_market_maker_agent import (
@@ -305,7 +306,7 @@ class TestValueAgentBuyDirection:
 class TestPOVAgentTypes:
     def test_last_bid_ask_typed_as_int(self):
         """last_bid and last_ask must be Optional[int], not Optional[float]."""
-        sig = inspect.signature(POVExecutionAgent.__init__)
+        inspect.signature(POVExecutionAgent.__init__)
         # Check via instance inspection
         agent = POVExecutionAgent(
             id=0,
@@ -316,7 +317,8 @@ class TestPOVAgentTypes:
             random_state=np.random.RandomState(42),
         )
         # Type hints should be int, verified via __annotations__
-        hints = type(agent).__init__.__code__.co_varnames
+        assert "last_bid" in type(agent).__init__.__annotations__
+        assert "last_ask" in type(agent).__init__.__annotations__
         # last_bid and last_ask are initialized as None — just verify they exist and are correct type
         assert agent.last_bid is None
         assert agent.last_ask is None

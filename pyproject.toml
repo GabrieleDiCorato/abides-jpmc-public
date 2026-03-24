@@ -51,15 +51,30 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
 ignore = [
+    "E501",  # line too long (handled by black; unavoidable in strings/comments)
+    "N801",  # class name should use CapWords (some gym env names use _v0 suffix by convention)
     "N802",  # function name should be lowercase (conflicts with inherited wakeup/receiveMessage conventions)
     "N803",  # argument name should be lowercase
     "N806",  # variable in function should be lowercase
+    "B006",  # mutable default argument (pre-existing patterns in orders and test helpers)
+    "B008",  # function call in default argument (pre-existing patterns)
+    "B028",  # no explicit stacklevel in warnings.warn (minor quality improvement, not a bug)
+    "B905",  # zip() without explicit strict= (not yet required by project style)
     "UP007", # Use `X | Y` for union type annotations (project uses Optional consistently)
 ]
+
+[tool.ruff.lint.isort]
+known-first-party = ["abides_core", "abides_markets", "abides_gym"]
+
+[tool.isort]
+profile = "black"
+known_first_party = ["abides_core", "abides_markets", "abides_gym"]
 
 [tool.ruff.lint.per-file-ignores]
 "abides-core/tests/*" = ["S101"]
 "abides-markets/tests/*" = ["S101"]
+"version_testing/*" = ["E402", "N801"]
+"notebooks/*" = ["E402", "N801"]
 
 [tool.coverage.run]
 source = ["abides_core", "abides_markets", "abides_gym"]

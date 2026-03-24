@@ -18,9 +18,10 @@ from dataclasses import dataclass
 from typing import Any, Union
 
 import numpy as np
+from pydantic import BaseModel, Field
+
 from abides_core import NanosecondTime
 from abides_core.utils import get_wake_time, str_to_ns
-from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +98,7 @@ class BaseAgentConfig(BaseModel):
             )
 
         # Discover which parameters the constructor accepts
-        sig = inspect.signature(agent_cls.__init__)
+        sig = inspect.signature(agent_cls.__init__)  # type: ignore[misc]
         accepted_params = set(sig.parameters.keys()) - {"self"}
 
         log = self.log_orders if self.log_orders is not None else context.log_orders

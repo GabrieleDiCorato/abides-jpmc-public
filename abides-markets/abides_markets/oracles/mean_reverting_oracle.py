@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from abides_core import NanosecondTime
 
 from .oracle import Oracle
@@ -179,10 +180,11 @@ class MeanRevertingOracle(Oracle):
             r_t = self.r[symbol].loc[pd.Timestamp(current_time, unit="ns")]
 
         # Generate a noisy observation of fundamental value at the current time.
-        if sigma_n == 0:
-            obs = r_t
-        else:
-            obs = int(round(random_state.normal(loc=r_t, scale=sqrt(sigma_n))))
+        obs = (
+            r_t
+            if sigma_n == 0
+            else int(round(random_state.normal(loc=r_t, scale=sqrt(sigma_n))))
+        )
 
         logger.debug("Oracle: current fundamental value is {} at {}", r_t, current_time)
         logger.debug("Oracle: giving client value observation {}", obs)

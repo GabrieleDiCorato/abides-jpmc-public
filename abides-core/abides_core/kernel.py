@@ -411,10 +411,9 @@ class Kernel:
                     + self.current_agent_additional_delay
                 )
 
-                if isinstance(message, MessageBatch):
-                    messages = message.messages
-                else:
-                    messages = [message]
+                messages = (
+                    message.messages if isinstance(message, MessageBatch) else [message]
+                )
 
                 if self.show_trace_messages:
                     logger.debug(

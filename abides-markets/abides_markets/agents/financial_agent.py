@@ -1,6 +1,7 @@
 from typing import Union
 
 import numpy as np
+
 from abides_core import Agent
 
 from ..utils import dollarize

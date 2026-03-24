@@ -2,6 +2,7 @@ import itertools
 from copy import deepcopy
 
 import pytest
+
 from abides_markets.orders import LimitOrder, MarketOrder, Order
 
 TIME = 0

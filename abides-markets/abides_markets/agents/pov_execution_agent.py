@@ -12,6 +12,7 @@ import logging
 from typing import Union
 
 import numpy as np
+
 from abides_core import Message, NanosecondTime
 from abides_core.utils import str_to_ns
 
@@ -247,10 +248,7 @@ class POVExecutionAgent(TradingAgent):
         if not self.mkt_open or not self.mkt_close:
             return False
 
-        if self.mkt_closed:
-            return False
-
-        return True
+        return not self.mkt_closed
 
     def receive_message(
         self, current_time: NanosecondTime, sender_id: int, message: Message

@@ -6,6 +6,7 @@ any simulator object (kernel, agent, etc).
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import inspect
 import os
@@ -174,10 +175,8 @@ def parse_logs_df(end_state: dict) -> pd.DataFrame:
                 event = {"ScalarEventValue": event}
             else:
                 pass
-            try:
+            with contextlib.suppress(KeyError):
                 del m["Event"]
-            except KeyError:
-                pass
             m.update(event)
             if m.get("agent_id") is None:
                 m["agent_id"] = agent.id

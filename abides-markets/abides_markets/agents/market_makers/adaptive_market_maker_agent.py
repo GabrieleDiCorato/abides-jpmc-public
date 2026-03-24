@@ -4,6 +4,7 @@ import logging
 from math import ceil, floor
 
 import numpy as np
+
 from abides_core import Message, NanosecondTime
 
 from ...messages.marketdata import (
@@ -148,7 +149,7 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         )
 
         self.two_side: bool = (
-            False if self.price_skew_param is None else True
+            self.price_skew_param is not None
         )  # switch to control self.get_transacted_volume
         # method
 
@@ -265,11 +266,13 @@ class AdaptiveMarketMakerAgent(TradingAgent):
             self.update_order_size()
             self.state["AWAITING_TRANSACTED_VOLUME"] = False
 
-        if isinstance(message, BookImbalanceDataMsg):
-            if message.stage == MarketDataEventMsg.Stage.START:
-                if mid is not None:
-                    self.place_orders(mid)
-                    self.last_time_book_order = current_time
+        if (
+            isinstance(message, BookImbalanceDataMsg)
+            and message.stage == MarketDataEventMsg.Stage.START
+            and mid is not None
+        ):
+            self.place_orders(mid)
+            self.last_time_book_order = current_time
 
         if not self.subscribe:
             if (

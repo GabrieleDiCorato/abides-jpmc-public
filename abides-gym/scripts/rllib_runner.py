@@ -1,14 +1,15 @@
 import ray
 import wandb
-from abides_gym.envs.markets_execution_custom_metrics import MyCallbacks
-from abides_gym.envs.markets_execution_environment_v0 import (
-    SubGymMarketsExecutionEnv_v0,
-)
 from ray import tune
 from ray.air import CheckpointConfig, RunConfig
 from ray.tune import Tuner
 from ray.tune.integration.wandb import WandbLoggerCallback
 from ray.tune.registry import register_env
+
+from abides_gym.envs.markets_execution_custom_metrics import MyCallbacks
+from abides_gym.envs.markets_execution_environment_v0 import (
+    SubGymMarketsExecutionEnv_v0,
+)
 
 api_key = wandb.api.api_key
 

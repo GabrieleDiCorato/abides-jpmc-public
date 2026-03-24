@@ -6,8 +6,8 @@
 # - 5000  Noise Agents
 
 import numpy as np
-from abides_core.utils import datetime_str_to_ns, get_wake_time, str_to_ns
 
+from abides_core.utils import datetime_str_to_ns, get_wake_time, str_to_ns
 from abides_markets.agents import (
     AdaptiveMarketMakerAgent,
     ExchangeAgent,
@@ -256,7 +256,7 @@ def build_config(
 
     # 6) Execution Agent
 
-    trade = True if execution_agents else False
+    trade = bool(execution_agents)
 
     #### Participation of Volume Agent parameters
 

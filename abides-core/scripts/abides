@@ -10,9 +10,10 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import coloredlogs
 import numpy as np
+from termcolor import colored
+
 from abides_core.kernel import Kernel
 from abides_core.utils import subdict
-from termcolor import colored
 
 logger = logging.getLogger("abides")
 

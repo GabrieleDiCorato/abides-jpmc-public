@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from abides_core import Kernel, Message, NanosecondTime
 
 from ..messages.market import (
@@ -71,7 +72,7 @@ class ExchangeAgent(FinancialAgent):
     """
 
     @dataclass
-    class MetricTracker(ABC):
+    class MetricTracker(ABC):  # noqa: B024
         # droupout metrics
         total_time_no_liquidity_asks: int = 0
         total_time_no_liquidity_bids: int = 0
@@ -327,12 +328,8 @@ class ExchangeAgent(FinancialAgent):
                     )
                 else:
                     logger.debug(
-                        "{} received {}: {}".format(
-                            # All the other order messages have an 'order' attribute. The hierarchy is not well designed.
-                            self.name,
-                            message.type(),
-                            message.order,  # type: ignore
-                        )
+                        # All the other order messages have an 'order' attribute. The hierarchy is not well designed.
+                        f"{self.name} received {message.type()}: {message.order}"  # type: ignore
                     )
 
                 self.send_message(sender_id, MarketClosedMsg())

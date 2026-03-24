@@ -82,7 +82,7 @@ class AgentRegistry:
         """Return metadata for all registered agent types (AI-friendly)."""
         result = []
         for entry in self._entries.values():
-            schema = entry.config_model.model_json_schema()
+            schema = entry.config_model.model_json_schema()  # type: ignore[attr-defined]
             result.append(
                 {
                     "name": entry.name,
@@ -96,7 +96,7 @@ class AgentRegistry:
     def get_json_schema(self, name: str) -> dict[str, Any]:
         """Return the JSON Schema for a registered agent type's config."""
         entry = self.get(name)
-        return entry.config_model.model_json_schema()
+        return entry.config_model.model_json_schema()  # type: ignore[attr-defined, no-any-return]
 
     def registered_names(self) -> list[str]:
         """Return sorted list of all registered agent type names."""

@@ -186,14 +186,11 @@ class PriceLevel:
         ):
             return True
 
-        if (
+        return bool(
             order.side.is_ask()
-            and (order.limit_price <= self.price)
-            and (not (order.is_post_only and self.total_quantity == 0))
-        ):
-            return True
-
-        return False
+            and order.limit_price <= self.price
+            and not (order.is_post_only and self.total_quantity == 0)
+        )
 
     def order_has_better_price(self, order: LimitOrder) -> bool:
         """
@@ -212,10 +209,7 @@ class PriceLevel:
         if order.side.is_bid() and (order.limit_price > self.price):
             return True
 
-        if order.side.is_ask() and (order.limit_price < self.price):
-            return True
-
-        return False
+        return bool(order.side.is_ask() and order.limit_price < self.price)
 
     def order_has_worse_price(self, order: LimitOrder) -> bool:
         """
@@ -234,10 +228,7 @@ class PriceLevel:
         if order.side.is_bid() and (order.limit_price < self.price):
             return True
 
-        if order.side.is_ask() and (order.limit_price > self.price):
-            return True
-
-        return False
+        return bool(order.side.is_ask() and order.limit_price > self.price)
 
     def order_has_equal_price(self, order: LimitOrder) -> bool:
         """

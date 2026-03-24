@@ -8,6 +8,7 @@ This test verifies that:
 """
 
 import numpy as np
+
 from abides_core import Kernel
 from abides_core.utils import str_to_ns
 from abides_markets.configs import rmsc04

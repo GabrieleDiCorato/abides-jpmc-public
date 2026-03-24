@@ -3,9 +3,10 @@ from abc import ABC
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-import abides_markets.agents.utils as markets_agent_utils
 import gymnasium as gym
 import numpy as np
+
+import abides_markets.agents.utils as markets_agent_utils
 from abides_core import NanosecondTime
 from abides_core.generators import ConstantTimeGenerator
 from abides_core.utils import str_to_ns
@@ -63,7 +64,7 @@ class SubGymMarketsExecutionEnv_v0(AbidesGymMarketsEnv):
     )
 
     @dataclass
-    class CustomMetricsTracker(ABC):
+    class CustomMetricsTracker(ABC):  # noqa: B024
         """
         Data Class used to track custom metrics that are output to rllib
         """

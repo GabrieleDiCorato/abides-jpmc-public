@@ -1,6 +1,7 @@
 """Tests for critical bug fixes in exchange_agent, trading_agent, kernel, and oracle."""
 
 import numpy as np
+
 from abides_core.kernel import Kernel
 from abides_markets.agents.exchange_agent import ExchangeAgent
 from abides_markets.agents.trading_agent import TradingAgent
@@ -90,7 +91,7 @@ def test_oracle_does_not_mutate_caller_config():
         }
     }
     original_keys = set(symbols_config["IBM"].keys())
-    oracle = SparseMeanRevertingOracle(
+    SparseMeanRevertingOracle(
         mkt_open=0,
         mkt_close=int(1e18),
         symbols=symbols_config,
@@ -162,7 +163,7 @@ def test_kernel_set_wakeup_valueerror_is_string():
     kernel.current_time = 100
     try:
         kernel.set_wakeup(sender_id=0, requested_time=50)
-        assert False, "Expected ValueError"
+        raise AssertionError("Expected ValueError")
     except ValueError as e:
         # Should be a single formatted string, not tuple args
         assert len(e.args) == 1, f"ValueError has {len(e.args)} args, expected 1"

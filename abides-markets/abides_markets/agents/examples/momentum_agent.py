@@ -1,13 +1,14 @@
 import numpy as np
+
 from abides_core import Message, NanosecondTime
 from abides_core.utils import str_to_ns
 
 from ...messages.marketdata import L2SubReqMsg, MarketDataMsg
-
-_DEFAULT_WAKE_UP_FREQ: int = str_to_ns("60s")
 from ...messages.query import QuerySpreadResponseMsg
 from ...orders import Side
 from ..trading_agent import TradingAgent
+
+_DEFAULT_WAKE_UP_FREQ: int = str_to_ns("60s")
 
 
 class MomentumAgent(TradingAgent):

@@ -11,6 +11,7 @@ import tempfile
 
 import numpy as np
 import pandas as pd
+
 from abides_core import abides
 from abides_core.utils import (
     datetime_str_to_ns,
@@ -83,12 +84,12 @@ class TestOrderBookDataFrameOps:
     def test_order_book_history_exists(self):
         exchange = self._run_sim_with_book_logging()
         assert exchange is not None
-        for symbol, book in exchange.order_books.items():
+        for _symbol, book in exchange.order_books.items():
             assert len(book.history) > 0, "Order book should have history entries"
 
     def test_get_l3_itch_produces_dataframe(self):
         exchange = self._run_sim_with_book_logging()
-        for symbol, book in exchange.order_books.items():
+        for _symbol, book in exchange.order_books.items():
             if len(book.history) > 0:
                 df = book.get_l3_itch()
                 assert isinstance(df, pd.DataFrame)
@@ -102,7 +103,7 @@ class TestOrderBookDataFrameOps:
 
     def test_l3_itch_types_correct(self):
         exchange = self._run_sim_with_book_logging()
-        for symbol, book in exchange.order_books.items():
+        for _symbol, book in exchange.order_books.items():
             if len(book.history) > 0:
                 df = book.get_l3_itch()
                 # Verify the type replacement worked
@@ -114,7 +115,7 @@ class TestOrderBookDataFrameOps:
 
     def test_l3_itch_side_replacement(self):
         exchange = self._run_sim_with_book_logging()
-        for symbol, book in exchange.order_books.items():
+        for _symbol, book in exchange.order_books.items():
             if len(book.history) > 0:
                 df = book.get_l3_itch()
                 valid_sides = {"B", "S"}
@@ -375,8 +376,9 @@ class TestGymEnvironments:
     """Gym envs create configs internally. Verify they build and step."""
 
     def test_markets_execution_env(self):
-        import abides_gym  # noqa: F401 - triggers env registration
         import gymnasium as gym
+
+        import abides_gym  # noqa: F401 - triggers env registration
 
         env = gym.make("markets-execution-v0")
         obs, info = env.reset()
@@ -387,8 +389,9 @@ class TestGymEnvironments:
         env.close()
 
     def test_markets_daily_investor_env(self):
-        import abides_gym  # noqa: F401 - triggers env registration
         import gymnasium as gym
+
+        import abides_gym  # noqa: F401 - triggers env registration
 
         env = gym.make("markets-daily_investor-v0")
         obs, info = env.reset()

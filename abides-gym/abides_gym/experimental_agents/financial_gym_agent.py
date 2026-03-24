@@ -3,6 +3,7 @@ from copy import deepcopy
 from typing import Any
 
 import numpy as np
+
 from abides_core import NanosecondTime
 from abides_core.generators import ConstantTimeGenerator, InterArrivalTimeGenerator
 from abides_core.utils import str_to_ns

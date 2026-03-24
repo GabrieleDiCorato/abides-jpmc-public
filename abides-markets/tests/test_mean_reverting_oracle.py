@@ -11,6 +11,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
+
 from abides_core.utils import datetime_str_to_ns, str_to_ns
 from abides_markets.oracles.mean_reverting_oracle import MeanRevertingOracle
 
@@ -116,10 +117,12 @@ class TestMeanRevertingOracleSafety:
     def test_rejects_large_time_range(self):
         """Constructing with > 1 000 000 steps should raise ValueError."""
         rng = np.random.RandomState(42)
-        with pytest.raises(ValueError, match="exceeds the maximum"):
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", DeprecationWarning)
-                MeanRevertingOracle(MKT_OPEN, MKT_OPEN + 2_000_000, SYMBOLS, rng)
+        with (
+            pytest.raises(ValueError, match="exceeds the maximum"),
+            warnings.catch_warnings(),
+        ):
+            warnings.simplefilter("ignore", DeprecationWarning)
+            MeanRevertingOracle(MKT_OPEN, MKT_OPEN + 2_000_000, SYMBOLS, rng)
 
     def test_deprecation_warning(self):
         """Construction should emit a DeprecationWarning."""

@@ -185,7 +185,7 @@ class SimulationBuilder:
                     f"Invalid parameters for agent type '{agent_name}': {e}"
                 ) from e
 
-        return config
+        return config  # type: ignore[no-any-return]
 
     def to_dict(self) -> dict[str, Any]:
         """Return the raw config dict (before validation)."""

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
 from abides_markets.config_system import (
     SimulationBuilder,
     SimulationConfig,
@@ -439,10 +440,11 @@ class TestGymCompatibility:
 class TestCustomRegistration:
     def test_register_and_use_custom_agent(self):
         """A third-party agent should be registrable and compilable."""
+        from pydantic import Field
+
         from abides_markets.config_system.agent_configs import (
             BaseAgentConfig,
         )
-        from pydantic import Field
 
         # Define a simple custom agent config
         class DummyAgentConfig(BaseAgentConfig):

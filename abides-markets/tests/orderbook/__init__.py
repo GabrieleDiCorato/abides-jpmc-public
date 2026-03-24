@@ -1,5 +1,3 @@
-from typing import List, Tuple
-
 from abides_core import Message
 from abides_markets.order_book import OrderBook
 from abides_markets.orders import LimitOrder, Side

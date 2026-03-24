@@ -128,7 +128,7 @@ class MyCallbacks(DefaultCallbacks):
         milestone_index = -1
         action_counter = episode.user_data["action_counter"][milestone_index]
         tot_actions = 0
-        for key, val in action_counter.items():
+        for _key, val in action_counter.items():
             tot_actions += val
         for key, val in action_counter.items():
             episode.custom_metrics[f"pct_action_counter_{key}_{i}"] = val / tot_actions
@@ -160,7 +160,7 @@ class MyCallbacks(DefaultCallbacks):
 
             action_counter = episode.user_data["action_counter"][milestone_index]
             tot_actions = 0
-            for key, val in action_counter.items():
+            for _key, val in action_counter.items():
                 tot_actions += val
             for key, val in action_counter.items():
                 episode.custom_metrics[f"pct_action_counter_{key}_{i}"] = (
