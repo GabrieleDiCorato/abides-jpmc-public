@@ -33,7 +33,7 @@ def save_config(config: SimulationConfig, path: Union[str, Path]) -> None:
 
     if path.suffix in (".yaml", ".yml"):
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
         except ImportError as e:
             raise ImportError(
                 "pyyaml is required for YAML support. Install it with: pip install pyyaml"

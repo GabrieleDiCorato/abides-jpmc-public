@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 from math import ceil, floor
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
 from abides_core import Message, NanosecondTime
 
 from ...messages.marketdata import (
@@ -46,9 +46,9 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         id: int,
         symbol: str,
         starting_cash: int,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
         pov: float = 0.05,
         min_order_size: int = 20,
         window_size: (
@@ -133,15 +133,15 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         ## Internal variables
 
         self.subscription_requested: bool = False
-        self.state: Dict[str, bool] = self.initialise_state()
+        self.state: dict[str, bool] = self.initialise_state()
         self.buy_order_size: int = self.min_order_size
         self.sell_order_size: int = self.min_order_size
 
-        self.last_mid: Optional[int] = None  # last observed mid price
+        self.last_mid: int | None = None  # last observed mid price
         self.last_spread: float = (
             INITIAL_SPREAD_VALUE  # last observed spread moving average
         )
-        self.tick_size: Optional[int] = (
+        self.tick_size: int | None = (
             None if self.is_adaptive else ceil(self.last_spread * self.level_spacing)
         )
         self.LIQUIDITY_DROPOUT_WARNING: str = (
@@ -149,11 +149,11 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         )
 
         self.two_side: bool = (
-            False if self.price_skew_param is None else True
+            self.price_skew_param is not None
         )  # switch to control self.get_transacted_volume
         # method
 
-    def initialise_state(self) -> Dict[str, bool]:
+    def initialise_state(self) -> dict[str, bool]:
         """Returns variables that keep track of whether spread and transacted volume have been observed."""
 
         if self.subscribe:
@@ -266,11 +266,13 @@ class AdaptiveMarketMakerAgent(TradingAgent):
             self.update_order_size()
             self.state["AWAITING_TRANSACTED_VOLUME"] = False
 
-        if isinstance(message, BookImbalanceDataMsg):
-            if message.stage == MarketDataEventMsg.Stage.START:
-                if mid is not None:
-                    self.place_orders(mid)
-                    self.last_time_book_order = current_time
+        if (
+            isinstance(message, BookImbalanceDataMsg)
+            and message.stage == MarketDataEventMsg.Stage.START
+            and mid is not None
+        ):
+            self.place_orders(mid)
+            self.last_time_book_order = current_time
 
         if not self.subscribe:
             if (
@@ -379,7 +381,7 @@ class AdaptiveMarketMakerAgent(TradingAgent):
                 sell_size if sell_size >= self.min_order_size else self.min_order_size
             )
 
-    def compute_orders_to_place(self, mid: int) -> Tuple[List[int], List[int]]:
+    def compute_orders_to_place(self, mid: int) -> tuple[list[int], list[int]]:
         """Given a mid price, computes the orders that need to be removed from
         orderbook, and adds these orders to bid and ask deques.
 

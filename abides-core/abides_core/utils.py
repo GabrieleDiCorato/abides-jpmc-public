@@ -6,11 +6,13 @@ any simulator object (kernel, agent, etc).
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import inspect
 import os
 import pickle
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -18,7 +20,7 @@ import pandas as pd
 from . import NanosecondTime
 
 
-def subdict(d: Dict[str, Any], keys: List[str]) -> Dict[str, Any]:
+def subdict(d: dict[str, Any], keys: list[str]) -> dict[str, Any]:
     """
     Returns a dictionnary with only the keys defined in the keys list
     Arguments:
@@ -30,7 +32,7 @@ def subdict(d: Dict[str, Any], keys: List[str]) -> Dict[str, Any]:
     return {k: v for k, v in d.items() if k in keys}
 
 
-def restrictdict(d: Dict[str, Any], keys: List[str]) -> Dict[str, Any]:
+def restrictdict(d: dict[str, Any], keys: list[str]) -> dict[str, Any]:
     """
     Returns a dictionnary with only the intersections of the keys defined in the keys list and the keys in the o
     Arguments:
@@ -39,7 +41,7 @@ def restrictdict(d: Dict[str, Any], keys: List[str]) -> Dict[str, Any]:
     Returns:
         - dictionnary with only the subset of keys
     """
-    inter = [k for k in d.keys() if k in keys]
+    inter = [k for k in d if k in keys]
     return subdict(d, inter)
 
 
@@ -173,10 +175,8 @@ def parse_logs_df(end_state: dict) -> pd.DataFrame:
                 event = {"ScalarEventValue": event}
             else:
                 pass
-            try:
+            with contextlib.suppress(KeyError):
                 del m["Event"]
-            except KeyError:
-                pass
             m.update(event)
             if m.get("agent_id") is None:
                 m["agent_id"] = agent.id

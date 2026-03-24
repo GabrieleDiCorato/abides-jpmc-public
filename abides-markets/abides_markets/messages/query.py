@@ -1,6 +1,6 @@
 from abc import ABC
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from abides_core import Message
 
@@ -28,7 +28,7 @@ class QueryLastTradeResponseMsg(QueryResponseMsg):
     # Inherited Fields:
     # symbol: str
     # mkt_closed: bool
-    last_trade: Optional[int]
+    last_trade: int | None
 
 
 @dataclass
@@ -44,9 +44,9 @@ class QuerySpreadResponseMsg(QueryResponseMsg):
     # symbol: str
     # mkt_closed: bool
     depth: int
-    bids: List[Tuple[int, int]]
-    asks: List[Tuple[int, int]]
-    last_trade: Optional[int]
+    bids: list[tuple[int, int]]
+    asks: list[tuple[int, int]]
+    last_trade: int | None
 
 
 @dataclass
@@ -62,7 +62,7 @@ class QueryOrderStreamResponseMsg(QueryResponseMsg):
     # symbol: str
     # mkt_closed: bool
     length: int
-    orders: List[Dict[str, Any]]
+    orders: list[dict[str, Any]]
 
 
 @dataclass

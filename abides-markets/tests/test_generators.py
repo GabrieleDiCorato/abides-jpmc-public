@@ -1,4 +1,5 @@
 import numpy as np
+
 from abides_markets.generators import (
     ConstantDepthGenerator,
     ConstantOrderSizeGenerator,

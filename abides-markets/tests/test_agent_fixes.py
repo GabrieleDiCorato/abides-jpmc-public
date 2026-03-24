@@ -13,27 +13,25 @@ Covers:
 """
 
 import inspect
-import warnings
 
 import numpy as np
 import pandas as pd
-import pytest
+
 from abides_core.utils import datetime_str_to_ns, str_to_ns
 from abides_markets.agents.examples.momentum_agent import MomentumAgent
 from abides_markets.agents.market_makers.adaptive_market_maker_agent import (
     AdaptiveMarketMakerAgent,
 )
-from abides_markets.agents.value_agent import ValueAgent
 from abides_markets.agents.noise_agent import NoiseAgent
 from abides_markets.agents.pov_execution_agent import POVExecutionAgent
 from abides_markets.agents.trading_agent import TradingAgent
-from abides_markets.orders import Side
-from abides_markets.oracles.data_providers import DataFrameProvider
+from abides_markets.agents.value_agent import ValueAgent
 from abides_markets.oracles.external_data_oracle import ExternalDataOracle
 from abides_markets.oracles.oracle import Oracle
 from abides_markets.oracles.sparse_mean_reverting_oracle import (
     SparseMeanRevertingOracle,
 )
+from abides_markets.orders import Side
 
 # ---------------------------------------------------------------------------
 # Shared constants
@@ -281,12 +279,8 @@ class TestMomentumAgentIntegerMAs:
         for i in range(51):
             agent.mid_list.append(100_000 + i)
         # Compute MAs via place_orders logic
-        agent.avg_20_list.append(
-            int(round(MomentumAgent.ma(agent.mid_list, n=20)[-1]))
-        )
-        agent.avg_50_list.append(
-            int(round(MomentumAgent.ma(agent.mid_list, n=50)[-1]))
-        )
+        agent.avg_20_list.append(int(round(MomentumAgent.ma(agent.mid_list, n=20)[-1])))
+        agent.avg_50_list.append(int(round(MomentumAgent.ma(agent.mid_list, n=50)[-1])))
         assert isinstance(agent.avg_20_list[-1], int)
         assert isinstance(agent.avg_50_list[-1], int)
 
@@ -312,7 +306,7 @@ class TestValueAgentBuyDirection:
 class TestPOVAgentTypes:
     def test_last_bid_ask_typed_as_int(self):
         """last_bid and last_ask must be Optional[int], not Optional[float]."""
-        sig = inspect.signature(POVExecutionAgent.__init__)
+        inspect.signature(POVExecutionAgent.__init__)
         # Check via instance inspection
         agent = POVExecutionAgent(
             id=0,
@@ -322,8 +316,10 @@ class TestPOVAgentTypes:
             end_time=MKT_CLOSE,
             random_state=np.random.RandomState(42),
         )
-        # Type hints should be int, verified via __annotations__
-        hints = type(agent).__init__.__code__.co_varnames
+        # Type hints should be int: verify via source code annotation
+        source = inspect.getsource(POVExecutionAgent.__init__)
+        assert "last_bid: int | None" in source
+        assert "last_ask: int | None" in source
         # last_bid and last_ask are initialized as None — just verify they exist and are correct type
         assert agent.last_bid is None
         assert agent.last_ask is None
@@ -337,7 +333,6 @@ class TestPOVAgentTypes:
 class TestNoiseAgentBuyDirection:
     def test_placeorder_uses_bool_buy(self):
         """NoiseAgent.placeOrder should use bool for buy direction."""
-        import dis
 
         # Verify randint(0, 2) is called (not 1+1)
         source = inspect.getsource(NoiseAgent.placeOrder)

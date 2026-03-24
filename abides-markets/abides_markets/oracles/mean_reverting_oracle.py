@@ -2,10 +2,11 @@ import datetime as dt
 import logging
 import warnings
 from math import sqrt
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from abides_core import NanosecondTime
 
 from .oracle import Oracle
@@ -41,7 +42,7 @@ class MeanRevertingOracle(Oracle):
         self,
         mkt_open: NanosecondTime,
         mkt_close: NanosecondTime,
-        symbols: Dict[str, Dict[str, Any]],
+        symbols: dict[str, dict[str, Any]],
         random_state: np.random.RandomState,
     ) -> None:
         warnings.warn(
@@ -64,11 +65,11 @@ class MeanRevertingOracle(Oracle):
         # inner keys: r_bar, kappa, sigma_s.
         self.mkt_open: NanosecondTime = mkt_open
         self.mkt_close: NanosecondTime = mkt_close
-        self.symbols: Dict[str, Dict[str, Any]] = symbols
+        self.symbols: dict[str, dict[str, Any]] = symbols
         self.random_state: np.random.RandomState = random_state
 
         # The dictionary r holds the fundamenal value series for each symbol.
-        self.r: Dict[str, pd.Series] = {}
+        self.r: dict[str, pd.Series] = {}
 
         then = dt.datetime.now()
 
@@ -179,10 +180,11 @@ class MeanRevertingOracle(Oracle):
             r_t = self.r[symbol].loc[pd.Timestamp(current_time, unit="ns")]
 
         # Generate a noisy observation of fundamental value at the current time.
-        if sigma_n == 0:
-            obs = r_t
-        else:
-            obs = int(round(random_state.normal(loc=r_t, scale=sqrt(sigma_n))))
+        obs = (
+            r_t
+            if sigma_n == 0
+            else int(round(random_state.normal(loc=r_t, scale=sqrt(sigma_n))))
+        )
 
         logger.debug("Oracle: current fundamental value is {} at {}", r_t, current_time)
         logger.debug("Oracle: giving client value observation {}", obs)

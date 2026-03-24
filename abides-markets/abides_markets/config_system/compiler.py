@@ -12,9 +12,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from abides_core import NanosecondTime
 from abides_core.utils import str_to_ns
-
 from abides_markets.agents import ExchangeAgent
 from abides_markets.config_system.agent_configs import AgentCreationContext
 from abides_markets.config_system.models import (

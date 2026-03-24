@@ -1,5 +1,4 @@
 from collections import defaultdict
-from typing import Dict
 
 import numpy as np
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -20,7 +19,7 @@ class MyCallbacks(DefaultCallbacks):
         *,
         worker: RolloutWorker,
         base_env: BaseEnv,
-        policies: Dict[str, Policy],
+        policies: dict[str, Policy],
         episode: Episode,
         env_index: int,
         **kwargs,
@@ -92,7 +91,7 @@ class MyCallbacks(DefaultCallbacks):
         *,
         worker: RolloutWorker,
         base_env: BaseEnv,
-        policies: Dict[str, Policy],
+        policies: dict[str, Policy],
         episode: Episode,
         env_index: int,
         **kwargs,
@@ -129,7 +128,7 @@ class MyCallbacks(DefaultCallbacks):
         milestone_index = -1
         action_counter = episode.user_data["action_counter"][milestone_index]
         tot_actions = 0
-        for key, val in action_counter.items():
+        for _key, val in action_counter.items():
             tot_actions += val
         for key, val in action_counter.items():
             episode.custom_metrics[f"pct_action_counter_{key}_{i}"] = val / tot_actions
@@ -161,7 +160,7 @@ class MyCallbacks(DefaultCallbacks):
 
             action_counter = episode.user_data["action_counter"][milestone_index]
             tot_actions = 0
-            for key, val in action_counter.items():
+            for _key, val in action_counter.items():
                 tot_actions += val
             for key, val in action_counter.items():
                 episode.custom_metrics[f"pct_action_counter_{key}_{i}"] = (
@@ -221,9 +220,9 @@ class MyCallbacks(DefaultCallbacks):
         episode: Episode,
         agent_id: str,
         policy_id: str,
-        policies: Dict[str, Policy],
+        policies: dict[str, Policy],
         postprocessed_batch: SampleBatch,
-        original_batches: Dict[str, SampleBatch],
+        original_batches: dict[str, SampleBatch],
         **kwargs,
     ):
         """Called immediately after a policy's postprocess_fn is called.

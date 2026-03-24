@@ -1,6 +1,7 @@
-from typing import List, Optional, Union
+from typing import Union
 
 import numpy as np
+
 from abides_core import Agent
 
 from ..utils import dollarize
@@ -20,14 +21,14 @@ class FinancialAgent(Agent):
     def __init__(
         self,
         id: int,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
     ) -> None:
         # Base class init.
         super().__init__(id, name, type, random_state)
 
-    def dollarize(self, cents: Union[List[int], int]) -> Union[List[str], str]:
+    def dollarize(self, cents: Union[list[int], int]) -> Union[list[str], str]:
         """
         Used by any subclass to dollarize an int-cents price for printing.
         """

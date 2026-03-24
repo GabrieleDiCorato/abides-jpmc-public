@@ -1,4 +1,5 @@
 import numpy as np
+
 from abides_core.generators import ConstantTimeGenerator, PoissonTimeGenerator
 
 

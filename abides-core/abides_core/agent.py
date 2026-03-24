@@ -1,6 +1,6 @@
 import logging
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -33,9 +33,9 @@ class Agent:
     def __init__(
         self,
         id: int,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
         log_events: bool = True,
         log_to_file: bool = True,
     ) -> None:
@@ -67,7 +67,7 @@ class Agent:
 
         # It might, or might not, make sense to formalize these log Events
         # as a class, with enumerated EventTypes and so forth.
-        self.log: List[Tuple[NanosecondTime, str, Any]] = []
+        self.log: list[tuple[NanosecondTime, str, Any]] = []
 
         self.logEvent("AGENT_TYPE", type)
 
@@ -89,7 +89,7 @@ class Agent:
 
         self.kernel = kernel
 
-        logger.debug("{} exists!".format(self.name))
+        logger.debug(f"{self.name} exists!")
 
     def kernel_starting(self, start_time: NanosecondTime) -> None:
         """
@@ -108,9 +108,7 @@ class Agent:
         assert self.kernel is not None
 
         logger.debug(
-            "Agent {} ({}) requesting kernel wakeup at time {}".format(
-                self.id, self.name, fmt_ts(start_time)
-            )
+            f"Agent {self.id} ({self.name}) requesting kernel wakeup at time {fmt_ts(start_time)}"
         )
 
         self.set_wakeup(start_time)
@@ -199,9 +197,7 @@ class Agent:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "At {}, agent {} ({}) received: {}".format(
-                    fmt_ts(current_time), self.id, self.name, message
-                )
+                f"At {fmt_ts(current_time)}, agent {self.id} ({self.name}) received: {message}"
             )
 
     def wakeup(self, current_time: NanosecondTime) -> None:
@@ -222,9 +218,7 @@ class Agent:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "At {}, agent {} ({}) received wakeup.".format(
-                    fmt_ts(current_time), self.id, self.name
-                )
+                f"At {fmt_ts(current_time)}, agent {self.id} ({self.name}) received wakeup."
             )
 
     ### Presently the kernel expects agent IDs only, not agent references.
@@ -249,7 +243,7 @@ class Agent:
         self.kernel.send_message(self.id, recipient_id, message, delay=delay)
 
     def send_message_batch(
-        self, recipient_id: int, messages: List[Message], delay: NanosecondTime = 0
+        self, recipient_id: int, messages: list[Message], delay: NanosecondTime = 0
     ) -> None:
         """
         Sends a batch of messages to another Agent.
@@ -329,7 +323,7 @@ class Agent:
 
         self.kernel.delay_agent(sender_id=self.id, additional_delay=additional_delay)
 
-    def write_log(self, df_log: pd.DataFrame, filename: Optional[str] = None) -> None:
+    def write_log(self, df_log: pd.DataFrame, filename: str | None = None) -> None:
         """
         Called by the agent, usually at the very end of the simulation just before
         kernel shutdown, to write to disk any log dataframe it has been accumulating

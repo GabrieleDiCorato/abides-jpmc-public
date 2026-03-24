@@ -1,9 +1,8 @@
 import logging
-from typing import Optional
 
 import numpy as np
-from abides_core import Message, NanosecondTime
 
+from abides_core import Message, NanosecondTime
 from abides_markets.models.order_size_model import OrderSizeModel
 
 from ..messages.query import QuerySpreadResponseMsg
@@ -22,13 +21,13 @@ class NoiseAgent(TradingAgent):
         self,
         id: int,
         wakeup_time: NanosecondTime,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
         symbol: str = "IBM",
         starting_cash: int = 100000,
         log_orders: bool = False,
-        order_size_model: Optional[OrderSizeModel] = None,
+        order_size_model: OrderSizeModel | None = None,
     ) -> None:
 
         # Base class init.
@@ -48,9 +47,9 @@ class NoiseAgent(TradingAgent):
 
         # The agent must track its previous wake time, so it knows how many time
         # units have passed.
-        self.prev_wake_time: Optional[NanosecondTime] = None
+        self.prev_wake_time: NanosecondTime | None = None
 
-        self.size: Optional[int] = (
+        self.size: int | None = (
             self.random_state.randint(20, 50) if order_size_model is None else None
         )
 
@@ -75,10 +74,7 @@ class NoiseAgent(TradingAgent):
             # Print end of day valuation.
             H = int(round(self.get_holdings(self.symbol), -2) / 100)
 
-            if bid and ask:
-                rT = int(bid + ask) / 2
-            else:
-                rT = self.last_trade[self.symbol]
+            rT = int(bid + ask) / 2 if bid and ask else self.last_trade[self.symbol]
 
             # final (real) fundamental value times shares held.
             surplus = rT * H
@@ -162,22 +158,19 @@ class NoiseAgent(TradingAgent):
         # If our internal state indicates we were waiting for a particular event,
         # check if we can transition to a new state.
 
-        if self.state == "AWAITING_SPREAD":
-            # We were waiting to receive the current spread/book.  Since we don't currently
-            # track timestamps on retained information, we rely on actually seeing a
-            # QUERY_SPREAD response message.
+        if self.state == "AWAITING_SPREAD" and isinstance(
+            message, QuerySpreadResponseMsg
+        ):
+            # This is what we were waiting for.
 
-            if isinstance(message, QuerySpreadResponseMsg):
-                # This is what we were waiting for.
+            # But if the market is now closed, don't advance to placing orders.
+            if self.mkt_closed:
+                return
 
-                # But if the market is now closed, don't advance to placing orders.
-                if self.mkt_closed:
-                    return
-
-                # We now have the information needed to place a limit order with the eta
-                # strategic threshold parameter.
-                self.placeOrder()
-                self.state = "AWAITING_WAKEUP"
+            # We now have the information needed to place a limit order with the eta
+            # strategic threshold parameter.
+            self.placeOrder()
+            self.state = "AWAITING_WAKEUP"
 
     # Internal state and logic specific to this agent subclass.
 

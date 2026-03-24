@@ -10,5 +10,5 @@ if __name__ == "__main__":
     )
 
     state, info = env.reset(seed=0)
-    for i in tqdm(range(5)):
+    for _i in tqdm(range(5)):
         state, reward, terminated, truncated, info = env.step(0)

@@ -9,7 +9,6 @@ from abides_markets.oracles.sparse_mean_reverting_oracle import (
     SparseMeanRevertingOracle,
 )
 
-
 # --- Kernel has_run ---
 
 
@@ -92,7 +91,7 @@ def test_oracle_does_not_mutate_caller_config():
         }
     }
     original_keys = set(symbols_config["IBM"].keys())
-    oracle = SparseMeanRevertingOracle(
+    SparseMeanRevertingOracle(
         mkt_open=0,
         mkt_close=int(1e18),
         symbols=symbols_config,
@@ -132,13 +131,6 @@ def test_oracle_creates_own_copy_of_symbols():
 
 def test_subscription_cancel_type_mapping():
     """Verify the subscription type mapping dict is correct."""
-    from abides_markets.messages.marketdata import (
-        BookImbalanceSubReqMsg,
-        L1SubReqMsg,
-        L2SubReqMsg,
-        L3SubReqMsg,
-        TransactedVolSubReqMsg,
-    )
 
     # Verify that subscription classes exist with expected attributes
     l1_sub = ExchangeAgent.L1DataSubscription(agent_id=0, last_update_ts=0, freq=1)
@@ -171,7 +163,7 @@ def test_kernel_set_wakeup_valueerror_is_string():
     kernel.current_time = 100
     try:
         kernel.set_wakeup(sender_id=0, requested_time=50)
-        assert False, "Expected ValueError"
+        raise AssertionError("Expected ValueError")
     except ValueError as e:
         # Should be a single formatted string, not tuple args
         assert len(e.args) == 1, f"ValueError has {len(e.args)} args, expected 1"

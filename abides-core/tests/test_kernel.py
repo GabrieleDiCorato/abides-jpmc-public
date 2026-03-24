@@ -3,6 +3,7 @@
 import heapq
 
 import numpy as np
+
 from abides_core.agent import Agent
 from abides_core.kernel import Kernel
 from abides_core.message import Message, MessageBatch

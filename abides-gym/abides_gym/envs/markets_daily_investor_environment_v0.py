@@ -1,9 +1,10 @@
 import importlib
-from typing import Any, Dict, List
+from typing import Any
 
-import abides_markets.agents.utils as markets_agent_utils
 import gymnasium as gym
 import numpy as np
+
+import abides_markets.agents.utils as markets_agent_utils
 from abides_core import NanosecondTime
 from abides_core.generators import ConstantTimeGenerator
 from abides_core.utils import str_to_ns
@@ -65,7 +66,7 @@ class SubGymMarketsDailyInvestorEnv_v0(AbidesGymMarketsEnv):
         background_config_extra_kvargs={},
     ) -> None:
         self.background_config: Any = importlib.import_module(
-            "abides_markets.configs.{}".format(background_config), package=None
+            f"abides_markets.configs.{background_config}", package=None
         )  #
         self.mkt_close: NanosecondTime = str_to_ns(mkt_close)  #
         self.timestep_duration: NanosecondTime = str_to_ns(timestep_duration)  #
@@ -194,7 +195,7 @@ class SubGymMarketsDailyInvestorEnv_v0(AbidesGymMarketsEnv):
 
     def _map_action_space_to_ABIDES_SIMULATOR_SPACE(
         self, action: int
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         utility function that maps open ai action definition (integers) to environnement API action definition (list of dictionaries)
         The action space ranges [0, 1, 2] where:
@@ -220,7 +221,7 @@ class SubGymMarketsDailyInvestorEnv_v0(AbidesGymMarketsEnv):
             )
 
     @raw_state_to_state_pre_process
-    def raw_state_to_state(self, raw_state: Dict[str, Any]) -> np.ndarray:
+    def raw_state_to_state(self, raw_state: dict[str, Any]) -> np.ndarray:
         """
         method that transforms a raw state into a state representation
 
@@ -278,7 +279,7 @@ class SubGymMarketsDailyInvestorEnv_v0(AbidesGymMarketsEnv):
         return computed_state.reshape(self.num_state_features, 1)
 
     @raw_state_pre_process
-    def raw_state_to_reward(self, raw_state: Dict[str, Any]) -> float:
+    def raw_state_to_reward(self, raw_state: dict[str, Any]) -> float:
         """
         method that transforms a raw state into the reward obtained during the step
 
@@ -327,7 +328,7 @@ class SubGymMarketsDailyInvestorEnv_v0(AbidesGymMarketsEnv):
             return 0
 
     @raw_state_pre_process
-    def raw_state_to_update_reward(self, raw_state: Dict[str, Any]) -> float:
+    def raw_state_to_update_reward(self, raw_state: dict[str, Any]) -> float:
         """
         method that transforms a raw state into the final step reward update (if needed)
 
@@ -366,7 +367,7 @@ class SubGymMarketsDailyInvestorEnv_v0(AbidesGymMarketsEnv):
             return reward
 
     @raw_state_pre_process
-    def raw_state_to_done(self, raw_state: Dict[str, Any]) -> bool:
+    def raw_state_to_done(self, raw_state: dict[str, Any]) -> bool:
         """
         method that transforms a raw state into the flag if an episode is done
 
@@ -396,7 +397,7 @@ class SubGymMarketsDailyInvestorEnv_v0(AbidesGymMarketsEnv):
         return done
 
     @raw_state_pre_process
-    def raw_state_to_info(self, raw_state: Dict[str, Any]) -> Dict[str, Any]:
+    def raw_state_to_info(self, raw_state: dict[str, Any]) -> dict[str, Any]:
         """
         method that transforms a raw state into an info dictionnary
 
@@ -438,7 +439,7 @@ class SubGymMarketsDailyInvestorEnv_v0(AbidesGymMarketsEnv):
             "bids": {"price": {}, "volume": {}},
         }
 
-        for book, book_name in [(bids, "bids"), (asks, "asks")]:
+        for _book, book_name in [(bids, "bids"), (asks, "asks")]:
             for level in [0, 1, 2]:
                 price, volume = markets_agent_utils.get_val(bids, level)
                 orderbook[book_name]["price"][level] = np.array([price]).reshape(-1)

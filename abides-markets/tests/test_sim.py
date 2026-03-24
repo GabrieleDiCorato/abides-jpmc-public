@@ -1,6 +1,7 @@
 import shutil
 
 import numpy as np
+
 from abides_core import Kernel
 from abides_core.utils import subdict
 from abides_markets.configs.rmsc04 import build_config as build_config_rmsc04

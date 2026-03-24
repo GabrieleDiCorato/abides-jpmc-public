@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import pandera.pandas as pa
 import pytest
+
 from abides_markets.config_system import SimulationBuilder
 from abides_markets.simulation import (
     AgentData,

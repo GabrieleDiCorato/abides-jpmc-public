@@ -8,6 +8,7 @@ cases, and noisy observations.
 import numpy as np
 import pandas as pd
 import pytest
+
 from abides_core.utils import datetime_str_to_ns, str_to_ns
 from abides_markets.oracles.data_providers import (
     DataFrameProvider,

@@ -4,10 +4,11 @@ from abc import ABC
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, DefaultDict, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from abides_core import Kernel, Message, NanosecondTime
 
 from ..messages.market import (
@@ -71,7 +72,7 @@ class ExchangeAgent(FinancialAgent):
     """
 
     @dataclass
-    class MetricTracker(ABC):
+    class MetricTracker(ABC):  # noqa: B024
         # droupout metrics
         total_time_no_liquidity_asks: int = 0
         total_time_no_liquidity_bids: int = 0
@@ -82,7 +83,7 @@ class ExchangeAgent(FinancialAgent):
         total_exchanged_volume: int = 0
 
         # last trade
-        last_trade: Optional[int] = 0
+        last_trade: int | None = 0
         # can be extended
 
     @dataclass
@@ -133,18 +134,18 @@ class ExchangeAgent(FinancialAgent):
         # Properties:
         min_imbalance: float
         # State:
-        imbalance: Optional[float] = None
-        side: Optional[Side] = None
+        imbalance: float | None = None
+        side: Side | None = None
 
     def __init__(
         self,
         id: int,
         mkt_open: NanosecondTime,
         mkt_close: NanosecondTime,
-        symbols: List[str],
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        symbols: list[str],
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
         book_logging: bool = True,
         book_log_depth: int = 10,
         pipeline_delay: int = 40000,
@@ -184,29 +185,29 @@ class ExchangeAgent(FinancialAgent):
         self.log_orders: bool = log_orders
 
         # Create an order book for each symbol.
-        self.order_books: Dict[str, OrderBook] = {
+        self.order_books: dict[str, OrderBook] = {
             symbol: OrderBook(self, symbol) for symbol in symbols
         }
 
         if use_metric_tracker:
             # Create a metric tracker for each symbol.
-            self.metric_trackers: Dict[str, ExchangeAgent.MetricTracker] = {
+            self.metric_trackers: dict[str, ExchangeAgent.MetricTracker] = {
                 symbol: self.MetricTracker() for symbol in symbols
             }
         else:
-            self.metric_trackers: Dict[str, ExchangeAgent.MetricTracker] = {}
+            self.metric_trackers: dict[str, ExchangeAgent.MetricTracker] = {}
 
         # The subscription dict is a dictionary with the key = agent ID,
         # value = dict (key = symbol, value = list [levels (no of levels to recieve updates for),
         # frequency (min number of ns between messages), last agent update timestamp]
         # e.g. {101 : {'AAPL' : [1, 10, NanosecondTime(10:00:00)}}
-        self.data_subscriptions: DefaultDict[
-            str, List[ExchangeAgent.BaseDataSubscription]
+        self.data_subscriptions: defaultdict[
+            str, list[ExchangeAgent.BaseDataSubscription]
         ] = defaultdict(list)
 
         # Store a list of agents who have requested market close price information.
         # (this is most likely all agents)
-        self.market_close_price_subscriptions: List[int] = []
+        self.market_close_price_subscriptions: list[int] = []
 
     def kernel_initializing(self, kernel: "Kernel") -> None:
         """
@@ -233,9 +234,7 @@ class ExchangeAgent(FinancialAgent):
                     symbol, self.mkt_open
                 )
                 logger.debug(
-                    "Opening price for {} is {}".format(
-                        symbol, self.order_books[symbol].last_trade
-                    )
+                    f"Opening price for {symbol} is {self.order_books[symbol].last_trade}"
                 )
             except AttributeError as e:
                 logger.debug(str(e))
@@ -278,7 +277,7 @@ class ExchangeAgent(FinancialAgent):
                 dfFund = pd.DataFrame(self.oracle.f_log[symbol])
                 if not dfFund.empty:
                     dfFund.set_index("FundamentalTime", inplace=True)
-                    self.write_log(dfFund, filename="fundamental_{}".format(symbol))
+                    self.write_log(dfFund, filename=f"fundamental_{symbol}")
                     logger.debug("Fundamental archival complete.")
 
     def wakeup(self, current_time: NanosecondTime):
@@ -325,21 +324,12 @@ class ExchangeAgent(FinancialAgent):
             if isinstance(message, OrderMsg):
                 if isinstance(message, ModifyOrderMsg):
                     logger.debug(
-                        "{} received {}: OLD: {} NEW: {}".format(
-                            self.name,
-                            message.type(),
-                            message.old_order,
-                            message.new_order,
-                        )
+                        f"{self.name} received {message.type()}: OLD: {message.old_order} NEW: {message.new_order}"
                     )
                 else:
                     logger.debug(
-                        "{} received {}: {}".format(
-                            # All the other order messages have an 'order' attribute. The hierarchy is not well designed.
-                            self.name,
-                            message.type(),
-                            message.order,  # type: ignore
-                        )
+                        # All the other order messages have an 'order' attribute. The hierarchy is not well designed.
+                        f"{self.name} received {message.type()}: {message.order}"  # type: ignore
                     )
 
                 self.send_message(sender_id, MarketClosedMsg())
@@ -352,9 +342,7 @@ class ExchangeAgent(FinancialAgent):
                 pass
             else:
                 logger.debug(
-                    "{} received {}, discarded: market is closed.".format(
-                        self.name, message.type()
-                    )
+                    f"{self.name} received {message.type()}, discarded: market is closed."
                 )
                 self.send_message(sender_id, MarketClosedMsg())
 
@@ -387,9 +375,7 @@ class ExchangeAgent(FinancialAgent):
 
             if message.cancel:
                 logger.debug(
-                    "{} received MarketDataSubscriptionCancellation request from agent {}".format(
-                        self.name, sender_id
-                    )
+                    f"{self.name} received MarketDataSubscriptionCancellation request from agent {sender_id}"
                 )
 
                 # Map message types to subscription types for correct matching
@@ -416,9 +402,7 @@ class ExchangeAgent(FinancialAgent):
 
             else:
                 logger.debug(
-                    "{} received MarketDataSubscriptionRequest request from agent {}".format(
-                        self.name, sender_id
-                    )
+                    f"{self.name} received MarketDataSubscriptionRequest request from agent {sender_id}"
                 )
 
                 if isinstance(message, L1SubReqMsg):
@@ -446,9 +430,7 @@ class ExchangeAgent(FinancialAgent):
 
         if isinstance(message, MarketHoursRequestMsg):
             logger.debug(
-                "{} received market hours request from agent {}".format(
-                    self.name, sender_id
-                )
+                f"{self.name} received market hours request from agent {sender_id}"
             )
 
             # The exchange is permitted to respond to requests for simple
@@ -469,9 +451,7 @@ class ExchangeAgent(FinancialAgent):
                 warnings.warn(f"Last trade request discarded. Unknown symbol: {symbol}")
             else:
                 logger.debug(
-                    "{} received QUERY_LAST_TRADE ({}) request from agent {}".format(
-                        self.name, symbol, sender_id
-                    )
+                    f"{self.name} received QUERY_LAST_TRADE ({symbol}) request from agent {sender_id}"
                 )
 
                 # Return the single last executed trade price (currently not
@@ -496,9 +476,7 @@ class ExchangeAgent(FinancialAgent):
                 )
             else:
                 logger.debug(
-                    "{} received QUERY_SPREAD ({}:{}) request from agent {}".format(
-                        self.name, symbol, depth, sender_id
-                    )
+                    f"{self.name} received QUERY_SPREAD ({symbol}:{depth}) request from agent {sender_id}"
                 )
 
                 # Return the requested depth on both sides of the order book for
@@ -532,9 +510,7 @@ class ExchangeAgent(FinancialAgent):
                 )
             else:
                 logger.debug(
-                    "{} received QUERY_ORDER_STREAM ({}:{}) request from agent {}".format(
-                        self.name, symbol, length, sender_id
-                    )
+                    f"{self.name} received QUERY_ORDER_STREAM ({symbol}:{length}) request from agent {sender_id}"
                 )
 
                 # We return indices [1:length] inclusive because the agent will want
@@ -560,14 +536,12 @@ class ExchangeAgent(FinancialAgent):
                 )
             else:
                 logger.debug(
-                    "{} received QUERY_TRANSACTED_VOLUME ({}:{}) request from agent {}".format(
-                        self.name, symbol, lookback_period, sender_id
-                    )
+                    f"{self.name} received QUERY_TRANSACTED_VOLUME ({symbol}:{lookback_period}) request from agent {sender_id}"
                 )
 
-                bid_volume, ask_volume = self.order_books[
-                    symbol
-                ].get_transacted_volume(lookback_period)
+                bid_volume, ask_volume = self.order_books[symbol].get_transacted_volume(
+                    lookback_period
+                )
 
                 self.send_message(
                     sender_id,
@@ -580,7 +554,7 @@ class ExchangeAgent(FinancialAgent):
                 )
 
         elif isinstance(message, LimitOrderMsg):
-            logger.debug("{} received LIMIT_ORDER: {}".format(self.name, message.order))
+            logger.debug(f"{self.name} received LIMIT_ORDER: {message.order}")
 
             if message.order.symbol not in self.order_books:
                 warnings.warn(
@@ -594,9 +568,7 @@ class ExchangeAgent(FinancialAgent):
                 self.publish_order_book_data(message.order.symbol)
 
         elif isinstance(message, MarketOrderMsg):
-            logger.debug(
-                "{} received MARKET_ORDER: {}".format(self.name, message.order)
-            )
+            logger.debug(f"{self.name} received MARKET_ORDER: {message.order}")
 
             if message.order.symbol not in self.order_books:
                 warnings.warn(
@@ -613,9 +585,7 @@ class ExchangeAgent(FinancialAgent):
             tag = message.tag
             metadata = message.metadata
 
-            logger.debug(
-                "{} received CANCEL_ORDER: {}".format(self.name, message.order)
-            )
+            logger.debug(f"{self.name} received CANCEL_ORDER: {message.order}")
 
             if message.order.symbol not in self.order_books:
                 warnings.warn(
@@ -633,9 +603,7 @@ class ExchangeAgent(FinancialAgent):
             metadata = message.metadata
 
             logger.debug(
-                "{} received PARTIAL_CANCEL_ORDER: {}, new order: {}".format(
-                    self.name, message.order, message.quantity
-                )
+                f"{self.name} received PARTIAL_CANCEL_ORDER: {message.order}, new order: {message.quantity}"
             )
 
             if message.order.symbol not in self.order_books:
@@ -653,9 +621,7 @@ class ExchangeAgent(FinancialAgent):
             new_order = message.new_order
 
             logger.debug(
-                "{} received MODIFY_ORDER: {}, new order: {}".format(
-                    self.name, old_order, new_order
-                )
+                f"{self.name} received MODIFY_ORDER: {old_order}, new order: {new_order}"
             )
 
             if old_order.symbol not in self.order_books:
@@ -663,9 +629,7 @@ class ExchangeAgent(FinancialAgent):
                     f"Modification request discarded. Unknown symbol: {old_order.symbol}"
                 )
             else:
-                self.order_books[old_order.symbol].modify_order(
-                    old_order, new_order
-                )
+                self.order_books[old_order.symbol].modify_order(old_order, new_order)
                 self.publish_order_book_data(old_order.symbol)
 
         elif isinstance(message, ReplaceOrderMsg):
@@ -674,9 +638,7 @@ class ExchangeAgent(FinancialAgent):
             new_order = message.new_order
 
             logger.debug(
-                "{} received REPLACE_ORDER: {}, new order: {}".format(
-                    self.name, order, new_order
-                )
+                f"{self.name} received REPLACE_ORDER: {order}, new order: {new_order}"
             )
 
             if order.symbol not in self.order_books:
@@ -715,9 +677,7 @@ class ExchangeAgent(FinancialAgent):
                     symbol, data_sub
                 )
             elif isinstance(data_sub, self.EventBasedSubscription):
-                messages = self.handle_event_based_data_subscription(
-                    symbol, data_sub
-                )
+                messages = self.handle_event_based_data_subscription(symbol, data_sub)
             else:
                 raise Exception("Got invalid data subscription object")
 
@@ -729,7 +689,7 @@ class ExchangeAgent(FinancialAgent):
 
     def handle_frequency_based_data_subscription(
         self, symbol: str, data_sub: "ExchangeAgent.FrequencyBasedSubscription"
-    ) -> List[Message]:
+    ) -> list[Message]:
         book = self.order_books[symbol]
 
         if (book.last_update_ts - data_sub.last_update_ts) < data_sub.freq:
@@ -789,7 +749,7 @@ class ExchangeAgent(FinancialAgent):
 
     def handle_event_based_data_subscription(
         self, symbol: str, data_sub: "ExchangeAgent.EventBasedSubscription"
-    ) -> List[Message]:
+    ) -> list[Message]:
         book = self.order_books[symbol]
         messages = []
 
@@ -872,7 +832,7 @@ class ExchangeAgent(FinancialAgent):
 
         return messages
 
-    def logL2style(self, symbol: str) -> Optional[Tuple[List, List]]:
+    def logL2style(self, symbol: str) -> tuple[list, list] | None:
         book = self.order_books[symbol]
         if not book.book_log2:
             return None
@@ -911,7 +871,7 @@ class ExchangeAgent(FinancialAgent):
         book = self.order_books[symbol].book_log2
         self.get_time_dropout(book, symbol)
 
-    def get_time_dropout(self, book: List[Dict[str, Any]], symbol: str):
+    def get_time_dropout(self, book: list[dict[str, Any]], symbol: str):
         # Calculate simulation duration
         start_time = self.mkt_open
         end_time = self.mkt_close

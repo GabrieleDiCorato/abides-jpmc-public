@@ -30,9 +30,9 @@ from uuid import uuid4
 
 import numpy as np
 import pandas as pd
+
 from abides_core.abides import run as abides_run
 from abides_core.utils import parse_logs_df
-
 from abides_markets.agents.exchange_agent import ExchangeAgent
 from abides_markets.agents.trading_agent import TradingAgent
 from abides_markets.config_system import compile as compile_config

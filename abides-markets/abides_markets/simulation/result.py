@@ -478,7 +478,7 @@ class SimulationResult(BaseModel):
         for col in ("fill_price", "limit_price"):
             if col not in filtered.columns:
                 filtered[col] = pd.array([None] * len(filtered), dtype="Int64")
-        return filtered  # type: ignore[return-value]
+        return filtered
 
     def to_dict(self) -> dict[str, Any]:
         """Return a fully JSON-serialisable dict (no numpy arrays, no DataFrames).

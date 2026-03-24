@@ -134,7 +134,8 @@ def register_agent(
 
     def decorator(cls: type) -> type:
         registry.register(
-            name, cls,
+            name,
+            cls,
             category=category,
             description=description,
             agent_class=agent_class,

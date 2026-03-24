@@ -1,7 +1,7 @@
 import logging
-from typing import Optional
 
 import numpy as np
+
 from abides_core import Message, NanosecondTime
 
 from ..messages.query import QuerySpreadResponseMsg
@@ -15,9 +15,9 @@ class ValueAgent(TradingAgent):
     def __init__(
         self,
         id: int,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
-        random_state: Optional[np.random.RandomState] = None,
+        name: str | None = None,
+        type: str | None = None,
+        random_state: np.random.RandomState | None = None,
         symbol: str = "IBM",
         starting_cash: int = 100_000,
         sigma_n: float = 10_000,
@@ -53,12 +53,12 @@ class ValueAgent(TradingAgent):
 
         # The agent must track its previous wake time, so it knows how many time
         # units have passed.
-        self.prev_wake_time: Optional[NanosecondTime] = None
+        self.prev_wake_time: NanosecondTime | None = None
 
         # Percent of time that the agent will aggress the spread
         self.percent_aggr: float = 0.1
 
-        self.size: Optional[int] = (
+        self.size: int | None = (
             self.random_state.randint(20, 50) if order_size_model is None else None
         )
         self.order_size_model = order_size_model  # Probabilistic model for order size
@@ -275,22 +275,19 @@ class ValueAgent(TradingAgent):
         # If our internal state indicates we were waiting for a particular event,
         # check if we can transition to a new state.
 
-        if self.state == "AWAITING_SPREAD":
-            # We were waiting to receive the current spread/book.  Since we don't currently
-            # track timestamps on retained information, we rely on actually seeing a
-            # QUERY_SPREAD response message.
+        if self.state == "AWAITING_SPREAD" and isinstance(
+            message, QuerySpreadResponseMsg
+        ):
+            # This is what we were waiting for.
 
-            if isinstance(message, QuerySpreadResponseMsg):
-                # This is what we were waiting for.
+            # But if the market is now closed, don't advance to placing orders.
+            if self.mkt_closed:
+                return
 
-                # But if the market is now closed, don't advance to placing orders.
-                if self.mkt_closed:
-                    return
-
-                # We now have the information needed to place a limit order with the eta
-                # strategic threshold parameter.
-                self.placeOrder()
-                self.state = "AWAITING_WAKEUP"
+            # We now have the information needed to place a limit order with the eta
+            # strategic threshold parameter.
+            self.placeOrder()
+            self.state = "AWAITING_WAKEUP"
 
         # Cancel all open orders.
         # Return value: did we issue any cancellation requests?

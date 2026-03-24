@@ -92,8 +92,8 @@ def _load_build_config(config_file: str) -> tuple[str, Callable]:
         sys.exit(1)
 
     module_name = os.path.splitext(os.path.basename(config_file))[0]
-    spec = importlib.util.spec_from_file_location(module_name, config_file)
-    module = importlib.util.module_from_spec(spec)
+    spec = importlib.util.spec_from_file_location(module_name, config_file)  # type: ignore[attr-defined]
+    module = importlib.util.module_from_spec(spec)  # type: ignore[attr-defined]
     spec.loader.exec_module(module)
 
     if not hasattr(module, "build_config") or not callable(module.build_config):

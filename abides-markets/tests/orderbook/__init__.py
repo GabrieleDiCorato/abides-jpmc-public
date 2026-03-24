@@ -1,5 +1,3 @@
-from typing import List, Tuple
-
 from abides_core import Message
 from abides_markets.order_book import OrderBook
 from abides_markets.orders import LimitOrder, Side
@@ -27,8 +25,8 @@ class FakeExchangeAgent:
 
 
 def setup_book_with_orders(
-    bids: List[Tuple[int, List[int]]] = [], asks: List[Tuple[int, List[int]]] = []
-) -> Tuple[OrderBook, FakeExchangeAgent, List[LimitOrder]]:
+    bids: list[tuple[int, list[int]]] = [], asks: list[tuple[int, list[int]]] = []
+) -> tuple[OrderBook, FakeExchangeAgent, list[LimitOrder]]:
     agent = FakeExchangeAgent()
     book = OrderBook(agent, SYMBOL)
     orders = []

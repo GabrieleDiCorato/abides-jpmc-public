@@ -10,8 +10,8 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from abides_core.utils import get_wake_time, str_to_ns
 
+from abides_core.utils import get_wake_time, str_to_ns
 from abides_markets.agents import (
     AdaptiveMarketMakerAgent,
     ExchangeAgent,
@@ -174,7 +174,7 @@ def build_config(
         noise_agents.append(
             NoiseAgent(
                 id=j,
-                name="NoiseAgent {}".format(j),
+                name=f"NoiseAgent {j}",
                 type="NoiseAgent",
                 symbol=ticker,
                 starting_cash=starting_cash,
@@ -194,7 +194,7 @@ def build_config(
         [
             ValueAgent(
                 id=j,
-                name="Value Agent {}".format(j),
+                name=f"Value Agent {j}",
                 type="ValueAgent",
                 symbol=ticker,
                 starting_cash=starting_cash,
@@ -218,7 +218,7 @@ def build_config(
         [
             AdaptiveMarketMakerAgent(
                 id=j,
-                name="ADAPTIVE_POV_MARKET_MAKER_AGENT_{}".format(j),
+                name=f"ADAPTIVE_POV_MARKET_MAKER_AGENT_{j}",
                 type="AdaptivePOVMarketMakerAgent",
                 symbol=ticker,
                 starting_cash=starting_cash,
@@ -249,7 +249,7 @@ def build_config(
         [
             MomentumAgent(
                 id=j,
-                name="MOMENTUM_AGENT_{}".format(j),
+                name=f"MOMENTUM_AGENT_{j}",
                 type="MomentumAgent",
                 symbol=ticker,
                 starting_cash=starting_cash,

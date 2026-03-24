@@ -5,10 +5,11 @@ import logging
 import sys
 import warnings
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from abides_core import Agent, NanosecondTime
 from abides_core.utils import ns_date, str_to_ns
 
@@ -57,21 +58,21 @@ class OrderBook:
         """
         self.owner: Agent = owner
         self.symbol: str = symbol
-        self.bids: List[PriceLevel] = []
-        self.asks: List[PriceLevel] = []
-        self.last_trade: Optional[int] = None
+        self.bids: list[PriceLevel] = []
+        self.asks: list[PriceLevel] = []
+        self.last_trade: int | None = None
 
         # Create an empty list of dictionaries to log the full order book depth (price and volume) each time it changes.
-        self.book_log2: List[Dict[str, Any]] = []
-        self.quotes_seen: Set[int] = set()
+        self.book_log2: list[dict[str, Any]] = []
+        self.quotes_seen: set[int] = set()
 
         # Create an order history for the exchange to report to certain agent types.
-        self.history: List[Dict[str, Any]] = []
+        self.history: list[dict[str, Any]] = []
 
-        self.last_update_ts: Optional[NanosecondTime] = self.owner.mkt_open
+        self.last_update_ts: NanosecondTime | None = self.owner.mkt_open
 
-        self.buy_transactions: List[Tuple[NanosecondTime, int]] = []
-        self.sell_transactions: List[Tuple[NanosecondTime, int]] = []
+        self.buy_transactions: list[tuple[NanosecondTime, int]] = []
+        self.sell_transactions: list[tuple[NanosecondTime, int]] = []
 
     # ------------------------------------------------------------------
     # Helpers: O(log N) price-level lookup via bisect
@@ -86,15 +87,15 @@ class OrderBook:
         return -price if side.is_bid() else price
 
     @staticmethod
-    def _book_keys(book: List[PriceLevel], side: Side) -> List[int]:
+    def _book_keys(book: list[PriceLevel], side: Side) -> list[int]:
         """Builds a list of sort-keys matching *book* for use with bisect."""
         if side.is_bid():
             return [-pl.price for pl in book]
         return [pl.price for pl in book]
 
     def _find_price_level(
-        self, book: List[PriceLevel], side: Side, price: int
-    ) -> Tuple[int, bool]:
+        self, book: list[PriceLevel], side: Side, price: int
+    ) -> tuple[int, bool]:
         """Binary-search for a price level in *book*.
 
         Returns ``(index, exact_match)``.
@@ -141,7 +142,7 @@ class OrderBook:
             )
             return
 
-        executed: List[Tuple[int, int]] = []
+        executed: list[tuple[int, int]] = []
 
         while True:
             matched_order = self.execute_order(order)
@@ -174,17 +175,13 @@ class OrderBook:
         if self.bids:
             self.owner.logEvent(
                 "BEST_BID",
-                "{},{},{}".format(
-                    self.symbol, self.bids[0].price, self.bids[0].total_quantity
-                ),
+                f"{self.symbol},{self.bids[0].price},{self.bids[0].total_quantity}",
             )
 
         if self.asks:
             self.owner.logEvent(
                 "BEST_ASK",
-                "{},{},{}".format(
-                    self.symbol, self.asks[0].price, self.asks[0].total_quantity
-                ),
+                f"{self.symbol},{self.asks[0].price},{self.asks[0].total_quantity}",
             )
 
         # Also log the last trade (total share quantity, average share price).
@@ -228,7 +225,7 @@ class OrderBook:
             if self.execute_order(order) is None:
                 break
 
-    def execute_order(self, order: Order) -> Optional[Order]:
+    def execute_order(self, order: Order) -> Order | None:
         """Finds a single best match for this order, without regard for quantity.
 
         Returns the matched order or None if no match found.  DOES remove,
@@ -366,7 +363,7 @@ class OrderBook:
     def enter_order(
         self,
         order: LimitOrder,
-        metadata: Optional[Dict] = None,
+        metadata: dict | None = None,
         quiet: bool = False,  ###!! originally true
     ) -> None:
         """Enters a limit order into the OrderBook in the appropriate location.
@@ -434,7 +431,7 @@ class OrderBook:
         self,
         order: LimitOrder,
         tag: str = None,
-        cancellation_metadata: Optional[Dict] = None,
+        cancellation_metadata: dict | None = None,
         quiet: bool = False,
     ) -> bool:
         """Attempts to cancel (the remaining, unexecuted portion of) a trade in the order book.
@@ -561,7 +558,7 @@ class OrderBook:
         order: LimitOrder,
         quantity: int,
         tag: str = None,
-        cancellation_metadata: Optional[Dict] = None,
+        cancellation_metadata: dict | None = None,
     ) -> None:
         """cancel a part of the quantity of an existing limit order in the order book.
 
@@ -591,9 +588,7 @@ class OrderBook:
                     order_id=order.order_id,
                     quantity=quantity,
                     tag=tag,
-                    metadata=(
-                        cancellation_metadata if tag == "auctionFill" else None
-                    ),
+                    metadata=(cancellation_metadata if tag == "auctionFill" else None),
                 )
             )
 
@@ -603,9 +598,7 @@ class OrderBook:
                 new_order.agent_id,
                 quantity,
             )
-            self.owner.send_message(
-                order.agent_id, OrderPartialCancelledMsg(new_order)
-            )
+            self.owner.send_message(order.agent_id, OrderPartialCancelledMsg(new_order))
 
             self.last_update_ts = self.owner.current_time
 
@@ -664,7 +657,7 @@ class OrderBook:
         # if (row["bids"][0][0]>=row["asks"][0][0]): print("WARNING: THIS IS A REAL PROBLEM: an order book contains bids and asks at the same quote price!")
         self.book_log2.append(row)
 
-    def get_l1_bid_data(self) -> Optional[Tuple[int, int]]:
+    def get_l1_bid_data(self) -> tuple[int, int] | None:
         """Returns the current best bid price and of the book and the volume at this price."""
 
         if len(self.bids) == 0:
@@ -676,7 +669,7 @@ class OrderBook:
             return None
         return self.bids[index].price, self.bids[index].total_quantity
 
-    def get_l1_ask_data(self) -> Optional[Tuple[int, int]]:
+    def get_l1_ask_data(self) -> tuple[int, int] | None:
         """Returns the current best ask price of the book and the volume at this price."""
 
         if len(self.asks) == 0:
@@ -688,7 +681,7 @@ class OrderBook:
             return None
         return self.asks[index].price, self.asks[index].total_quantity
 
-    def get_l2_bid_data(self, depth: int = sys.maxsize) -> List[Tuple[int, int]]:
+    def get_l2_bid_data(self, depth: int = sys.maxsize) -> list[tuple[int, int]]:
         """Returns the price and total quantity of all limit orders on the bid side.
 
         Arguments:
@@ -707,7 +700,7 @@ class OrderBook:
             if price_level.total_quantity > 0
         ]
 
-    def get_l2_ask_data(self, depth: int = sys.maxsize) -> List[Tuple[int, int]]:
+    def get_l2_ask_data(self, depth: int = sys.maxsize) -> list[tuple[int, int]]:
         """Returns the price and total quantity of all limit orders on the ask side.
 
         Arguments:
@@ -726,7 +719,7 @@ class OrderBook:
             if price_level.total_quantity > 0
         ]
 
-    def get_l3_bid_data(self, depth: int = sys.maxsize) -> List[Tuple[int, List[int]]]:
+    def get_l3_bid_data(self, depth: int = sys.maxsize) -> list[tuple[int, list[int]]]:
         """Returns the price and quantity of all limit orders on the bid side.
 
         Arguments:
@@ -748,7 +741,7 @@ class OrderBook:
             for price_level in self.bids[:depth]
         ]
 
-    def get_l3_ask_data(self, depth: int = sys.maxsize) -> List[Tuple[int, List[int]]]:
+    def get_l3_ask_data(self, depth: int = sys.maxsize) -> list[tuple[int, list[int]]]:
         """Returns the price and quantity of all limit orders on the ask side.
 
         Arguments:
@@ -772,7 +765,7 @@ class OrderBook:
 
     def get_transacted_volume(
         self, lookback_period: str | NanosecondTime = "10min"
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """Method retrieves the total transacted volume for a symbol over a lookback
         period finishing at the current simulation time.
 
@@ -800,7 +793,7 @@ class OrderBook:
 
         return (buy_transacted_volume, sell_transacted_volume)
 
-    def get_imbalance(self) -> Tuple[float, Optional[Side]]:
+    def get_imbalance(self) -> tuple[float, Side | None]:
         """Returns a measure of book side total volume imbalance.
 
         Returns:
@@ -960,7 +953,7 @@ class OrderBook:
         )
         return history_l3
 
-    def pretty_print(self, silent: bool = True) -> Optional[str]:
+    def pretty_print(self, silent: bool = True) -> str | None:
         """Print a nicely-formatted view of the current order book.
 
         Arguments:
@@ -972,7 +965,7 @@ class OrderBook:
 
         assert self.last_trade is not None
 
-        book = "{} order book as of {}\n".format(self.symbol, self.owner.current_time)
+        book = f"{self.symbol} order book as of {self.owner.current_time}\n"
         book += "Last trades: simulated {:d}, historical {:d}\n".format(
             self.last_trade,
             self.owner.oracle.observe_price(
@@ -987,14 +980,10 @@ class OrderBook:
         book += "{:10s}{:10s}{:10s}\n".format("---", "-----", "---")
 
         for quote, volume in self.get_l2_ask_data()[-1::-1]:
-            book += "{:10s}{:10s}{:10s}\n".format(
-                "", "{:d}".format(quote), "{:d}".format(volume)
-            )
+            book += "{:10s}{:10s}{:10s}\n".format("", f"{quote:d}", f"{volume:d}")
 
         for quote, volume in self.get_l2_bid_data():
-            book += "{:10s}{:10s}{:10s}\n".format(
-                "{:d}".format(volume), "{:d}".format(quote), ""
-            )
+            book += "{:10s}{:10s}{:10s}\n".format(f"{volume:d}", f"{quote:d}", "")
 
         if silent:
             return book

@@ -18,10 +18,11 @@ replacement anywhere ABIDES expects an ``Oracle``.
 import logging
 from collections import OrderedDict
 from math import sqrt
-from typing import Any, Dict, Optional, Union
+from typing import Any, Union
 
 import numpy as np
 import pandas as pd
+
 from abides_core import NanosecondTime
 
 from .data_providers import (
@@ -48,7 +49,7 @@ class _LRUCache:
         self.hits = 0
         self.misses = 0
 
-    def get(self, key: Any) -> Optional[int]:
+    def get(self, key: Any) -> int | None:
         if key in self._data:
             self._data.move_to_end(key)
             self.hits += 1
@@ -121,8 +122,8 @@ class ExternalDataOracle(Oracle):
         mkt_open: NanosecondTime,
         mkt_close: NanosecondTime,
         symbols: list[str],
-        provider: Optional[Union[BatchDataProvider, PointDataProvider]] = None,
-        data: Optional[Dict[str, pd.Series]] = None,
+        provider: Union[BatchDataProvider, PointDataProvider] | None = None,
+        data: dict[str, pd.Series] | None = None,
         interpolation: InterpolationStrategy = InterpolationStrategy.FORWARD_FILL,
         cache_size: int = 10_000,
     ) -> None:
@@ -164,10 +165,10 @@ class ExternalDataOracle(Oracle):
 
     def _init_batch(self, provider: BatchDataProvider) -> None:
         """Eagerly load the full series for every symbol."""
-        self.r: Dict[str, pd.Series] = {}
-        self._linear_xs: Dict[str, np.ndarray] = {}
-        self._linear_ys: Dict[str, np.ndarray] = {}
-        self._linear_base: Dict[str, int] = {}
+        self.r: dict[str, pd.Series] = {}
+        self._linear_xs: dict[str, np.ndarray] = {}
+        self._linear_ys: dict[str, np.ndarray] = {}
+        self._linear_base: dict[str, int] = {}
         for symbol in self.symbols_list:
             series = provider.get_fundamental_series(
                 symbol, self.mkt_open, self.mkt_close
@@ -195,7 +196,7 @@ class ExternalDataOracle(Oracle):
     def _init_point(self, provider: PointDataProvider, cache_size: int) -> None:
         """Set up lazy per-symbol LRU caches."""
         self._provider = provider
-        self._caches: Dict[str, _LRUCache] = {
+        self._caches: dict[str, _LRUCache] = {
             s: _LRUCache(maxsize=cache_size) for s in self.symbols_list
         }
 
@@ -216,11 +217,15 @@ class ExternalDataOracle(Oracle):
                 idx = series.index.get_indexer([ts], method="nearest")[0]
                 value = series.iloc[idx]
             elif self.interpolation == InterpolationStrategy.LINEAR:
-                value = int(round(np.interp(
-                    mkt_open - self._linear_base[symbol],
-                    self._linear_xs[symbol],
-                    self._linear_ys[symbol],
-                )))
+                value = int(
+                    round(
+                        np.interp(
+                            mkt_open - self._linear_base[symbol],
+                            self._linear_xs[symbol],
+                            self._linear_ys[symbol],
+                        )
+                    )
+                )
             else:
                 value = series.asof(ts)
             return int(value)
@@ -257,10 +262,11 @@ class ExternalDataOracle(Oracle):
             r_t = self._point_lookup(symbol, t)
 
         # Apply observation noise
-        if sigma_n == 0:
-            obs = r_t
-        else:
-            obs = int(round(random_state.normal(loc=r_t, scale=sqrt(sigma_n))))
+        obs = (
+            r_t
+            if sigma_n == 0
+            else int(round(random_state.normal(loc=r_t, scale=sqrt(sigma_n))))
+        )
 
         logger.debug(
             "ExternalDataOracle: fundamental=%d at t=%d, observation=%d",
@@ -285,11 +291,15 @@ class ExternalDataOracle(Oracle):
             idx = series.index.get_indexer([ts], method="nearest")[0]
             value = series.iloc[idx]
         elif self.interpolation == InterpolationStrategy.LINEAR:
-            value = int(round(np.interp(
-                timestamp - self._linear_base[symbol],
-                self._linear_xs[symbol],
-                self._linear_ys[symbol],
-            )))
+            value = int(
+                round(
+                    np.interp(
+                        timestamp - self._linear_base[symbol],
+                        self._linear_xs[symbol],
+                        self._linear_ys[symbol],
+                    )
+                )
+            )
         else:
             value = series.asof(ts)
 

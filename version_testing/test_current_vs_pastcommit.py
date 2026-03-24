@@ -81,8 +81,12 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Compare current code against a past commit for regression testing."
     )
-    parser.add_argument("baseline_sha", help="Git SHA of the baseline commit to compare against")
-    parser.add_argument("--with-log", action="store_true", help="Compare order books (slower)")
+    parser.add_argument(
+        "baseline_sha", help="Git SHA of the baseline commit to compare against"
+    )
+    parser.add_argument(
+        "--with-log", action="store_true", help="Compare order books (slower)"
+    )
     parser.add_argument(
         "--configs",
         default="rmsc04,rmsc03",
@@ -93,7 +97,9 @@ def parse_args():
         default="10:00:00,12:00:00,16:00:00",
         help="Comma-separated end times (default: 10:00:00,12:00:00,16:00:00)",
     )
-    parser.add_argument("--seeds", type=int, default=40, help="Number of seeds (default: 40)")
+    parser.add_argument(
+        "--seeds", type=int, default=40, help="Number of seeds (default: 40)"
+    )
     return parser.parse_args()
 
 
@@ -104,7 +110,9 @@ if __name__ == "__main__":
     end_times = [t.strip() for t in args.end_times.split(",")]
 
     LIST_PARAMETERS = [
-        generate_parameter_dict(seed, config, end_time, args.with_log, args.baseline_sha)
+        generate_parameter_dict(
+            seed, config, end_time, args.with_log, args.baseline_sha
+        )
         for seed in range(1, args.seeds + 1)
         for config in configs
         for end_time in end_times
