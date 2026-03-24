@@ -1,3 +1,32 @@
+2026-03 Release v2.1.0
+==================
+
+Code Quality
+------------
+
+* Modernised all type annotations across codebase: ``List`` → ``list``,
+  ``Dict`` → ``dict``, ``Optional[X]`` → ``X | None``, ``Tuple`` → ``tuple``
+* Replaced all ``.format()`` string formatting with f-strings
+* Resolved all CI checks: ruff linting, isort import ordering, black formatting,
+  and pyright/mypy type checking
+* Added ``# type: ignore`` annotations for mypy false positives on
+  ``importlib.util`` usage
+
+Documentation
+-------------
+
+* Added technical README files for abides-core, abides-markets, and abides-gym modules
+* Updated AGENT_ASSESSMENT.md for v2.0.0: removed resolved issues, verified
+  remaining open items, added product evaluation section
+* Added professional CI/test/license badges to project README
+
+Housekeeping
+------------
+
+* Removed tracked ``.DS_Store`` files and added pattern to ``.gitignore``
+* Cleaned up folder layout sections from module-level READMEs
+
+
 2026-03 Release v2.0.0
 ==================
 
