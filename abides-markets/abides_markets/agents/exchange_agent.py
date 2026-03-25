@@ -151,6 +151,9 @@ class ExchangeAgent(FinancialAgent):
         ModifyOrderMsg: "_handle_modify_order",
         ReplaceOrderMsg: "_handle_replace_order",
     }
+    # Lazy cache: maps concrete message types to resolved handler names
+    # (populated on first encounter via MRO walk, O(1) thereafter).
+    _RESOLVED_HANDLERS: dict[type, str | None] = {}
 
     def __init__(
         self,
@@ -443,8 +446,17 @@ class ExchangeAgent(FinancialAgent):
 
                 self.data_subscriptions[message.symbol].append(sub)
 
-        # O(1) dispatch for the main message-handling chain.
-        handler = self._MESSAGE_HANDLERS.get(type(message))
+        # O(1) dispatch with lazy MRO resolution — first encounter of a
+        # concrete message type walks the MRO and caches the result.
+        msg_type = type(message)
+        if msg_type not in self._RESOLVED_HANDLERS:
+            resolved = None
+            for cls in msg_type.__mro__:
+                resolved = self._MESSAGE_HANDLERS.get(cls)
+                if resolved is not None:
+                    break
+            self._RESOLVED_HANDLERS[msg_type] = resolved
+        handler = self._RESOLVED_HANDLERS[msg_type]
         if handler is not None:
             getattr(self, handler)(sender_id, current_time, message)
 

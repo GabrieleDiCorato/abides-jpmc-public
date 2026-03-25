@@ -267,24 +267,28 @@ class TestAdaptiveMarketMakerPollModeState:
 
 
 class TestMomentumAgentIntegerMAs:
-    def test_ma_values_are_integers(self):
-        """Moving average values should be stored as int, not float."""
+    def test_ma_values_are_integers_via_place_orders(self):
+        """place_orders() should populate both avg_short_list and avg_long_list with ints."""
         agent = MomentumAgent(
             id=0,
             symbol="TEST",
             starting_cash=10_000_000,
             random_state=np.random.RandomState(42),
+            short_window=5,
+            long_window=10,
         )
-        # Feed enough midpoints to trigger MA computation
-        for i in range(51):
-            agent.mid_list.append(100_000 + i)
-        # Compute MAs via place_orders logic
-        agent.avg_short_list.append(
-            int(round(MomentumAgent.ma(agent.mid_list, n=20)[-1]))
-        )
-        agent.avg_long_list.append(
-            int(round(MomentumAgent.ma(agent.mid_list, n=50)[-1]))
-        )
+        # Stub out place_limit_order to avoid needing kernel/exchange wiring.
+        agent.place_limit_order = lambda *a, **kw: None  # type: ignore[assignment]
+
+        # Feed enough midpoints through place_orders to trigger both MAs.
+        # deque(maxlen=10) fills up, and >= checks fire at 5 and 10 entries.
+        for i in range(agent.long_window):
+            bid = 100_000 + i
+            ask = 100_002 + i
+            agent.place_orders(bid, ask)
+
+        assert len(agent.avg_short_list) > 0, "short MA was never computed"
+        assert len(agent.avg_long_list) > 0, "long MA was never computed"
         assert isinstance(agent.avg_short_list[-1], int)
         assert isinstance(agent.avg_long_list[-1], int)
 

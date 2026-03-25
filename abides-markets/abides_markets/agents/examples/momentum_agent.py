@@ -114,11 +114,11 @@ class MomentumAgent(TradingAgent):
         """Momentum Agent actions logic"""
         if bid and ask:
             self.mid_list.append((bid + ask) // 2)
-            if len(self.mid_list) > self.short_window:
+            if len(self.mid_list) >= self.short_window:
                 self.avg_short_list.append(
                     int(round(MomentumAgent.ma(self.mid_list, n=self.short_window)[-1]))
                 )
-            if len(self.mid_list) > self.long_window:
+            if len(self.mid_list) >= self.long_window:
                 self.avg_long_list.append(
                     int(round(MomentumAgent.ma(self.mid_list, n=self.long_window)[-1]))
                 )

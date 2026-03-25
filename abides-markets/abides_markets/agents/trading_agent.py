@@ -277,6 +277,9 @@ class TradingAgent(FinancialAgent):
         QueryTransactedVolResponseMsg: "_handle_query_transacted_vol_response_msg",
         MarketDataMsg: "_handle_market_data_dispatch_msg",
     }
+    # Lazy cache: maps concrete message types to resolved handler names
+    # (populated on first encounter via MRO walk, O(1) thereafter).
+    _RESOLVED_HANDLERS: dict[type, str | None] = {}
 
     def _handle_market_hours_msg(self, message: MarketHoursMsg) -> None:
         self.mkt_open = message.mkt_open
@@ -363,8 +366,17 @@ class TradingAgent(FinancialAgent):
         # Do we know the market hours?
         had_mkt_hours = self.mkt_open is not None and self.mkt_close is not None
 
-        # O(1) dispatch instead of linear isinstance chain.
-        handler_name = self._MESSAGE_HANDLERS.get(type(message))
+        # O(1) dispatch with lazy MRO resolution — first encounter of a
+        # concrete message type walks the MRO and caches the result.
+        msg_type = type(message)
+        if msg_type not in self._RESOLVED_HANDLERS:
+            resolved = None
+            for cls in msg_type.__mro__:
+                resolved = self._MESSAGE_HANDLERS.get(cls)
+                if resolved is not None:
+                    break
+            self._RESOLVED_HANDLERS[msg_type] = resolved
+        handler_name = self._RESOLVED_HANDLERS[msg_type]
         if handler_name is not None:
             getattr(self, handler_name)(message)
 
