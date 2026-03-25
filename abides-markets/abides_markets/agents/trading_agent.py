@@ -756,6 +756,13 @@ class TradingAgent(FinancialAgent):
             new_order: The new limit order to replace the existing order with.
         """
 
+        # Pre-register the new order so that OrderExecutedMsg (which the
+        # exchange sends *before* OrderReplacedMsg when the replacement
+        # crosses the spread) can find it.  Do NOT remove the old order yet —
+        # there may be a pending OrderExecutedMsg for the old order already
+        # in the message queue.  order_replaced() will clean up the old key.
+        self.orders[new_order.order_id] = deepcopy(new_order)
+
         self.send_message(self.exchange_id, ReplaceOrderMsg(self.id, order, new_order))
 
         if self.log_orders:
@@ -927,15 +934,14 @@ class TradingAgent(FinancialAgent):
         if self.log_orders:
             self.logEvent("ORDER_REPLACED", old_order.to_dict())
 
-        # if orders still in the list of agent's order update agent's knowledge of
-        # current state of the order
+        # replace_order() pre-registered the new order but left the old order
+        # in self.orders so that any pending OrderExecutedMsg for the old order
+        # can still find it.  Now that the exchange has confirmed the
+        # replacement, clean up the old key.
         if old_order.order_id in self.orders:
             del self.orders[old_order.order_id]
-        else:
-            warnings.warn(
-                f"Execution received for order not in orders list: {old_order}"
-            )
 
+        # Refresh the new order entry (exchange may have updated fields).
         self.orders[new_order.order_id] = new_order
 
         logger.debug(f"After order replacement, agent open orders: {self.orders}")

@@ -442,3 +442,293 @@ class TestMomentumAgentWindowValidation:
         )
         agent.place_orders(100_000, None)  # type: ignore[arg-type]
         assert len(agent.mid_list) == 0
+
+
+# ---------------------------------------------------------------------------
+# ValueAgent — replace_order instead of cancel-all + place-new
+# ---------------------------------------------------------------------------
+
+
+class TestValueAgentReplaceOrder:
+    """Verify ValueAgent uses replace_order for existing orders and
+    place_limit_order when no open order exists (first cycle / filled)."""
+
+    def _make_agent(self) -> ValueAgent:
+        agent = ValueAgent(
+            id=0,
+            random_state=np.random.RandomState(42),
+            symbol="TEST",
+            starting_cash=10_000_000,
+            r_bar=100_000,
+            sigma_n=10_000,
+        )
+        # Fake enough state so placeOrder doesn't crash.
+        agent.current_time = MKT_OPEN + str_to_ns("00:05:00")
+        agent.mkt_open = MKT_OPEN
+        agent.mkt_close = MKT_CLOSE
+        agent.exchange_id = 99
+
+        # Stub oracle so updateEstimates() works without a kernel.
+        class _FakeOracle:
+            def observe_price(self, symbol, current_time, sigma_n=0, random_state=None):
+                return 100_000
+
+        agent.oracle = _FakeOracle()
+        return agent
+
+    def test_first_cycle_uses_place_limit_order(self):
+        """When self.orders is empty, placeOrder should use place_limit_order (no replace)."""
+        agent = self._make_agent()
+        assert len(agent.orders) == 0
+
+        placed = []
+        replaced = []
+
+        original_place = agent.place_limit_order
+        original_replace = agent.replace_order
+
+        def mock_place(*args, **kwargs):
+            placed.append(args)
+
+        def mock_replace(*args, **kwargs):
+            replaced.append(args)
+
+        agent.place_limit_order = mock_place
+        agent.replace_order = mock_replace
+
+        # Seed known_bids/asks so placeOrder has spread data.
+        agent.known_bids = {"TEST": [[99_900, 100]]}
+        agent.known_asks = {"TEST": [[100_100, 100]]}
+
+        agent.placeOrder()
+
+        assert len(placed) == 1, "Should call place_limit_order on first cycle"
+        assert len(replaced) == 0, "Should NOT call replace_order on first cycle"
+
+    def test_subsequent_cycle_uses_replace_order(self):
+        """When self.orders has an open LimitOrder, placeOrder should use replace_order."""
+        from abides_markets.orders import LimitOrder
+
+        agent = self._make_agent()
+
+        # Simulate an existing open order from a previous cycle.
+        old = LimitOrder(
+            agent_id=0,
+            time_placed=MKT_OPEN,
+            symbol="TEST",
+            quantity=30,
+            side=Side.BID,
+            limit_price=99_950,
+        )
+        agent.orders[old.order_id] = old
+
+        placed = []
+        replaced = []
+
+        def mock_place(*args, **kwargs):
+            placed.append(args)
+
+        def mock_replace(*args, **kwargs):
+            replaced.append(args)
+
+        agent.place_limit_order = mock_place
+        agent.replace_order = mock_replace
+
+        agent.known_bids = {"TEST": [[99_900, 100]]}
+        agent.known_asks = {"TEST": [[100_100, 100]]}
+
+        agent.placeOrder()
+
+        assert len(replaced) == 1, "Should call replace_order when open order exists"
+        assert len(placed) == 0, "Should NOT call place_limit_order when replacing"
+        # The old order should be the first argument to replace_order.
+        assert replaced[0][0] is old
+
+    def test_wakeup_does_not_cancel_all_orders(self):
+        """ValueAgent.wakeup must not call cancel_all_orders (replaced by replace logic)."""
+        import inspect
+
+        source = inspect.getsource(ValueAgent.wakeup)
+        assert "cancel_all_orders" not in source
+
+
+# ---------------------------------------------------------------------------
+# AdaptiveMarketMakerAgent — replace_order instead of cancel-all + place-new
+# ---------------------------------------------------------------------------
+
+
+class TestAdaptiveMarketMakerReplaceOrder:
+    """Verify AdaptiveMarketMakerAgent uses replace_order for existing orders
+    in poll mode and does NOT call cancel_all_orders from wakeup."""
+
+    def test_poll_mode_wakeup_does_not_cancel_all(self):
+        """Poll-mode wakeup must not call cancel_all_orders anymore."""
+        import inspect
+
+        source = inspect.getsource(AdaptiveMarketMakerAgent.wakeup)
+        assert "cancel_all_orders" not in source
+
+    def test_diff_and_replace_replaces_changed_orders(self):
+        """_diff_and_replace should call replace_order when price or size differs."""
+        from abides_markets.orders import LimitOrder
+
+        agent = AdaptiveMarketMakerAgent(
+            id=0,
+            symbol="TEST",
+            starting_cash=10_000_000,
+            random_state=np.random.RandomState(42),
+            subscribe=False,
+            num_ticks=3,
+        )
+        agent.current_time = MKT_OPEN
+        agent.exchange_id = 99
+
+        # Existing order at 99_000.
+        old = LimitOrder(
+            agent_id=0,
+            time_placed=MKT_OPEN,
+            symbol="TEST",
+            quantity=20,
+            side=Side.BID,
+            limit_price=99_000,
+        )
+
+        replaced = []
+        cancelled = []
+
+        def mock_replace(old_o, new_o):
+            replaced.append((old_o, new_o))
+
+        def mock_cancel(o):
+            cancelled.append(o)
+
+        agent.replace_order = mock_replace
+        agent.cancel_order = mock_cancel
+
+        new_orders: list = []
+        # Desired order at a DIFFERENT price.
+        agent._diff_and_replace(
+            existing=[old],
+            desired=[(99_100, 20)],
+            side=Side.BID,
+            new_orders=new_orders,
+        )
+
+        assert len(replaced) == 1, "Should replace when price differs"
+        assert replaced[0][0] is old
+        assert replaced[0][1].limit_price == 99_100
+        assert len(cancelled) == 0
+        assert len(new_orders) == 0
+
+    def test_diff_and_replace_skips_identical(self):
+        """_diff_and_replace should skip orders with identical price and size."""
+        from abides_markets.orders import LimitOrder
+
+        agent = AdaptiveMarketMakerAgent(
+            id=0,
+            symbol="TEST",
+            starting_cash=10_000_000,
+            random_state=np.random.RandomState(42),
+            subscribe=False,
+        )
+        agent.current_time = MKT_OPEN
+        agent.exchange_id = 99
+
+        old = LimitOrder(
+            agent_id=0,
+            time_placed=MKT_OPEN,
+            symbol="TEST",
+            quantity=20,
+            side=Side.BID,
+            limit_price=99_000,
+        )
+
+        replaced = []
+        cancelled = []
+        agent.replace_order = lambda o, n: replaced.append((o, n))
+        agent.cancel_order = lambda o: cancelled.append(o)
+
+        new_orders: list = []
+        agent._diff_and_replace(
+            existing=[old],
+            desired=[(99_000, 20)],  # Same price AND size
+            side=Side.BID,
+            new_orders=new_orders,
+        )
+
+        assert len(replaced) == 0, "Should skip identical orders"
+        assert len(cancelled) == 0
+        assert len(new_orders) == 0
+
+    def test_diff_and_replace_cancels_surplus(self):
+        """_diff_and_replace should cancel surplus existing orders."""
+        from abides_markets.orders import LimitOrder
+
+        agent = AdaptiveMarketMakerAgent(
+            id=0,
+            symbol="TEST",
+            starting_cash=10_000_000,
+            random_state=np.random.RandomState(42),
+            subscribe=False,
+        )
+        agent.current_time = MKT_OPEN
+        agent.exchange_id = 99
+
+        old1 = LimitOrder(
+            agent_id=0, time_placed=MKT_OPEN, symbol="TEST",
+            quantity=20, side=Side.BID, limit_price=99_000,
+        )
+        old2 = LimitOrder(
+            agent_id=0, time_placed=MKT_OPEN, symbol="TEST",
+            quantity=20, side=Side.BID, limit_price=98_900,
+        )
+
+        cancelled = []
+        replaced = []
+        agent.replace_order = lambda o, n: replaced.append((o, n))
+        agent.cancel_order = lambda o: cancelled.append(o)
+
+        new_orders: list = []
+        # Only 1 desired vs 2 existing → 1 replace + 1 cancel.
+        agent._diff_and_replace(
+            existing=[old1, old2],
+            desired=[(99_100, 20)],
+            side=Side.BID,
+            new_orders=new_orders,
+        )
+
+        assert len(replaced) == 1
+        assert len(cancelled) == 1
+        assert cancelled[0] is old2
+
+    def test_diff_and_replace_places_fresh_surplus(self):
+        """_diff_and_replace should queue surplus desired orders for batch placement."""
+        agent = AdaptiveMarketMakerAgent(
+            id=0,
+            symbol="TEST",
+            starting_cash=10_000_000,
+            random_state=np.random.RandomState(42),
+            subscribe=False,
+        )
+        agent.current_time = MKT_OPEN
+        agent.exchange_id = 99
+
+        replaced = []
+        cancelled = []
+        agent.replace_order = lambda o, n: replaced.append((o, n))
+        agent.cancel_order = lambda o: cancelled.append(o)
+
+        new_orders: list = []
+        # 0 existing, 2 desired → 2 fresh orders.
+        agent._diff_and_replace(
+            existing=[],
+            desired=[(99_000, 20), (98_900, 20)],
+            side=Side.BID,
+            new_orders=new_orders,
+        )
+
+        assert len(replaced) == 0
+        assert len(cancelled) == 0
+        assert len(new_orders) == 2
+        assert new_orders[0].limit_price == 99_000
+        assert new_orders[1].limit_price == 98_900

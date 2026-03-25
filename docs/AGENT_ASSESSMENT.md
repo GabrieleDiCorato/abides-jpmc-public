@@ -46,7 +46,7 @@
 
 | Concern | Severity | Detail |
 |---------|:--------:|--------|
-| `cancel_all_orders()` then immediately re-queries | Medium | Lines 139–142: on every wakeup the agent cancels all open orders and re-places them. This generates 2× message traffic (cancel + new order). `TradingAgent` already exposes `modify_order()` and `replace_order()` — using them would halve exchange message load. |
+| ~~`cancel_all_orders()` then immediately re-queries~~ | ~~Medium~~ | ✅ **Fixed in v2.1.0.** `wakeup()` no longer calls `cancel_all_orders()`. `placeOrder()` now uses `replace_order()` when an existing open order is present, falling back to `place_limit_order()` on the first cycle or after a fill. Halves per-cycle exchange message traffic from 4 events to 2. |
 
 ### 2.4 MomentumAgent
 
@@ -62,7 +62,7 @@
 
 | Concern | Severity | Detail |
 |---------|:--------:|--------|
-| Cancel-then-repost strategy | Medium | Every wakeup calls `cancel_all_orders()` (line 235) then places a fresh ladder. This is 2 × `num_ticks` cancellation messages + 2 × `num_ticks` new orders. `TradingAgent` already provides `modify_order()` and `replace_order()` — using them would halve message volume. |
+| ~~Cancel-then-repost strategy~~ | ~~Medium~~ | ✅ **Fixed in v2.1.0.** `place_orders()` refactored with a `_diff_and_replace()` helper that pairs existing open orders with desired orders per side. Changed orders use `replace_order()`, identical orders are skipped (zero messages), surplus existing are cancelled, surplus desired are batched via `place_multiple_orders()`. Halves per-cycle message traffic and eliminates the `cancel_limit_delay` pause from poll-mode wakeup. |
 | No P&L / risk tracking | Design | No max-position limit, no loss threshold, no end-of-day flatten. A production MM needs all of these. |
 
 ### 2.6 POVExecutionAgent
@@ -102,7 +102,7 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 
 ### 3.2 Performance Bottlenecks
 
-1. **Cancel-and-repost pattern**: Both `AdaptiveMarketMakerAgent` and `ValueAgent` cancel all orders then re-place, despite `TradingAgent` already providing `modify_order()` and `replace_order()`. Using those would halve message count. At scale the cancel-repost traffic dominates kernel event-queue processing time.
+1. ~~**Cancel-and-repost pattern**~~: ✅ **Resolved in v2.1.0.** Both `ValueAgent` and `AdaptiveMarketMakerAgent` now use `replace_order()` instead of cancel-all + re-place. `TradingAgent.replace_order()` was also hardened: it pre-registers the new order in `self.orders` (so `OrderExecutedMsg`, which the exchange sends *before* `OrderReplacedMsg` when a replacement crosses the spread, can find the order) while leaving the old order in place until `order_replaced()` confirms the exchange round-trip (preventing a race with pending executions for the old order). Additionally, `ExchangeAgent` was fixed to handle `ReplaceOrderMsg` correctly in the market-closed logging path (previously caused `AttributeError`).
 
 ### 3.3 Robustness Issues
 
@@ -116,9 +116,7 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 
 ### 4.1 Remaining Code-Level Improvements
 
-| Fix | File | Detail |
-|-----|------|--------|
-| Use `modify_order`/`replace_order` instead of cancel-repost | `value_agent.py`, `adaptive_market_maker_agent.py` | `TradingAgent` already exposes these methods — agents should use them to halve exchange message volume. |
+*All previously identified code-level fixes have been resolved as of v2.1.0. No outstanding items.*
 
 ### 4.2 New Agent Types to Implement
 
@@ -148,7 +146,7 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 
 ### 4.3 Architectural Improvements
 
-1. **Adopt `modify_order`/`replace_order` in agents**: `TradingAgent` already implements these methods. `ValueAgent` and `AdaptiveMarketMakerAgent` should use them instead of cancel-and-repost, halving message count.
+1. ~~**Adopt `modify_order`/`replace_order` in agents**~~: ✅ **Done in v2.1.0.** Both `ValueAgent` and `AdaptiveMarketMakerAgent` now use `replace_order()`. `TradingAgent.replace_order()` was hardened to handle the `OrderExecutedMsg`-before-`OrderReplacedMsg` timing. 8 new regression tests cover the change.
 
 2. **Position limit mixin**: A `PositionLimitMixin` that any agent can inherit to enforce hard position caps, with configurable breach behavior (block order / flatten).
 
@@ -276,11 +274,13 @@ Agents access the oracle via `self.kernel.oracle` in their `kernel_starting()` o
 
 ## 7. Product Evaluation
 
-### 7.1 v2.0.0 Quality Assessment
+### 7.1 v2.1.0 Quality Assessment
 
-v2.0.0 resolved **all 15 identified bugs** plus additional improvements (POV fill-price tracking, Oracle ABC `f_log`, dead code removal). The fix quality is high — each change is targeted, regression-tested (`test_agent_fixes.py`, 16 tests), and consistent with the existing code style. The codebase is now free of crash-level bugs in all shipping agents.
+v2.0.0 resolved **all 15 identified bugs** plus additional improvements (POV fill-price tracking, Oracle ABC `f_log`, dead code removal).
 
-**Remaining technical debt** is exclusively design-level (cancel-repost pattern, unbounded lists, hard-coded parameters) — no runtime crashes or data-corruption risks in normal operation.
+v2.1.0 resolved the **cancel-and-repost performance bottleneck** (§3.2) in both `ValueAgent` and `AdaptiveMarketMakerAgent`, replacing it with `replace_order()`. This required hardening `TradingAgent.replace_order()` to correctly handle the exchange's message ordering (pre-registering the new order before `OrderExecutedMsg` arrives, while keeping the old order until `OrderReplacedMsg` confirms the round-trip) and fixing a pre-existing `AttributeError` in `ExchangeAgent`'s market-closed logging path for `ReplaceOrderMsg`. The fix is regression-tested (`test_agent_fixes.py`, 31 tests — 8 new for the replace_order change) and validated across the full 312-test suite with zero warnings.
+
+**Remaining technical debt** is exclusively design-level (unbounded lists, hard-coded parameters, missing agent types) — no runtime crashes, data-corruption risks, or performance anti-patterns in normal operation.
 
 ### 7.2 Fitness for Use Case 1 — Simulation Dashboard
 

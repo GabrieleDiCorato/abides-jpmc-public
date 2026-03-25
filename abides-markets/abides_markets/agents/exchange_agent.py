@@ -340,7 +340,7 @@ class ExchangeAgent(FinancialAgent):
             # response.  A few things might still be processed, like requests
             # for final trade prices or such.
             if isinstance(message, OrderMsg):
-                if isinstance(message, ModifyOrderMsg):
+                if isinstance(message, (ModifyOrderMsg, ReplaceOrderMsg)):
                     logger.debug(
                         f"{self.name} received {message.type()}: OLD: {message.old_order} NEW: {message.new_order}"
                     )

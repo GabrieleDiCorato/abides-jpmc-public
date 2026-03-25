@@ -15,7 +15,7 @@ from ...messages.marketdata import (
     MarketDataMsg,
 )
 from ...messages.query import QuerySpreadResponseMsg, QueryTransactedVolResponseMsg
-from ...orders import Side
+from ...orders import LimitOrder, Side
 from ...utils import sigmoid
 from ..trading_agent import TradingAgent
 
@@ -232,8 +232,6 @@ class AdaptiveMarketMakerAgent(TradingAgent):
             self.state = self.initialise_state()
 
         elif can_trade and not self.subscribe:
-            self.cancel_all_orders()
-            self.delay(self.cancel_limit_delay)
             self.get_current_spread(self.symbol, depth=self.subscribe_num_levels)
             self.get_transacted_volume(self.symbol, lookback_period=self.wake_up_freq)
             self.state = self.initialise_state()
@@ -434,70 +432,96 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         """Given a mid-price, compute new orders that need to be placed, then
         send the orders to the Exchange.
 
+        Uses replace_order for existing open orders to halve exchange message
+        traffic compared to the previous cancel-all + place-new pattern.
+
         Arguments:
             mid: Mid price.
         """
 
-        bid_orders, ask_orders = self.compute_orders_to_place(mid)
+        bid_prices, ask_prices = self.compute_orders_to_place(mid)
 
-        orders = []
+        # Build list of desired (side, price, size) tuples.
+        desired: list[tuple[Side, int, int]] = []
 
         if self.backstop_quantity != 0:
-            bid_price = bid_orders[0]
-            logger.debug(
-                "{}: Placing BUY limit order of size {} @ price {}",
-                self.name,
-                self.backstop_quantity,
-                bid_price,
+            desired.append((Side.BID, bid_prices[0], self.backstop_quantity))
+            bid_prices = bid_prices[1:]
+            desired.append((Side.ASK, ask_prices[-1], self.backstop_quantity))
+            ask_prices = ask_prices[:-1]
+
+        for bp in bid_prices:
+            desired.append((Side.BID, bp, self.buy_order_size))
+        for ap in ask_prices:
+            desired.append((Side.ASK, ap, self.sell_order_size))
+
+        # Partition existing open LimitOrders by side, sorted by price.
+        existing_bids = sorted(
+            (o for o in self.orders.values()
+             if isinstance(o, LimitOrder) and o.side.is_bid()),
+            key=lambda o: o.limit_price,
+        )
+        existing_asks = sorted(
+            (o for o in self.orders.values()
+             if isinstance(o, LimitOrder) and not o.side.is_bid()),
+            key=lambda o: o.limit_price,
+        )
+
+        desired_bids = [(p, sz) for s, p, sz in desired if s.is_bid()]
+        desired_asks = [(p, sz) for s, p, sz in desired if not s.is_bid()]
+
+        new_orders: list[LimitOrder] = []
+
+        # Diff existing vs desired per side.
+        self._diff_and_replace(
+            existing_bids, desired_bids, Side.BID, new_orders
+        )
+        self._diff_and_replace(
+            existing_asks, desired_asks, Side.ASK, new_orders
+        )
+
+        if new_orders:
+            self.place_multiple_orders(new_orders)
+
+    def _diff_and_replace(
+        self,
+        existing: list[LimitOrder],
+        desired: list[tuple[int, int]],
+        side: Side,
+        new_orders: list[LimitOrder],
+    ) -> None:
+        """Pair existing orders with desired orders positionally.
+
+        - Matching pairs with different price/size: replace_order
+        - Matching pairs with identical price and size: skip (no message)
+        - Surplus existing: cancel_order
+        - Surplus desired: accumulate into new_orders for batch placement
+        """
+
+        n_common = min(len(existing), len(desired))
+
+        for i in range(n_common):
+            old = existing[i]
+            want_price, want_size = desired[i]
+            if old.limit_price == want_price and old.quantity == want_size:
+                continue  # identical — no message needed
+            new = self.create_limit_order(
+                self.symbol, want_size, side, want_price
             )
-            orders.append(
+            self.replace_order(old, new)
+
+        # Cancel surplus existing orders.
+        for i in range(n_common, len(existing)):
+            self.cancel_order(existing[i])
+
+        # Place surplus desired orders (will be batched).
+        for i in range(n_common, len(desired)):
+            want_price, want_size = desired[i]
+            new_orders.append(
                 self.create_limit_order(
-                    self.symbol, self.backstop_quantity, Side.BID, bid_price
+                    self.symbol, want_size, side, want_price
                 )
             )
-            bid_orders = bid_orders[1:]
-
-            ask_price = ask_orders[-1]
-            logger.debug(
-                "{}: Placing SELL limit order of size {} @ price {}",
-                self.name,
-                self.backstop_quantity,
-                ask_price,
-            )
-            orders.append(
-                self.create_limit_order(
-                    self.symbol, self.backstop_quantity, Side.ASK, ask_price
-                )
-            )
-            ask_orders = ask_orders[:-1]
-
-        for bid_price in bid_orders:
-            logger.debug(
-                "{}: Placing BUY limit order of size {} @ price {}",
-                self.name,
-                self.buy_order_size,
-                bid_price,
-            )
-            orders.append(
-                self.create_limit_order(
-                    self.symbol, self.buy_order_size, Side.BID, bid_price
-                )
-            )
-
-        for ask_price in ask_orders:
-            logger.debug(
-                "{}: Placing SELL limit order of size {} @ price {}",
-                self.name,
-                self.sell_order_size,
-                ask_price,
-            )
-            orders.append(
-                self.create_limit_order(
-                    self.symbol, self.sell_order_size, Side.ASK, ask_price
-                )
-            )
-
-        self.place_multiple_orders(orders)
 
     def get_wake_frequency(self) -> NanosecondTime:
         if not self.poisson_arrival:

@@ -5,7 +5,7 @@ import numpy as np
 from abides_core import Message, NanosecondTime
 
 from ..messages.query import QuerySpreadResponseMsg
-from ..orders import Side
+from ..orders import LimitOrder, Side
 from .trading_agent import TradingAgent
 
 logger = logging.getLogger(__name__)
@@ -142,8 +142,6 @@ class ValueAgent(TradingAgent):
             self.state = "AWAITING_SPREAD"
             return
 
-        self.cancel_all_orders()
-
         if isinstance(self, ValueAgent):
             self.get_current_spread(self.symbol)
             self.state = "AWAITING_SPREAD"
@@ -269,7 +267,18 @@ class ValueAgent(TradingAgent):
         side = Side.BID if buy else Side.ASK
 
         if self.size > 0:
-            self.place_limit_order(self.symbol, self.size, side, p)
+            new_order = self.create_limit_order(self.symbol, self.size, side, p)
+
+            # Find any existing open LimitOrder to replace instead of
+            # cancel-all + place-new, halving exchange message traffic.
+            old_order = next(
+                (o for o in self.orders.values() if isinstance(o, LimitOrder)),
+                None,
+            )
+            if old_order is not None:
+                self.replace_order(old_order, new_order)
+            else:
+                self.place_limit_order(self.symbol, self.size, side, p)
 
     def receive_message(
         self, current_time: NanosecondTime, sender_id: int, message: Message
