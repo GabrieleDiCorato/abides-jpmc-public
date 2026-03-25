@@ -279,8 +279,12 @@ class TestMomentumAgentIntegerMAs:
         for i in range(51):
             agent.mid_list.append(100_000 + i)
         # Compute MAs via place_orders logic
-        agent.avg_short_list.append(int(round(MomentumAgent.ma(agent.mid_list, n=20)[-1])))
-        agent.avg_long_list.append(int(round(MomentumAgent.ma(agent.mid_list, n=50)[-1])))
+        agent.avg_short_list.append(
+            int(round(MomentumAgent.ma(agent.mid_list, n=20)[-1]))
+        )
+        agent.avg_long_list.append(
+            int(round(MomentumAgent.ma(agent.mid_list, n=50)[-1]))
+        )
         assert isinstance(agent.avg_short_list[-1], int)
         assert isinstance(agent.avg_long_list[-1], int)
 
