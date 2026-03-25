@@ -1158,3 +1158,25 @@ class TestEagerValidation:
         )
         result = validate_config(config_dict)
         assert result["valid"] is True
+
+    def test_build_rejects_depth_spread_zero(self):
+        """build() should reject depth_spread=0 for value agents."""
+        builder = (
+            SimulationBuilder()
+            .from_template("rmsc04")
+            .seed(42)
+            .enable_agent("value", count=5, depth_spread=0)
+        )
+        with pytest.raises(ValueError):
+            builder.build()
+
+    def test_build_rejects_short_window_exceeds_long(self):
+        """build() should reject short_window > long_window for momentum agents."""
+        builder = (
+            SimulationBuilder()
+            .from_template("rmsc04")
+            .seed(42)
+            .enable_agent("momentum", count=5, short_window=50, long_window=10)
+        )
+        with pytest.raises(ValueError):
+            builder.build()

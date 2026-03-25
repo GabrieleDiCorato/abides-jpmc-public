@@ -56,6 +56,14 @@ class MomentumAgent(TradingAgent):
 
         self.subscribe = subscribe  # Flag to determine whether to subscribe to data or use polling mechanism
         self.subscription_requested = False
+        if short_window < 1 or long_window < 1:
+            raise ValueError(
+                f"short_window ({short_window}) and long_window ({long_window}) must be >= 1."
+            )
+        if short_window > long_window:
+            raise ValueError(
+                f"short_window ({short_window}) must be <= long_window ({long_window})."
+            )
         self.short_window: int = short_window
         self.long_window: int = long_window
         self.mid_list: deque[float] = deque(maxlen=long_window)
@@ -112,7 +120,7 @@ class MomentumAgent(TradingAgent):
 
     def place_orders(self, bid: int, ask: int) -> None:
         """Momentum Agent actions logic"""
-        if bid and ask:
+        if bid is not None and ask is not None:
             self.mid_list.append((bid + ask) // 2)
             if len(self.mid_list) >= self.short_window:
                 self.avg_short_list.append(

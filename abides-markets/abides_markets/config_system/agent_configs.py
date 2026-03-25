@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Union
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from abides_core import NanosecondTime
 from abides_core.utils import get_wake_time, str_to_ns
@@ -228,6 +228,7 @@ class ValueAgentConfig(BaseAgentConfig):
     )
     depth_spread: int = Field(
         default=2,
+        ge=1,
         description="Depth spread multiplier for passive order price adjustment.",
     )
 
@@ -260,12 +261,22 @@ class MomentumAgentConfig(BaseAgentConfig):
     )
     short_window: int = Field(
         default=20,
+        ge=1,
         description="Number of bars for the fast (short) moving average.",
     )
     long_window: int = Field(
         default=50,
+        ge=1,
         description="Number of bars for the slow (long) moving average.",
     )
+
+    @model_validator(mode="after")
+    def _check_window_order(self) -> MomentumAgentConfig:
+        if self.short_window > self.long_window:
+            raise ValueError(
+                f"short_window ({self.short_window}) must be <= long_window ({self.long_window})"
+            )
+        return self
 
     def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         from abides_markets.models import OrderSizeModel

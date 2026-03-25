@@ -630,7 +630,7 @@ class ExchangeAgent(FinancialAgent):
         )
         if message.order.symbol not in self.order_books:
             warnings.warn(
-                f"Modification request discarded. Unknown symbol: {message.order.symbol}"
+                f"Partial cancellation request discarded. Unknown symbol: {message.order.symbol}"
             )
         else:
             self.order_books[message.order.symbol].partial_cancel_order(

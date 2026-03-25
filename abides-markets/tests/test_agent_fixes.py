@@ -16,6 +16,7 @@ import inspect
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from abides_core.utils import datetime_str_to_ns, str_to_ns
 from abides_markets.agents.examples.momentum_agent import MomentumAgent
@@ -346,3 +347,98 @@ class TestNoiseAgentBuyDirection:
         source = inspect.getsource(NoiseAgent.placeOrder)
         assert "randint(0, 2)" in source
         assert "1 + 1" not in source
+
+
+# ---------------------------------------------------------------------------
+# ValueAgent — depth_spread validation
+# ---------------------------------------------------------------------------
+
+
+class TestValueAgentDepthSpreadValidation:
+    def test_depth_spread_zero_raises(self):
+        """depth_spread=0 must raise ValueError."""
+        with pytest.raises(ValueError, match="depth_spread must be >= 1"):
+            ValueAgent(
+                id=0,
+                random_state=np.random.RandomState(42),
+                depth_spread=0,
+            )
+
+    def test_depth_spread_negative_raises(self):
+        """depth_spread=-1 must raise ValueError."""
+        with pytest.raises(ValueError, match="depth_spread must be >= 1"):
+            ValueAgent(
+                id=0,
+                random_state=np.random.RandomState(42),
+                depth_spread=-1,
+            )
+
+
+# ---------------------------------------------------------------------------
+# MomentumAgent — window validation
+# ---------------------------------------------------------------------------
+
+
+class TestMomentumAgentWindowValidation:
+    def test_short_window_zero_raises(self):
+        """short_window=0 must raise ValueError."""
+        with pytest.raises(ValueError, match="must be >= 1"):
+            MomentumAgent(
+                id=0,
+                symbol="TEST",
+                starting_cash=10_000_000,
+                random_state=np.random.RandomState(42),
+                short_window=0,
+                long_window=10,
+            )
+
+    def test_long_window_zero_raises(self):
+        """long_window=0 must raise ValueError."""
+        with pytest.raises(ValueError, match="must be >= 1"):
+            MomentumAgent(
+                id=0,
+                symbol="TEST",
+                starting_cash=10_000_000,
+                random_state=np.random.RandomState(42),
+                short_window=5,
+                long_window=0,
+            )
+
+    def test_short_exceeds_long_raises(self):
+        """short_window > long_window must raise ValueError."""
+        with pytest.raises(ValueError, match="must be <= long_window"):
+            MomentumAgent(
+                id=0,
+                symbol="TEST",
+                starting_cash=10_000_000,
+                random_state=np.random.RandomState(42),
+                short_window=50,
+                long_window=10,
+            )
+
+    def test_place_orders_handles_none_bid(self):
+        """place_orders must not crash when bid is None."""
+        agent = MomentumAgent(
+            id=0,
+            symbol="TEST",
+            starting_cash=10_000_000,
+            random_state=np.random.RandomState(42),
+            short_window=5,
+            long_window=10,
+        )
+        # Should be a no-op — no crash, no mid_list growth.
+        agent.place_orders(None, 100_000)  # type: ignore[arg-type]
+        assert len(agent.mid_list) == 0
+
+    def test_place_orders_handles_none_ask(self):
+        """place_orders must not crash when ask is None."""
+        agent = MomentumAgent(
+            id=0,
+            symbol="TEST",
+            starting_cash=10_000_000,
+            random_state=np.random.RandomState(42),
+            short_window=5,
+            long_window=10,
+        )
+        agent.place_orders(100_000, None)  # type: ignore[arg-type]
+        assert len(agent.mid_list) == 0
