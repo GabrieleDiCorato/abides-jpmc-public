@@ -38,6 +38,14 @@ class MomentumAgent(TradingAgent):
         short_window: int = 20,
         long_window: int = 50,
     ) -> None:
+        if short_window < 1 or long_window < 1:
+            raise ValueError(
+                f"short_window ({short_window}) and long_window ({long_window}) must be >= 1."
+            )
+        if short_window > long_window:
+            raise ValueError(
+                f"short_window ({short_window}) must be <= long_window ({long_window})."
+            )
 
         super().__init__(id, name, type, random_state, starting_cash, log_orders)
         self.symbol = symbol
@@ -56,14 +64,6 @@ class MomentumAgent(TradingAgent):
 
         self.subscribe = subscribe  # Flag to determine whether to subscribe to data or use polling mechanism
         self.subscription_requested = False
-        if short_window < 1 or long_window < 1:
-            raise ValueError(
-                f"short_window ({short_window}) and long_window ({long_window}) must be >= 1."
-            )
-        if short_window > long_window:
-            raise ValueError(
-                f"short_window ({short_window}) must be <= long_window ({long_window})."
-            )
         self.short_window: int = short_window
         self.long_window: int = long_window
         self.mid_list: deque[float] = deque(maxlen=long_window)

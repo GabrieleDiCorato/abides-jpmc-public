@@ -29,6 +29,11 @@ class ValueAgent(TradingAgent):
         log_orders: bool = False,
         depth_spread: int = 2,
     ) -> None:
+        if depth_spread < 1:
+            raise ValueError(
+                f"depth_spread must be >= 1 for ValueAgent (got {depth_spread})."
+            )
+
         # Base class init.
         super().__init__(id, name, type, random_state, starting_cash, log_orders)
 
@@ -64,10 +69,6 @@ class ValueAgent(TradingAgent):
         )
         self.order_size_model = order_size_model  # Probabilistic model for order size
 
-        if depth_spread < 1:
-            raise ValueError(
-                f"depth_spread must be >= 1 for ValueAgent (got {depth_spread})."
-            )
         self.depth_spread: int = depth_spread
 
     def kernel_starting(self, start_time: NanosecondTime) -> None:
