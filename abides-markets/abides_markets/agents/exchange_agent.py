@@ -449,7 +449,10 @@ class ExchangeAgent(FinancialAgent):
             getattr(self, handler)(sender_id, current_time, message)
 
     def _handle_market_hours_request(
-        self, sender_id: int, current_time: NanosecondTime, message: MarketHoursRequestMsg
+        self,
+        sender_id: int,
+        current_time: NanosecondTime,
+        message: MarketHoursRequestMsg,
     ) -> None:
         logger.debug(
             f"{self.name} received market hours request from agent {sender_id}"
@@ -458,7 +461,10 @@ class ExchangeAgent(FinancialAgent):
         self.send_message(sender_id, MarketHoursMsg(self.mkt_open, self.mkt_close))
 
     def _handle_market_close_price_request(
-        self, sender_id: int, current_time: NanosecondTime, message: MarketClosePriceRequestMsg
+        self,
+        sender_id: int,
+        current_time: NanosecondTime,
+        message: MarketClosePriceRequestMsg,
     ) -> None:
         self.market_close_price_subscriptions.append(sender_id)
 
@@ -487,9 +493,7 @@ class ExchangeAgent(FinancialAgent):
         symbol = message.symbol
         depth = message.depth
         if symbol not in self.order_books:
-            warnings.warn(
-                f"Bid-ask spread request discarded. Unknown symbol: {symbol}"
-            )
+            warnings.warn(f"Bid-ask spread request discarded. Unknown symbol: {symbol}")
         else:
             logger.debug(
                 f"{self.name} received QUERY_SPREAD ({symbol}:{depth}) request from agent {sender_id}"
@@ -512,9 +516,7 @@ class ExchangeAgent(FinancialAgent):
         symbol = message.symbol
         length = message.length
         if symbol not in self.order_books:
-            warnings.warn(
-                f"Order stream request discarded. Unknown symbol: {symbol}"
-            )
+            warnings.warn(f"Order stream request discarded. Unknown symbol: {symbol}")
         else:
             logger.debug(
                 f"{self.name} received QUERY_ORDER_STREAM ({symbol}:{length}) request from agent {sender_id}"
@@ -530,7 +532,10 @@ class ExchangeAgent(FinancialAgent):
             )
 
     def _handle_query_transacted_vol(
-        self, sender_id: int, current_time: NanosecondTime, message: QueryTransactedVolMsg
+        self,
+        sender_id: int,
+        current_time: NanosecondTime,
+        message: QueryTransactedVolMsg,
     ) -> None:
         symbol = message.symbol
         lookback_period = message.lookback_period
@@ -567,9 +572,7 @@ class ExchangeAgent(FinancialAgent):
             # The TradingAgent already stores its own deepcopy; the message's
             # order reference is not retained elsewhere, so a second deepcopy
             # is unnecessary.
-            self.order_books[message.order.symbol].handle_limit_order(
-                message.order
-            )
+            self.order_books[message.order.symbol].handle_limit_order(message.order)
             self.publish_order_book_data(message.order.symbol)
 
     def _handle_market_order(
@@ -581,9 +584,7 @@ class ExchangeAgent(FinancialAgent):
                 f"Market Order discarded. Unknown symbol: {message.order.symbol}"
             )
         else:
-            self.order_books[message.order.symbol].handle_market_order(
-                message.order
-            )
+            self.order_books[message.order.symbol].handle_market_order(message.order)
             self.publish_order_book_data(message.order.symbol)
 
     def _handle_cancel_order(
@@ -603,7 +604,10 @@ class ExchangeAgent(FinancialAgent):
             self.publish_order_book_data(message.order.symbol)
 
     def _handle_partial_cancel_order(
-        self, sender_id: int, current_time: NanosecondTime, message: PartialCancelOrderMsg
+        self,
+        sender_id: int,
+        current_time: NanosecondTime,
+        message: PartialCancelOrderMsg,
     ) -> None:
         tag = message.tag
         metadata = message.metadata
@@ -650,9 +654,7 @@ class ExchangeAgent(FinancialAgent):
                 f"Replacement request discarded. Unknown symbol: {order.symbol}"
             )
         else:
-            self.order_books[order.symbol].replace_order(
-                agent_id, order, new_order
-            )
+            self.order_books[order.symbol].replace_order(agent_id, order, new_order)
             self.publish_order_book_data(order.symbol)
 
     def publish_order_book_data(self, symbol: str) -> None:

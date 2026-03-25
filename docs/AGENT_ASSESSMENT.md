@@ -29,8 +29,8 @@
 
 | Concern | Severity | Detail |
 |---------|:--------:|--------|
-| `deepcopy` on every limit order | Medium | Every inbound `LimitOrderMsg` is deep-copied before book insertion (line 566) and on replace (line 650). With 100s of agents sending 1000s of orders this is a non-trivial GC burden. |
-| `isinstance` dispatch chain | Low | 24 `isinstance` checks in `receive_message`. A dispatch dict would be O(1). |
+| `deepcopy` on every limit order | ~~Medium~~ ✅ | ~~Every inbound `LimitOrderMsg` is deep-copied before book insertion (line 566) and on replace (line 650). With 100s of agents sending 1000s of orders this is a non-trivial GC burden.~~ **Fixed in v2.1.0**: removed redundant `deepcopy` — TradingAgent already stores its own copy. |
+| `isinstance` dispatch chain | ~~Low~~ ✅ | ~~24 `isinstance` checks in `receive_message`. A dispatch dict would be O(1).~~ **Fixed in v2.1.0**: refactored to `dict[type, str]` dispatch with extracted handler methods. |
 | TODO comments | Low | Acknowledged tech debt in the message hierarchy (line 363) and order type categorization. |
 
 ### 2.2 NoiseAgent
@@ -41,7 +41,7 @@
 |---------|:--------:|--------|
 | Single-shot agent | Design | Places exactly **one** order then goes silent. In real markets noise traders interact continuously. A configurable multi-wake mode would produce more realistic microstructure. |
 | `kernel_stopping` surplus calculation | Low | Line 86: `float(surplus) / self.starting_cash` — mixes integer cents with float division. Functionally fine but inconsistent with the "prices are integer cents" convention. |
-| `type(self) is NoiseAgent` guard | Code smell | Line 130 — fragile `type(self) is` check prevents subclass reuse. Should use `isinstance`. |
+| `type(self) is NoiseAgent` guard | ~~Code smell~~ ✅ | ~~Line 130 — fragile `type(self) is` check prevents subclass reuse. Should use `isinstance`.~~ **Fixed in v2.1.0**: replaced with `isinstance(self, NoiseAgent)`. |
 
 ### 2.3 ValueAgent
 
@@ -50,8 +50,8 @@
 | Concern | Severity | Detail |
 |---------|:--------:|--------|
 | `cancel_all_orders()` then immediately re-queries | Medium | Lines 139–142: on every wakeup the agent cancels all open orders and re-places them. This generates 2× message traffic (cancel + new order). `TradingAgent` already exposes `modify_order()` and `replace_order()` — using them would halve exchange message load. |
-| `type(self) is ValueAgent` guard | Code smell | Line 141 — same fragile pattern as NoiseAgent. |
-| Hard-coded `depth_spread = 2` | Low | Line 66. Not configurable via constructor or config system. |
+| `type(self) is ValueAgent` guard | ~~Code smell~~ ✅ | ~~Line 141 — same fragile pattern as NoiseAgent.~~ **Fixed in v2.1.0**: replaced with `isinstance(self, ValueAgent)`. |
+| Hard-coded `depth_spread = 2` | ~~Low~~ ✅ | ~~Line 66. Not configurable via constructor or config system.~~ **Fixed in v2.1.0**: now a constructor parameter with config system support. |
 
 ### 2.4 MomentumAgent
 
@@ -59,8 +59,8 @@
 
 | Concern | Severity | Detail |
 |---------|:--------:|--------|
-| Unbounded `mid_list` growth | Medium | Line 55: `self.mid_list: list[float] = []` grows forever via `append` at line 110. In a 6.5-hour trading day at 1s frequency = 23,400 entries. `ma()` recomputes `np.cumsum` over the full array each time — O(n) growing cost. Should use a `deque(maxlen=N)`. |
-| Hard-coded MA windows (20, 50) | Design | Lines 113, 117: not configurable. A production momentum agent needs tunable fast/slow windows. |
+| Unbounded `mid_list` growth | ~~Medium~~ ✅ | ~~Line 55: `self.mid_list: list[float] = []` grows forever via `append` at line 110. In a 6.5-hour trading day at 1s frequency = 23,400 entries. `ma()` recomputes `np.cumsum` over the full array each time — O(n) growing cost. Should use a `deque(maxlen=N)`.~~ **Fixed in v2.1.0**: replaced with `deque(maxlen=long_window)`. |
+| Hard-coded MA windows (20, 50) | ~~Design~~ ✅ | ~~Lines 113, 117: not configurable. A production momentum agent needs tunable fast/slow windows.~~ **Fixed in v2.1.0**: now configurable via `short_window` and `long_window` constructor parameters with config system support. |
 | No position management | Design | Keeps buying/selling without any position limit or reversal logic. Can accumulate unbounded inventory. |
 
 ### 2.5 AdaptiveMarketMakerAgent
@@ -71,7 +71,7 @@
 |---------|:--------:|--------|
 | Cancel-then-repost strategy | Medium | Every wakeup calls `cancel_all_orders()` (line 235) then places a fresh ladder. This is 2 × `num_ticks` cancellation messages + 2 × `num_ticks` new orders. `TradingAgent` already provides `modify_order()` and `replace_order()` — using them would halve message volume. |
 | No P&L / risk tracking | Design | No max-position limit, no loss threshold, no end-of-day flatten. A production MM needs all of these. |
-| `subscribe_freq` as `float` | Low | Line 63/106: declared as `float` but used as `int` in nanosecond comparisons. Should be `NanosecondTime` (`int`). |
+| `subscribe_freq` as `float` | ~~Low~~ ✅ | ~~Line 63/106: declared as `float` but used as `int` in nanosecond comparisons. Should be `NanosecondTime` (`int`).~~ **Fixed in v2.1.0**: changed to `int` with correct nanosecond literal `10_000_000_000`. |
 
 ### 2.6 POVExecutionAgent
 
@@ -86,7 +86,7 @@
 
 | Concern | Severity | Detail |
 |---------|:--------:|--------|
-| `deepcopy` on every order placement | Medium | Lines 549, 602, 638: every `place_limit_order`/`place_market_order`/`place_multiple_orders` deep-copies the order. Performance cost scales linearly with order flow. |
+| `deepcopy` on every order placement | ~~Medium~~ ✅ | ~~Lines 549, 602, 638: every `place_limit_order`/`place_market_order`/`place_multiple_orders` deep-copies the order. Performance cost scales linearly with order flow.~~ **Partially fixed in v2.1.0**: removed the redundant second `deepcopy` in ExchangeAgent — TradingAgent's copy now serves as the sole copy. |
 | Self-comment: "ugly way" at line 192 | Low | Result tracking via kernel dict is acknowledged tech debt. |
 
 ---
@@ -111,11 +111,11 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 
 ### 3.2 Performance Bottlenecks
 
-1. **`deepcopy` proliferation**: `TradingAgent.place_limit_order` → `deepcopy(order)` (line 549) and `ExchangeAgent` → `deepcopy(message.order)` (line 566) mean every order is deep-copied **twice** (once by sender, once by exchange). With 1,000 agents × 100 orders/day = 200,000 unnecessary deep copies.
+1. **`deepcopy` proliferation**: ~~`TradingAgent.place_limit_order` → `deepcopy(order)` (line 549) and `ExchangeAgent` → `deepcopy(message.order)` (line 566) mean every order is deep-copied **twice** (once by sender, once by exchange). With 1,000 agents × 100 orders/day = 200,000 unnecessary deep copies.~~ **Partially fixed in v2.1.0**: ExchangeAgent no longer deepcopies inbound limit orders or replace orders — TradingAgent's copy is sufficient. Halved the number of deepcopy calls.
 
 2. **Cancel-and-repost pattern**: Both `AdaptiveMarketMakerAgent` and `ValueAgent` cancel all orders then re-place, despite `TradingAgent` already providing `modify_order()` and `replace_order()`. Using those would halve message count. At scale the cancel-repost traffic dominates kernel event-queue processing time.
 
-3. **`isinstance` dispatch chains** in `ExchangeAgent.receive_message` (24 checks) and `TradingAgent.receive_message` (12+ checks) — on every single message. A `dict`-based dispatch would be O(1).
+3. **`isinstance` dispatch chains** ~~in `ExchangeAgent.receive_message` (24 checks) and `TradingAgent.receive_message` (12+ checks) — on every single message. A `dict`-based dispatch would be O(1).~~ **Fixed in v2.1.0**: both `TradingAgent` and `ExchangeAgent` now use `dict[type, str]` dispatch tables for O(1) message routing.
 
 ### 3.3 Robustness Issues
 
@@ -135,14 +135,14 @@ See CHANGELOG.md for the full list. Additionally, POV fill-price tracking was ad
 
 ### 4.2 Remaining Code-Level Improvements
 
-| Fix | File | Detail |
-|-----|------|--------|
-| Use `modify_order`/`replace_order` instead of cancel-repost | `value_agent.py`, `adaptive_market_maker_agent.py` | `TradingAgent` already exposes these methods — agents should use them to halve exchange message volume. |
-| Replace `type(self) is X` guards with `isinstance` | `noise_agent.py:130`, `value_agent.py:141` | Current guards prevent subclass reuse. |
-| Replace unbounded `mid_list` with `deque(maxlen=N)` | `momentum_agent.py:55` | Use `maxlen` equal to the slow MA window (currently 50). Eliminates O(n) growing cost per wakeup. |
-| Make `depth_spread` configurable | `value_agent.py:66` | Currently hard-coded to 2. |
-| Make MA windows configurable | `momentum_agent.py` | Currently hard-coded to 20/50. |
-| Fix `subscribe_freq` type annotation | `adaptive_market_maker_agent.py:63` | `float` → `int` (nanoseconds). |
+| Fix | File | Detail | Status |
+|-----|------|--------|:------:|
+| Use `modify_order`/`replace_order` instead of cancel-repost | `value_agent.py`, `adaptive_market_maker_agent.py` | `TradingAgent` already exposes these methods — agents should use them to halve exchange message volume. | — |
+| Replace `type(self) is X` guards with `isinstance` | `noise_agent.py:130`, `value_agent.py:141` | Current guards prevent subclass reuse. | ✅ v2.1.0 |
+| Replace unbounded `mid_list` with `deque(maxlen=N)` | `momentum_agent.py:55` | Use `maxlen` equal to the slow MA window (currently 50). Eliminates O(n) growing cost per wakeup. | ✅ v2.1.0 |
+| Make `depth_spread` configurable | `value_agent.py:66` | Currently hard-coded to 2. | ✅ v2.1.0 |
+| Make MA windows configurable | `momentum_agent.py` | Currently hard-coded to 20/50. | ✅ v2.1.0 |
+| Fix `subscribe_freq` type annotation | `adaptive_market_maker_agent.py:63` | `float` → `int` (nanoseconds). | ✅ v2.1.0 |
 
 ### 4.3 New Agent Types to Implement
 
@@ -172,13 +172,13 @@ See CHANGELOG.md for the full list. Additionally, POV fill-price tracking was ad
 
 ### 4.4 Architectural Improvements
 
-1. **Message dispatch refactor**: Replace `isinstance` chains with `dict[type, Callable]` dispatch in `TradingAgent.receive_message` and `ExchangeAgent.receive_message`. Expected ~15–20 % speedup on message handling hot path.
+1. **Message dispatch refactor**: ~~Replace `isinstance` chains with `dict[type, Callable]` dispatch in `TradingAgent.receive_message` and `ExchangeAgent.receive_message`. Expected ~15–20 % speedup on message handling hot path.~~ **✅ Fixed in v2.1.0**: both agents now use `_MESSAGE_HANDLERS` class-level dispatch dicts with O(1) lookup.
 
 2. **Adopt `modify_order`/`replace_order` in agents**: `TradingAgent` already implements these methods. `ValueAgent` and `AdaptiveMarketMakerAgent` should use them instead of cancel-and-repost, halving message count.
 
 3. **Position limit mixin**: A `PositionLimitMixin` that any agent can inherit to enforce hard position caps, with configurable breach behavior (block order / flatten).
 
-4. **Rolling window utility**: Replace the unbounded list accumulation in MomentumAgent (and future signal agents) with a `deque(maxlen=N)` + incremental statistic calculation.
+4. **Rolling window utility**: ~~Replace the unbounded list accumulation in MomentumAgent (and future signal agents) with a `deque(maxlen=N)` + incremental statistic calculation.~~ **✅ Fixed in v2.1.0**: `MomentumAgent.mid_list` is now a `deque(maxlen=long_window)`.
 
 5. **Register all agents**: The gym agents (`CoreBackgroundAgent`, `FinancialGymAgent`) are not registered in the config system. For deployment, every agent type should be configurable declaratively.
 
@@ -251,7 +251,7 @@ Agents access the oracle via `self.kernel.oracle` in their `kernel_starting()` o
 | On-demand computation | Strength | Stores only `(timestamp, value)` per symbol. Computes OU process forward lazily — safe for any time scale. |
 | Per-symbol RandomState isolation | Strength | Sub-allocates independent random states per symbol, ensuring reproducibility even when agent count changes. |
 | Megashock system | Strength | Poisson-arrival bimodal shocks create realistic price discontinuities beyond simple OU noise. |
-| `f_log` unbounded growth | Medium | `self.f_log[symbol].append(...)` on every `advance_fundamental_value_series()` call. In a busy simulation this list grows without bound. |
+| `f_log` unbounded growth | ~~Medium~~ ✅ | ~~`self.f_log[symbol].append(...)` on every `advance_fundamental_value_series()` call. In a busy simulation this list grows without bound.~~ **Fixed in v2.1.0**: `f_log` now uses `deque(maxlen=100_000)` per symbol, preventing unbounded memory growth. |
 | No megashock visibility to agents | Design | Agents cannot detect or react to specific megashock events. An InformedTraderAgent pattern would require an event subscription mechanism. |
 | No per-symbol correlation | Design | Each symbol's OU process is fully independent. Unrealistic for correlated assets (e.g., sector peers). |
 
@@ -282,7 +282,7 @@ Agents access the oracle via `self.kernel.oracle` in their `kernel_starting()` o
 
 3. **No oracle event subscription API**: Agents cannot subscribe to discrete information events (megashocks, earnings announcements). The megashock system in `SparseMeanRevertingOracle` is purely internal — agents cannot react to specific exogenous shocks, preventing implementation of informed trader strategies.
 
-4. **`f_log` unbounded growth in SparseMeanRevertingOracle**: `self.f_log[symbol].append(...)` on every `advance_fundamental_value_series()` call. In a busy simulation this list grows without bound.
+4. **`f_log` unbounded growth in SparseMeanRevertingOracle**: ~~`self.f_log[symbol].append(...)` on every `advance_fundamental_value_series()` call. In a busy simulation this list grows without bound.~~ **Fixed in v2.1.0**: bounded with `deque(maxlen=100_000)`.
 
 ---
 
@@ -302,7 +302,7 @@ Agents access the oracle via `self.kernel.oracle` in their `kernel_starting()` o
 |-------------|--------|:------:|
 | Step-count guard on MeanRevertingOracle | Raise `ValueError` if `mkt_close - mkt_open` exceeds 10⁶ steps. | ✅ v2.0.0 |
 | Deprecation warning on MeanRevertingOracle | Log a `DeprecationWarning` when instantiated, directing users to `SparseMeanRevertingOracle`. | ✅ v2.0.0 |
-| Bounded `f_log` growth | Use `deque(maxlen=N)` or periodic flush to prevent unbounded memory growth in `SparseMeanRevertingOracle.f_log`. | — |
+| Bounded `f_log` growth | Use `deque(maxlen=N)` or periodic flush to prevent unbounded memory growth in `SparseMeanRevertingOracle.f_log`. | ✅ v2.1.0 |
 
 ### 6.3 Strategic Enhancements
 

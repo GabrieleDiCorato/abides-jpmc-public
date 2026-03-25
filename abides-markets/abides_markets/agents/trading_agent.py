@@ -300,7 +300,9 @@ class TradingAgent(FinancialAgent):
     def _handle_order_cancelled_msg(self, message: OrderCancelledMsg) -> None:
         self.order_cancelled(message.order)
 
-    def _handle_order_partial_cancelled_msg(self, message: OrderPartialCancelledMsg) -> None:
+    def _handle_order_partial_cancelled_msg(
+        self, message: OrderPartialCancelledMsg
+    ) -> None:
         self.order_partial_cancelled(message.new_order)
 
     def _handle_order_modified_msg(self, message: OrderModifiedMsg) -> None:
@@ -309,24 +311,32 @@ class TradingAgent(FinancialAgent):
     def _handle_order_replaced_msg(self, message: OrderReplacedMsg) -> None:
         self.order_replaced(message.old_order, message.new_order)
 
-    def _handle_query_last_trade_response_msg(self, message: QueryLastTradeResponseMsg) -> None:
+    def _handle_query_last_trade_response_msg(
+        self, message: QueryLastTradeResponseMsg
+    ) -> None:
         if message.mkt_closed:
             self.mkt_closed = True
         self.query_last_trade(message.symbol, message.last_trade)
 
-    def _handle_query_spread_response_msg(self, message: QuerySpreadResponseMsg) -> None:
+    def _handle_query_spread_response_msg(
+        self, message: QuerySpreadResponseMsg
+    ) -> None:
         if message.mkt_closed:
             self.mkt_closed = True
         self.query_spread(
             message.symbol, message.last_trade, message.bids, message.asks, ""
         )
 
-    def _handle_query_order_stream_response_msg(self, message: QueryOrderStreamResponseMsg) -> None:
+    def _handle_query_order_stream_response_msg(
+        self, message: QueryOrderStreamResponseMsg
+    ) -> None:
         if message.mkt_closed:
             self.mkt_closed = True
         self.query_order_stream(message.symbol, message.orders)
 
-    def _handle_query_transacted_vol_response_msg(self, message: QueryTransactedVolResponseMsg) -> None:
+    def _handle_query_transacted_vol_response_msg(
+        self, message: QueryTransactedVolResponseMsg
+    ) -> None:
         if message.mkt_closed:
             self.mkt_closed = True
         self.query_transacted_volume(
