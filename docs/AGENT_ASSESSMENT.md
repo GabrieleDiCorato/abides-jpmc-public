@@ -1,6 +1,6 @@
 # ABIDES Agent & Product Assessment
 
-**Date**: 2026-03-25 (updated)
+**Date**: 2026-03-26 (updated)
 
 ---
 
@@ -23,10 +23,6 @@
 
 ## 2. Per-Agent Assessment
 
-### 2.1 ExchangeAgent (962 LOC)
-
-**Role**: Central order book, matching engine, subscription publisher.
-
 
 ### 2.2 NoiseAgent
 
@@ -35,15 +31,6 @@
 | Concern | Severity | Detail |
 |---------|:--------:|--------|
 | Single-shot agent | Design | Places exactly **one** order then goes silent. In real markets noise traders interact continuously. A configurable multi-wake mode would produce more realistic microstructure. |
-| `kernel_stopping` surplus calculation | Low | Line 86: `float(surplus) / self.starting_cash` — mixes integer cents with float division. Functionally fine but inconsistent with the "prices are integer cents" convention. |
-
-### 2.3 ValueAgent
-
-**Role**: Bayesian fundamental-value estimator. Core of price discovery.
-
-| Concern | Severity | Detail |
-|---------|:--------:|--------|
-| ~~`cancel_all_orders()` then immediately re-queries~~ | ~~Medium~~ | ✅ **Fixed in v2.1.0.** `wakeup()` no longer calls `cancel_all_orders()`. `placeOrder()` now uses `replace_order()` when an existing open order is present, falling back to `place_limit_order()` on the first cycle or after a fill. Halves per-cycle exchange message traffic from 4 events to 2. |
 
 ### 2.4 MomentumAgent
 
@@ -59,7 +46,6 @@
 
 | Concern | Severity | Detail |
 |---------|:--------:|--------|
-| ~~Cancel-then-repost strategy~~ | ~~Medium~~ | ✅ **Fixed in v2.1.0.** `place_orders()` refactored with a `_diff_and_replace()` helper that pairs existing open orders with desired orders per side. Changed orders use `replace_order()`, identical orders are skipped (zero messages), surplus existing are cancelled, surplus desired are batched via `place_multiple_orders()`. Halves per-cycle message traffic and eliminates the `cancel_limit_delay` pause from poll-mode wakeup. |
 | No P&L / risk tracking | Design | No max-position limit, no loss threshold, no end-of-day flatten. A production MM needs all of these. |
 
 ### 2.6 POVExecutionAgent
@@ -71,13 +57,6 @@
 | Market orders only | Design | Line 359: uses exclusively market orders for fills. A production POV agent should also support limit orders with active crossing for better price improvement. |
 | No urgency parameter | Design | Real POV algos have urgency controls (e.g., ramp rate near close). |
 
-### 2.7 TradingAgent Base (1,250 LOC)
-
-| Concern | Severity | Detail |
-|---------|:--------:|--------|
-| Self-comment: "ugly way" at line 192 | Low | Result tracking via kernel dict is acknowledged tech debt. |
-
----
 
 ## 3. Systemic Pain Points
 
@@ -97,13 +76,9 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 | **HFT / Latency-Sensitive Agent** | No agent designed to exploit microsecond-level speed advantages (queue priority, stale quotes). | **P2** |
 | **Mean-Reversion Agent** | An alternative to MomentumAgent for modeling contrarian strategies. | **P2** |
 
-### 3.2 Performance Bottlenecks
+### 3.2 Robustness Issues
 
-1. ~~**Cancel-and-repost pattern**~~: ✅ **Resolved in v2.1.0.** Both `ValueAgent` and `AdaptiveMarketMakerAgent` now use `replace_order()` instead of cancel-all + re-place. `TradingAgent.replace_order()` was also hardened: it pre-registers the new order in `self.orders` (so `OrderExecutedMsg`, which the exchange sends *before* `OrderReplacedMsg` when a replacement crosses the spread, can find the order) while leaving the old order in place until `order_replaced()` confirms the exchange round-trip (preventing a race with pending executions for the old order). Additionally, `ExchangeAgent` was fixed to handle `ReplaceOrderMsg` correctly in the market-closed logging path (previously caused `AttributeError`).
-
-### 3.3 Robustness Issues
-
-1. **No position limits anywhere**: Not a single agent enforces a max position. The `ignore_risk=True` default means even the at-risk-capital check in `TradingAgent` is bypassed by default. Setting `ignore_risk=False` triggers a cash-based limit, but no agent enforces an explicit share-count position cap.
+1. ~~**No position limits anywhere**~~: **RESOLVED.** `TradingAgent` now supports `position_limit` (symmetric per-symbol share cap) and `position_limit_clamp` (reduce vs. block). Enforced in `create_limit_order`, `place_market_order`, `place_multiple_orders`, and `replace_order`. Exposed via `BaseAgentConfig` for declarative configuration. 44 dedicated tests in `test_position_limit.py`.
 
 2. **No agent-level circuit breaker**: If a strategy enters a pathological loop (e.g., MomentumAgent accumulating 100,000 shares), nothing stops it.
 
@@ -111,11 +86,7 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 
 ## 4. Recommendations
 
-### 4.1 Remaining Code-Level Improvements
-
-*All previously identified code-level fixes have been resolved as of v2.1.0. No outstanding items.*
-
-### 4.2 New Agent Types to Implement
+### 4.1 New Agent Types to Implement
 
 **Tier 1 — Required for product launch:**
 
@@ -141,13 +112,11 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 | **MeanReversionAgent** | Buys when price is N standard deviations below recent mean, sells above. Contrarian complement to MomentumAgent. |
 | **HFTAgent** | Exploits queue priority and latency; cancels stale quotes immediately on price change. |
 
-### 4.3 Architectural Improvements
+### 4.2 Architectural Improvements
 
-1. ~~**Adopt `modify_order`/`replace_order` in agents**~~: ✅ **Done in v2.1.0.** Both `ValueAgent` and `AdaptiveMarketMakerAgent` now use `replace_order()`. `TradingAgent.replace_order()` was hardened to handle the `OrderExecutedMsg`-before-`OrderReplacedMsg` timing. 8 new regression tests cover the change.
+1. ~~**Position limit mixin**~~: **RESOLVED.** Implemented directly in `TradingAgent` (no mixin needed — all trading agents inherit it). Constructor params: `position_limit: int | None` (symmetric `[-N, +N]`), `position_limit_clamp: bool` (clamp vs. block). Pending orders are conservatively counted. `BaseAgentConfig` fields propagate via the config system.
 
-2. **Position limit mixin**: A `PositionLimitMixin` that any agent can inherit to enforce hard position caps, with configurable breach behavior (block order / flatten).
-
-3. **Register all agents**: The gym agents (`CoreBackgroundAgent`, `FinancialGymAgent`) are not registered in the config system. For deployment, every agent type should be configurable declaratively.
+2. **Register all agents**: The gym agents (`CoreBackgroundAgent`, `FinancialGymAgent`) are not registered in the config system. For deployment, every agent type should be configurable declaratively.
 
 ---
 
@@ -262,7 +231,7 @@ Agents access the oracle via `self.kernel.oracle` in their `kernel_starting()` o
 
 | Enhancement | Priority | Detail |
 |-------------|:--------:|--------|
-| Oracle event subscription API | P1 | Allow agents to register for discrete information shocks (megashocks, earnings). Enables the `InformedTraderAgent` pattern described in §4.3. |
+| Oracle event subscription API | P1 | Allow agents to register for discrete information shocks (megashocks, earnings). Enables the `InformedTraderAgent` pattern described in §4.1. |
 | `ValueAgentConfig` auto-derive `r_bar` | P1 | `_prepare_constructor_kwargs()` should extract `r_bar` from the oracle config, eliminating parameter duplication and misalignment risk. |
 | Multi-symbol correlation | P2 | Current oracles generate independent series per symbol. Add covariance structure (e.g., Cholesky-decomposed correlated OU processes) for realistic cross-asset modeling. |
 | Built-in CSV/Parquet providers | P2 | Ship `CsvProvider` and `ParquetProvider` alongside `DataFrameProvider` to cover the most common external data ingestion patterns without user boilerplate. |
@@ -271,13 +240,11 @@ Agents access the oracle via `self.kernel.oracle` in their `kernel_starting()` o
 
 ## 7. Product Evaluation
 
-### 7.1 v2.1.0 Quality Assessment
+### 7.1 Quality Assessment (as of v2.1.0)
 
-v2.0.0 resolved **all 15 identified bugs** plus additional improvements (POV fill-price tracking, Oracle ABC `f_log`, dead code removal).
+All 15 bugs identified in v2.0.0 have been resolved. The cancel-and-repost performance bottleneck was eliminated in v2.1.0 via `replace_order()`. The full 312-test suite passes with zero warnings.
 
-v2.1.0 resolved the **cancel-and-repost performance bottleneck** (§3.2) in both `ValueAgent` and `AdaptiveMarketMakerAgent`, replacing it with `replace_order()`. This required hardening `TradingAgent.replace_order()` to correctly handle the exchange's message ordering (pre-registering the new order before `OrderExecutedMsg` arrives, while keeping the old order until `OrderReplacedMsg` confirms the round-trip) and fixing a pre-existing `AttributeError` in `ExchangeAgent`'s market-closed logging path for `ReplaceOrderMsg`. The fix is regression-tested (`test_agent_fixes.py`, 31 tests — 8 new for the replace_order change) and validated across the full 312-test suite with zero warnings.
-
-**Remaining technical debt** is exclusively design-level (unbounded lists, hard-coded parameters, missing agent types) — no runtime crashes, data-corruption risks, or performance anti-patterns in normal operation.
+**Remaining technical debt** is exclusively design-level (unbounded positions, hard-coded parameters, missing agent types) — no runtime crashes, data-corruption risks, or performance anti-patterns.
 
 ### 7.2 Fitness for Use Case 1 — Simulation Dashboard
 
@@ -329,4 +296,4 @@ v2.1.0 resolved the **cancel-and-repost performance bottleneck** (§3.2) in both
 | Data extraction | **Beta** | `parse_logs_df` works but requires post-hoc reconstruction. No streaming metrics. |
 | Documentation | **Good** | Config system docs, custom agent guide, LLM gotchas, data extraction — all current and accurate. |
 
-**Bottom line**: ABIDES v2.0.0 is a **solid simulation engine with a capable config system** but an **underdeveloped agent ecosystem**. The engine is ready for production; the agent library needs 2–3 more development cycles to support the target use cases.
+**Bottom line**: ABIDES v2.1.0 is a **solid simulation engine with a capable config system** but an **underdeveloped agent ecosystem**. The engine is ready for production; the agent library needs 2–3 more development cycles to support the target use cases.
