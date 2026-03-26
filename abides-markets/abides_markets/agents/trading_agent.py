@@ -189,17 +189,10 @@ class TradingAgent(FinancialAgent):
             f"Final holdings for {self.name}: {self.fmt_holdings(self.holdings)}. Marked to market: {cash}"
         )
 
-        # Record final results for presentation/debugging.  This is an ugly way
-        # to do this, but it is useful for now.
-        mytype = self.type
+        # Record final results for presentation/debugging.
         gain = cash - self.starting_cash
-
-        if mytype in self.kernel.mean_result_by_agent_type:
-            self.kernel.mean_result_by_agent_type[mytype] += gain
-            self.kernel.agent_count_by_type[mytype] += 1
-        else:
-            self.kernel.mean_result_by_agent_type[mytype] = gain
-            self.kernel.agent_count_by_type[mytype] = 1
+        self.kernel.mean_result_by_agent_type[self.type] += gain
+        self.kernel.agent_count_by_type[self.type] += 1
 
     # Simulation participation messages.
 
