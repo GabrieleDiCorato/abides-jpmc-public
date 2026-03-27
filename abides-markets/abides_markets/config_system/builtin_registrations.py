@@ -39,6 +39,9 @@ def _register_builtins() -> None:
             "Simple agent that wakes once at a random time and places "
             "one random limit order at bid or ask."
         ),
+        requires_oracle=False,
+        typical_count_range=(50, 5000),
+        recommended_with=("value", "adaptive_market_maker"),
     )
 
     registry.register(
@@ -50,6 +53,9 @@ def _register_builtins() -> None:
             "Bayesian learner that estimates fundamental value from noisy "
             "observations and trades when price deviates from estimate."
         ),
+        requires_oracle=True,
+        typical_count_range=(10, 500),
+        recommended_with=("noise",),
     )
 
     registry.register(
@@ -61,6 +67,9 @@ def _register_builtins() -> None:
             "Trend-follower using 20-bar vs 50-bar moving average crossover. "
             "Buys when MA(20) >= MA(50), sells otherwise."
         ),
+        requires_oracle=False,
+        typical_count_range=(1, 50),
+        recommended_with=("noise", "value"),
     )
 
     registry.register(
@@ -73,6 +82,9 @@ def _register_builtins() -> None:
             "adaptive spread. Places liquidity on both sides in multiple "
             "price levels."
         ),
+        requires_oracle=False,
+        typical_count_range=(1, 5),
+        recommended_with=("noise", "value"),
     )
 
     registry.register(
@@ -84,6 +96,9 @@ def _register_builtins() -> None:
             "Percentage-of-volume execution agent that sizes orders based "
             "on observed transacted volume to execute a large target quantity."
         ),
+        requires_oracle=False,
+        typical_count_range=(1, 1),
+        recommended_with=("noise", "value", "adaptive_market_maker"),
     )
 
 

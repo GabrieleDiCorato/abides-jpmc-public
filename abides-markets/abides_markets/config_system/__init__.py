@@ -126,6 +126,42 @@ class ValidationResult:
 
 
 # ---------------------------------------------------------------------------
+# Category taxonomy
+# ---------------------------------------------------------------------------
+
+CATEGORIES: dict[str, dict[str, Any]] = {
+    "background": {
+        "label": "Liquidity & Background",
+        "description": (
+            "Agents that provide baseline market activity. Most simulations "
+            "need at least noise + value agents for a functioning order book."
+        ),
+        "sort_order": 1,
+    },
+    "market_maker": {
+        "label": "Market Makers",
+        "description": (
+            "Agents that provide two-sided liquidity with tighter spreads "
+            "and deeper books."
+        ),
+        "sort_order": 2,
+    },
+    "strategy": {
+        "label": "Trading Strategies",
+        "description": "Directional trading strategies that consume liquidity.",
+        "sort_order": 3,
+    },
+    "execution": {
+        "label": "Execution Algorithms",
+        "description": (
+            "Algorithms for executing large orders with minimal market impact."
+        ),
+        "sort_order": 4,
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # AI Discoverability API
 # ---------------------------------------------------------------------------
 
@@ -148,6 +184,64 @@ def get_config_schema() -> dict[str, Any]:
     AI agents can use this to understand the complete config structure.
     """
     return SimulationConfig.model_json_schema()
+
+
+def get_full_manifest() -> dict[str, Any]:
+    """Return complete metadata sufficient to auto-generate a configuration UI.
+
+    The manifest includes agent types with their JSON-Schema parameters,
+    oracle options, available templates, and the category taxonomy.
+
+    Returns a dict with keys:
+
+    - ``agent_types`` — list from :func:`list_agent_types` (enriched with
+      ``requires_oracle``, ``typical_count_range``, ``recommended_with``).
+    - ``market_config_schema`` — JSON Schema for :class:`MarketConfig`.
+    - ``oracle_options`` — list of oracle type descriptors.
+    - ``templates`` — list from :func:`list_templates`.
+    - ``categories`` — the :data:`CATEGORIES` taxonomy dict.
+    """
+    from abides_markets.config_system.models import (
+        ExternalDataOracleConfig,
+        MarketConfig,
+        MeanRevertingOracleConfig,
+        SparseMeanRevertingOracleConfig,
+    )
+
+    oracle_options: list[dict[str, Any]] = [
+        {
+            "type": "sparse_mean_reverting",
+            "description": "Mean-reverting oracle with sparse noise and mega-shocks.",
+            "schema": SparseMeanRevertingOracleConfig.model_json_schema(),
+        },
+        {
+            "type": "mean_reverting",
+            "description": (
+                "Simplified mean-reverting oracle (deprecated — prefer sparse)."
+            ),
+            "schema": MeanRevertingOracleConfig.model_json_schema(),
+        },
+        {
+            "type": "external_data",
+            "description": (
+                "Marker for an externally-injected oracle built with a custom "
+                "data provider (no configurable fields)."
+            ),
+            "schema": ExternalDataOracleConfig.model_json_schema(),
+        },
+        {
+            "type": None,
+            "description": "No oracle — LOB-based agents only.",
+        },
+    ]
+
+    return {
+        "agent_types": registry.list_agents(),
+        "market_config_schema": MarketConfig.model_json_schema(),
+        "oracle_options": oracle_options,
+        "templates": list_templates(),
+        "categories": CATEGORIES,
+    }
 
 
 def validate_config(config_dict: dict[str, Any]) -> ValidationResult:
@@ -253,4 +347,8 @@ __all__ = [
     # Validation types
     "ValidationIssue",
     "ValidationResult",
+    # Category taxonomy
+    "CATEGORIES",
+    # Manifest
+    "get_full_manifest",
 ]

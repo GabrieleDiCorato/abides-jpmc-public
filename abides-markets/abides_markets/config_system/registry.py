@@ -19,6 +19,9 @@ class AgentRegistryEntry:
     category: str  # "background", "strategy", "execution", "market_maker"
     description: str = ""
     agent_class: type | None = None  # The ABIDES agent class to instantiate
+    requires_oracle: bool = False
+    typical_count_range: tuple[int, int] | None = None
+    recommended_with: tuple[str, ...] = ()
 
 
 class AgentRegistry:
@@ -46,6 +49,9 @@ class AgentRegistry:
         description: str = "",
         agent_class: type | None = None,
         allow_overwrite: bool = False,
+        requires_oracle: bool = False,
+        typical_count_range: tuple[int, int] | None = None,
+        recommended_with: tuple[str, ...] = (),
     ) -> None:
         """Register an agent type.
 
@@ -60,6 +66,10 @@ class AgentRegistry:
             allow_overwrite: If *True*, silently replace an existing entry with
                 the same *name* instead of raising.  Useful for notebook
                 workflows where cells that define custom agents are re-executed.
+            requires_oracle: Whether this agent type needs an oracle to function.
+            typical_count_range: Suggested (min, max) agent count for this type.
+            recommended_with: Names of agent types that work well alongside
+                this one (e.g. a market maker recommends background agents).
         """
         if name in self._entries and not allow_overwrite:
             raise ValueError(f"Agent type '{name}' is already registered")
@@ -69,6 +79,9 @@ class AgentRegistry:
             category=category,
             description=description,
             agent_class=agent_class,
+            requires_oracle=requires_oracle,
+            typical_count_range=typical_count_range,
+            recommended_with=recommended_with,
         )
 
     def get(self, name: str) -> AgentRegistryEntry:
@@ -83,14 +96,18 @@ class AgentRegistry:
         result = []
         for entry in self._entries.values():
             schema = entry.config_model.model_json_schema()
-            result.append(
-                {
-                    "name": entry.name,
-                    "category": entry.category,
-                    "description": entry.description,
-                    "parameters": schema.get("properties", {}),
-                }
-            )
+            info: dict[str, Any] = {
+                "name": entry.name,
+                "category": entry.category,
+                "description": entry.description,
+                "requires_oracle": entry.requires_oracle,
+                "parameters": schema.get("properties", {}),
+            }
+            if entry.typical_count_range is not None:
+                info["typical_count_range"] = list(entry.typical_count_range)
+            if entry.recommended_with:
+                info["recommended_with"] = list(entry.recommended_with)
+            result.append(info)
         return result
 
     def get_json_schema(self, name: str) -> dict[str, Any]:
@@ -117,6 +134,9 @@ def register_agent(
     description: str = "",
     agent_class: type | None = None,
     allow_overwrite: bool = True,
+    requires_oracle: bool = False,
+    typical_count_range: tuple[int, int] | None = None,
+    recommended_with: tuple[str, ...] = (),
 ):
     """Decorator to register an agent config model in the global registry.
 
@@ -140,6 +160,9 @@ def register_agent(
             description=description,
             agent_class=agent_class,
             allow_overwrite=allow_overwrite,
+            requires_oracle=requires_oracle,
+            typical_count_range=typical_count_range,
+            recommended_with=recommended_with,
         )
         return cls
 
