@@ -73,6 +73,13 @@ All orders are placed via `TradingAgent` helpers:
 - `self.place_limit_order(symbol, quantity, side, limit_price)`
 - `self.place_market_order(symbol, quantity, side)`
 
+**Risk Guards (inherited from TradingAgent):**
+- `position_limit` / `position_limit_clamp` — per-symbol position cap (block or clamp).
+- `max_drawdown` — if `starting_cash − mark_to_market(holdings) ≥ max_drawdown`, the agent is permanently halted (circuit breaker).
+- `max_order_rate` / `order_rate_window_ns` — if more than `max_order_rate` orders are placed within the tumbling window, the agent is permanently halted.
+
+All guards default to `None` (disabled). Set them via the constructor or `BaseAgentConfig` fields in the declarative config system.
+
 **Open Orders Tracking:**
 - Monitored in `self.orders` (Dict by `order_id`).
 - Automatically decremented/removed by `TradingAgent.order_executed()` when filled.

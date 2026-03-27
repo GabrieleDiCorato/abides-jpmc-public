@@ -71,16 +71,15 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 | **Implementation Shortfall (Arrival Price) Agent** | No Almgren-Chriss style optimal execution. Critical for measuring execution quality. | **P1** |
 | **Iceberg / Hidden Agent** | No agent that uses hidden or iceberg order types despite the exchange supporting `is_hidden`. | **P1** |
 | **Stop-Loss / Take-Profit Agent** | No conditional order logic. Real markets have significant stop-triggered volume. | **P1** |
-| **Informed Trader / News Agent** | A step beyond ValueAgent — an agent that receives discrete information shocks (earnings, events) and trades aggressively on them. Essential for studying adverse selection. | **P1** |
+| **Informed Trader / News Agent** | Distinct from ValueAgent's continuous Bayesian estimation — reacts to **discrete** oracle events (megashocks, earnings) with urgency. Essential for studying adverse selection: when informed flow hits the book, MM spreads widen and liquidity dries up. Requires oracle event subscription API (§6.2). | **P1** |
 | **Pairs / Stat-Arb Agent** | No multi-symbol agent despite ExchangeAgent supporting multiple symbols. Needed for any relative-value simulation. | **P2** |
 | **HFT / Latency-Sensitive Agent** | No agent designed to exploit microsecond-level speed advantages (queue priority, stale quotes). | **P2** |
 | **Mean-Reversion Agent** | An alternative to MomentumAgent for modeling contrarian strategies. | **P2** |
 
 ### 3.2 Robustness Issues
 
-1. ~~**No position limits anywhere**~~: **RESOLVED.** `TradingAgent` now supports `position_limit` (symmetric per-symbol share cap) and `position_limit_clamp` (reduce vs. block). Enforced in `create_limit_order`, `place_market_order`, `place_multiple_orders`, and `replace_order`. Exposed via `BaseAgentConfig` for declarative configuration. 44 dedicated tests in `test_position_limit.py`.
 
-2. **No agent-level circuit breaker**: If a strategy enters a pathological loop (e.g., MomentumAgent accumulating 100,000 shares), nothing stops it.
+1. ~~**No agent-level circuit breaker**~~: **RESOLVED.** Implemented directly in `TradingAgent`. Constructor params: `max_drawdown: int | None` (loss-from-starting-cash threshold in cents), `max_order_rate: int | None` (max orders per window), `order_rate_window_ns: int` (tumbling window, default 1 min). Once either trigger fires the latch is permanent — the agent is halted for the remainder of the simulation. `BaseAgentConfig` fields propagate via the config system.
 
 ---
 
@@ -94,7 +93,7 @@ The current agent roster is **minimal for academic simulation** but **incomplete
 |-------|-------------|
 | **TWAPExecutionAgent** | Slices a large parent order into uniform time-sliced child orders. Configurable start/end time, randomization interval, limit-vs-market child orders. |
 | **VWAPExecutionAgent** | Targets the volume-weighted average price by distributing execution according to a historical volume profile curve. |
-| **InformedTraderAgent** | Receives discrete information shocks from the oracle and trades aggressively in the correct direction. Parametrize by information precision and aggressiveness. |
+| **InformedTraderAgent** | Receives **discrete** information shocks (megashocks, earnings events) from the oracle via event subscription and trades aggressively in the correct direction. Differs from `ValueAgent` (continuous Bayesian observation) by reacting to *events* with urgency. Key parameters: `information_delay` (0ns insider → minutes slow analyst), `information_precision` (perfect → noisy), `aggressiveness` (fraction of edge consumed per trade). Models adverse selection — when this agent hits the book, AMM spreads should widen and liquidity should dry up. Requires oracle event subscription API (§6.2). |
 
 **Tier 2 — Required for realistic microstructure:**
 
@@ -168,7 +167,17 @@ Agents access the oracle via `self.kernel.oracle` in their `kernel_starting()` o
 | **AdaptiveMarketMakerAgent** | ❌ | ❌ | No oracle access |
 | **POVExecutionAgent** | ❌ | ❌ | No oracle access |
 
-**Key finding**: Only 1 of 5 trading agents (ValueAgent) actually uses the oracle for trading decisions. The oracle is architecturally central but practically underutilized.
+**Key finding**: Only `ValueAgent` uses the oracle for trading decisions — and this is **correct by design**. The separation between informed agents (ValueAgent → oracle → limit orders near fundamental) and uninformed agents (everyone else → LOB-only) models realistic information asymmetry. In a typical rmsc04 simulation, 102 ValueAgents collectively push LOB prices toward fundamentals; MomentumAgent, AMM, NoiseAgent, and POV then react to those prices — exactly like their real-world counterparts who lack private fundamental models. This heterogeneity IS the price discovery mechanism.
+
+**Oracle access rationale per agent**:
+
+| Agent | Real-world analogue | Oracle access? | Rationale |
+|-------|---------------------|:--------------:|----------|
+| **ValueAgent** | Fundamental analyst | ✅ Yes | Bayesian estimation of fundamental value — the canonical informed trader. |
+| **MomentumAgent** | Trend-following CTA | ❌ No | Momentum strategies are purely price-based by definition. Adding oracle access would destroy the informed/uninformed heterogeneity. |
+| **AdaptiveMarketMakerAgent** | Electronic MM | ❌ No | Most MMs quote around LOB mid, not fundamentals. An optional fundamental anchor could be a future enhancement (see §6.2). |
+| **NoiseAgent** | Retail/random flow | ❌ No | Axiomatically uninformed — oracle access would contradict the agent's role. |
+| **POVExecutionAgent** | Execution desk algo | ❌ No | Benchmark-targeting algorithm, not alpha-generating. Execution agents should not have fundamental views. |
 
 ### 5.5 Per-Oracle Assessment
 
@@ -211,11 +220,11 @@ Agents access the oracle via `self.kernel.oracle` in their `kernel_starting()` o
 
 ### 5.7 Oracle System Pain Points
 
-1. **Oracle severely underutilized**: Only `ValueAgent` uses oracle observations for trading decisions (1 of 5 trading agents). Agents like `MomentumAgent` and `AdaptiveMarketMakerAgent` have no fundamental value anchor, limiting their behavioral realism.
+1. **Information structure is correct but incomplete**: The informed/uninformed split (ValueAgent → oracle, everyone else → LOB) correctly models real-market information asymmetry. The gap is not that existing agents lack oracle access — it's that the only *type* of informed trading modeled is continuous Bayesian estimation (ValueAgent). There is no agent that reacts to **discrete information events** (megashocks, earnings, news). An `InformedTraderAgent` that receives oracle event signals and trades aggressively would model *adverse selection* — the single most important microstructure phenomenon. When an informed trader hits the book, AMM spreads should widen, liquidity should dry up, and stop-losses should cascade.
 
-2. **ExternalDataOracle not compilable**: The `NotImplementedError` at `compiler.py:213` blocks the most production-relevant oracle from declarative configuration. This forces users into manual `compile()` + injection workflows.
+2. **No oracle event subscription API**: The megashock system in `SparseMeanRevertingOracle` generates realistic price discontinuities, but they are **invisible to agents**. No agent can detect "a shock just happened." An event subscription API is the key architectural enabler for informed-trader strategies, news-reactive agents, and adversarial stress testing (flash crash simulation, adverse selection spikes).
 
-3. **No oracle event subscription API**: Agents cannot subscribe to discrete information events (megashocks, earnings announcements). The megashock system in `SparseMeanRevertingOracle` is purely internal — agents cannot react to specific exogenous shocks, preventing implementation of informed trader strategies.
+3. **ExternalDataOracle not compilable**: The `NotImplementedError` at `compiler.py:213` blocks the most production-relevant oracle from declarative configuration. This forces users into manual `compile()` + injection workflows.
 
 ---
 
@@ -231,10 +240,20 @@ Agents access the oracle via `self.kernel.oracle` in their `kernel_starting()` o
 
 | Enhancement | Priority | Detail |
 |-------------|:--------:|--------|
-| Oracle event subscription API | P1 | Allow agents to register for discrete information shocks (megashocks, earnings). Enables the `InformedTraderAgent` pattern described in §4.1. |
+| Oracle event subscription API | P1 | Allow agents to register for discrete information shocks (megashocks, earnings). The oracle emits `OracleEventMsg(symbol, event_type, magnitude)` to subscribed agents with per-subscriber delay/noise (natural information asymmetry model). Enables the `InformedTraderAgent` pattern described in §4.1 and unlocks adversarial stress testing scenarios. Delivery via kernel-routed messages (consistent with ABIDES event model) adds natural latency modeling. |
 | `ValueAgentConfig` auto-derive `r_bar` | P1 | `_prepare_constructor_kwargs()` should extract `r_bar` from the oracle config, eliminating parameter duplication and misalignment risk. |
+| Optional AMM fundamental anchor | P2 | Some sophisticated real-world MMs (Citadel, Virtu) incorporate fundamental views to reduce inventory risk. An optional `use_oracle: bool = False` on `AdaptiveMarketMakerAgent` that blends `alpha * oracle_obs + (1-alpha) * lob_mid` would add realism for specific scenarios. Default off — the current LOB-mid quoting is correct for most MMs. |
 | Multi-symbol correlation | P2 | Current oracles generate independent series per symbol. Add covariance structure (e.g., Cholesky-decomposed correlated OU processes) for realistic cross-asset modeling. |
 | Built-in CSV/Parquet providers | P2 | Ship `CsvProvider` and `ParquetProvider` alongside `DataFrameProvider` to cover the most common external data ingestion patterns without user boilerplate. |
+
+### 6.3 What NOT to Do
+
+The ratio of informed-to-uninformed agents is a key calibration parameter for realistic microstructure. The following should **not** receive oracle access:
+
+- **MomentumAgent**: Momentum strategies are purely price-based. Oracle access would destroy the informed/uninformed heterogeneity that creates realistic price discovery.
+- **Execution agents** (POV, future TWAP/VWAP): These target benchmarks, not alpha. They should not have fundamental views.
+- **NoiseAgent**: Axiomatically uninformed.
+- **Future LOB-only agents** (StopLoss, Iceberg, MeanReversion): These react to price/book state, not fundamentals. Oracle access would misrepresent their real-world behaviour.
 
 ---
 
@@ -260,10 +279,11 @@ All 15 bugs identified in v2.0.0 have been resolved. The cancel-and-repost perfo
 | **Reproducibility** | ✅ Good | Hierarchical `RandomState` seeding ensures identical results across runs with same config. `SimulationConfig` is immutable and reusable. |
 
 **Key gaps for dashboard launch:**
-1. Ship TWAP + VWAP + StopLoss + MeanReversion agents (minimum viable palette)
+1. Ship TWAP + VWAP + StopLoss + MeanReversion agents (minimum viable palette — all LOB-only, no oracle access needed)
 2. Implement `ExternalDataOracleConfig` compilation (unblock CSV/DB data injection via config)
 3. Add continuous-trading mode to `NoiseAgent` (multi-wake with configurable frequency)
 4. Add per-agent P&L / execution quality metrics accessible from `SimulationResult`
+5. Ship `InformedTraderAgent` + oracle event subscription API (unlocks adverse selection scenarios; the only new agent that requires oracle access)
 
 ### 7.3 Fitness for Use Case 2 — Agentic Adversarial Stress Testing
 
@@ -279,8 +299,8 @@ All 15 bugs identified in v2.0.0 have been resolved. The cancel-and-repost perfo
 | **AI Discoverability** | ✅ Good | `list_agent_types()`, `get_config_schema()`, `validate_config()` provide programmatic introspection. Config schemas are JSON-serializable — an LLM can parse and generate them. |
 
 **Key gaps for stress testing:**
-1. Ship `InformedTraderAgent` + `StopLossAgent` (unlock adverse selection and cascade scenarios)
-2. Add oracle event subscription API (let the AI trigger megashocks at precise times)
+1. Ship `InformedTraderAgent` + oracle event subscription API (unlock adverse selection scenarios — the key missing information structure; per-subscriber delay/noise enables natural information asymmetry calibration)
+2. Ship `StopLossAgent` (unlock cascade/flash-crash scenarios — LOB-only, no oracle needed)
 3. Add standardized execution-quality metrics to `SimulationResult` (VWAP slippage, IS, fill rate)
 4. Add causal order attribution: tag each trade with the aggressor agent ID and the passive agent ID
 5. Add correlated multi-symbol oracle support (unlock cross-asset stress scenarios)
@@ -292,7 +312,7 @@ All 15 bugs identified in v2.0.0 have been resolved. The cancel-and-repost perfo
 | Core simulation engine | **Production** | Kernel, message passing, order book, matching — well-tested and performant after v1.2.0 optimizations. |
 | Configuration system | **Production** | `SimulationBuilder`, registry, compiler, YAML/JSON — comprehensive and AI-friendly. |
 | Agent roster | **Alpha** | 5 concrete agents is insufficient for either use case. Minimum viable product needs 10–12 agent types. |
-| Oracle system | **Beta** | `SparseMeanRevertingOracle` is solid. `ExternalDataOracle` is architecturally good but not wired into the config system. No event subscription API. |
+| Oracle system | **Beta** | `SparseMeanRevertingOracle` is solid; informed/uninformed agent split correctly models real-market information asymmetry. `ExternalDataOracle` is architecturally good but not wired into the config system. Missing: event subscription API for discrete information shocks (key enabler for `InformedTraderAgent`). |
 | Data extraction | **Beta** | `parse_logs_df` works but requires post-hoc reconstruction. No streaming metrics. |
 | Documentation | **Good** | Config system docs, custom agent guide, LLM gotchas, data extraction — all current and accurate. |
 
