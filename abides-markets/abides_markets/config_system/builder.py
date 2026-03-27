@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import annotations
 
+import warnings
 from copy import deepcopy
 from typing import Any, Union
 
@@ -240,7 +241,95 @@ class SimulationBuilder:
                 "(integer cents, e.g. 10_000 = $100.00)."
             )
 
+        self._cross_validate(config, oracle_present)
+
         return config
+
+    # ------------------------------------------------------------------
+    # Cross-agent / cross-section consistency checks
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _cross_validate(config: SimulationConfig, oracle_present: bool) -> None:
+        """Emit warnings for semantically suspect but technically valid configs.
+
+        These are soft checks — they emit :mod:`warnings` rather than raising,
+        so a consuming dashboard can capture them via ``warnings.catch_warnings()``.
+        """
+        enabled = {
+            name: group
+            for name, group in config.agents.items()
+            if group.enabled and group.count > 0
+        }
+        enabled_names = set(enabled)
+
+        # Market maker without background liquidity providers
+        if "adaptive_market_maker" in enabled_names and not (
+            enabled_names & {"noise", "value"}
+        ):
+            warnings.warn(
+                "adaptive_market_maker is enabled but no noise or value "
+                "agents are present — the order book will have no background "
+                "liquidity and the market maker may have no counterparties.",
+                stacklevel=3,
+            )
+
+        # Execution agent without adequate liquidity
+        if "pov_execution" in enabled_names:
+            bg_count = sum(enabled[n].count for n in ("noise", "value") if n in enabled)
+            if bg_count < 10:
+                warnings.warn(
+                    f"pov_execution is enabled but only {bg_count} background "
+                    f"agent(s) are present. POV targeting needs meaningful "
+                    f"background volume — consider adding more noise/value agents.",
+                    stacklevel=3,
+                )
+
+        # start_time >= end_time
+        if config.market.start_time >= config.market.end_time:
+            warnings.warn(
+                f"Market start_time ({config.market.start_time}) is not before "
+                f"end_time ({config.market.end_time}) — the trading window "
+                f"is empty or inverted.",
+                stacklevel=3,
+            )
+
+        # POV execution window exceeds market hours
+        if "pov_execution" in enabled_names:
+            from abides_markets.config_system.agent_configs import str_to_ns
+
+            pov_params = enabled["pov_execution"].params
+            start_off = pov_params.get("start_time_offset", "00:30:00")
+            end_off = pov_params.get("end_time_offset", "00:30:00")
+            try:
+                mkt_ns = str_to_ns(config.market.end_time) - str_to_ns(
+                    config.market.start_time
+                )
+                window_consumed = str_to_ns(start_off) + str_to_ns(end_off)
+                if window_consumed >= mkt_ns:
+                    warnings.warn(
+                        "POV execution offsets consume the entire market "
+                        "window — the execution agent will have no time to trade.",
+                        stacklevel=3,
+                    )
+            except Exception:
+                pass  # Best-effort; don't fail on parse issues
+
+        # Excessive agent count
+        total_agents = sum(g.count for g in enabled.values())
+        if total_agents > 10_000:
+            warnings.warn(
+                f"Total enabled agent count is {total_agents:,}. Simulations "
+                f"with >10,000 agents may be very slow.",
+                stacklevel=3,
+            )
+
+        # No agents at all
+        if total_agents == 0:
+            warnings.warn(
+                "No agents are enabled — the simulation will have no participants.",
+                stacklevel=3,
+            )
 
     def get_oracle_instance(self) -> Oracle | None:
         """Return the pre-built oracle instance, if any was injected via oracle_instance()."""

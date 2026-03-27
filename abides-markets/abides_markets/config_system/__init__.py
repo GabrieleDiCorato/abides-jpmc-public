@@ -34,6 +34,8 @@ AI discoverability::
 
 from __future__ import annotations
 
+import warnings
+from dataclasses import dataclass, field
 from typing import Any
 
 # Ensure built-in agent types are registered on import
@@ -68,6 +70,62 @@ from abides_markets.config_system.serialization import (
 from abides_markets.config_system.templates import list_templates
 
 # ---------------------------------------------------------------------------
+# Structured validation types
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ValidationIssue:
+    """A single validation finding (error or warning)."""
+
+    severity: str  # "error" | "warning"
+    message: str
+    field_path: str | None = None
+    agent_name: str | None = None
+    suggestion: str | None = None
+
+
+@dataclass
+class ValidationResult:
+    """Structured result of :func:`validate_config`.
+
+    Attributes
+    ----------
+    issues : list[ValidationIssue]
+        All discovered errors and warnings.
+    """
+
+    issues: list[ValidationIssue] = field(default_factory=list)
+
+    @property
+    def valid(self) -> bool:
+        """True when there are no *error*-severity issues."""
+        return not any(i.severity == "error" for i in self.issues)
+
+    @property
+    def errors(self) -> list[ValidationIssue]:
+        return [i for i in self.issues if i.severity == "error"]
+
+    @property
+    def warnings(self) -> list[ValidationIssue]:
+        return [i for i in self.issues if i.severity == "warning"]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Legacy-compatible dict form: ``{"valid": bool, "errors": [...]}``."""
+        error_strings = [i.message for i in self.errors]
+        if error_strings:
+            return {"valid": False, "errors": error_strings}
+        return {"valid": True}
+
+    # Backward-compatible dict-style access
+    def __getitem__(self, key: str) -> Any:
+        return self.to_dict()[key]
+
+    def __contains__(self, key: object) -> bool:
+        return key in self.to_dict()
+
+
+# ---------------------------------------------------------------------------
 # AI Discoverability API
 # ---------------------------------------------------------------------------
 
@@ -92,35 +150,74 @@ def get_config_schema() -> dict[str, Any]:
     return SimulationConfig.model_json_schema()
 
 
-def validate_config(config_dict: dict[str, Any]) -> dict[str, Any]:
-    """Validate a config dict and return a result.
+def validate_config(config_dict: dict[str, Any]) -> ValidationResult:
+    """Validate a config dict and return a structured result.
 
-    Performs two-phase validation:
+    Performs three-phase validation:
     1. Validates the overall config structure via Pydantic.
     2. Validates each agent group's params against its registered config model.
+    3. Runs cross-agent consistency checks (soft warnings).
 
-    Returns:
-        ``{"valid": True}`` if valid, or
-        ``{"valid": False, "errors": [...]}`` with validation error details.
+    Returns a :class:`ValidationResult` with structured issues.
+
+    .. versionchanged:: 2.3
+       Returns :class:`ValidationResult` instead of a plain dict.
+       The previous ``{"valid": bool, "errors": [...]}`` shape is still
+       accessible via :meth:`ValidationResult.to_dict`.
     """
+    issues: list[ValidationIssue] = []
+
     try:
         config = SimulationConfig.model_validate(config_dict)
     except Exception as e:
-        return {"valid": False, "errors": [str(e)]}
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                message=str(e),
+                field_path="(root)",
+            )
+        )
+        return ValidationResult(issues=issues)
 
-    errors = []
     for agent_name, group in config.agents.items():
         if not group.enabled:
             continue
         try:
             entry = registry.get(agent_name)
             entry.config_model(**group.params)
+        except KeyError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    message=f"Unknown agent type '{agent_name}'.",
+                    agent_name=agent_name,
+                    field_path=f"agents.{agent_name}",
+                )
+            )
         except Exception as e:
-            errors.append(f"Agent '{agent_name}': {e}")
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    message=f"Agent '{agent_name}': {e}",
+                    agent_name=agent_name,
+                    field_path=f"agents.{agent_name}.params",
+                )
+            )
 
-    if errors:
-        return {"valid": False, "errors": errors}
-    return {"valid": True}
+    # Capture cross-agent warnings from builder._cross_validate
+    oracle_present = config.market.oracle is not None
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        SimulationBuilder._cross_validate(config, oracle_present)
+    for w in caught:
+        issues.append(
+            ValidationIssue(
+                severity="warning",
+                message=str(w.message),
+            )
+        )
+
+    return ValidationResult(issues=issues)
 
 
 __all__ = [
@@ -153,4 +250,7 @@ __all__ = [
     "list_templates",
     "get_config_schema",
     "validate_config",
+    # Validation types
+    "ValidationIssue",
+    "ValidationResult",
 ]
