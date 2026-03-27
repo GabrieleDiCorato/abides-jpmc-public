@@ -345,13 +345,26 @@ def _extract_liquidity(
     if last_trade is None and order_book.last_trade:
         last_trade = int(order_book.last_trade)
 
+    # Compute VWAP from order book history (EXEC entries)
+    vwap_cents: int | None = None
+    if hasattr(order_book, "history"):
+        total_value = 0
+        total_qty = 0
+        for entry in order_book.history:
+            if entry.get("type") == "EXEC" and entry.get("price") is not None:
+                price = int(entry["price"])
+                qty = int(entry["quantity"])
+                total_value += price * qty
+                total_qty += qty
+        if total_qty > 0:
+            vwap_cents = total_value // total_qty
+
     return LiquidityMetrics(
         pct_time_no_bid=pct_no_bid,
         pct_time_no_ask=pct_no_ask,
         total_exchanged_volume=total_vol,
         last_trade_cents=last_trade,
-        vwap_cents=None,  # Requires price-per-trade data not available in public book state.
-        # Compute via result.order_logs() from a FULL profile run.
+        vwap_cents=vwap_cents,
     )
 
 

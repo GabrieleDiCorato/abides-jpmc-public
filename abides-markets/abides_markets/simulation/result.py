@@ -343,6 +343,36 @@ class AgentData(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# ExecutionMetrics — optional quality metrics for execution-category agents
+# ---------------------------------------------------------------------------
+
+
+class ExecutionMetrics(BaseModel):
+    """Execution quality metrics for a POV / TWAP / VWAP execution agent.
+
+    Populated only when the agent's category is ``"execution"`` and sufficient
+    trade data is available.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    target_quantity: int
+    """Shares the agent intended to execute."""
+
+    filled_quantity: int
+    """Shares actually filled."""
+
+    fill_rate_pct: float
+    """Percentage of target quantity filled: ``filled_quantity / target_quantity * 100``."""
+
+    avg_fill_price_cents: int | None = None
+    """Average fill price in integer cents; ``None`` if no fills."""
+
+    vwap_cents: int | None = None
+    """Session VWAP from :class:`LiquidityMetrics` (for comparison)."""
+
+
+# ---------------------------------------------------------------------------
 # SimulationResult — top-level value object
 # ---------------------------------------------------------------------------
 
@@ -491,3 +521,66 @@ class SimulationResult(BaseModel):
     def to_json(self) -> str:
         """Return a JSON string representation of this result."""
         return self.model_dump_json()
+
+    def summary_dict(self) -> dict[str, Any]:
+        """Return structured summary data for dashboard widgets.
+
+        Keys:
+
+        - ``metadata`` — seed, tickers, elapsed time.
+        - ``markets`` — per-symbol snapshot: bid/ask/spread, volume, VWAP.
+        - ``agent_leaderboard`` — top 10 agents by PnL.
+        - ``warnings`` — list of anomaly strings (one-sided market, etc.).
+        """
+        warnings_list: list[str] = []
+        market_data: dict[str, dict[str, Any]] = {}
+
+        for symbol, mkt in self.markets.items():
+            close = mkt.l1_close
+            liq = mkt.liquidity
+            bid = close.bid_price_cents
+            ask = close.ask_price_cents
+            spread = (ask - bid) if (bid is not None and ask is not None) else None
+            market_data[symbol] = {
+                "bid_cents": bid,
+                "ask_cents": ask,
+                "spread_cents": spread,
+                "last_trade_cents": liq.last_trade_cents,
+                "vwap_cents": liq.vwap_cents,
+                "total_volume": liq.total_exchanged_volume,
+                "pct_time_no_bid": liq.pct_time_no_bid,
+                "pct_time_no_ask": liq.pct_time_no_ask,
+            }
+            if liq.pct_time_no_bid > 50:
+                warnings_list.append(
+                    f"{symbol}: bid side empty >{liq.pct_time_no_bid:.0f}% of session"
+                )
+            if liq.pct_time_no_ask > 50:
+                warnings_list.append(
+                    f"{symbol}: ask side empty >{liq.pct_time_no_ask:.0f}% of session"
+                )
+            if liq.total_exchanged_volume == 0:
+                warnings_list.append(f"{symbol}: zero trades executed")
+
+        sorted_agents = sorted(self.agents, key=lambda a: a.pnl_cents, reverse=True)
+        leaderboard = [
+            {
+                "agent_id": a.agent_id,
+                "agent_type": a.agent_type,
+                "pnl_cents": a.pnl_cents,
+                "pnl_pct": a.pnl_pct,
+                "mark_to_market_cents": a.mark_to_market_cents,
+            }
+            for a in sorted_agents[:10]
+        ]
+
+        return {
+            "metadata": {
+                "seed": self.metadata.seed,
+                "tickers": self.metadata.tickers,
+                "wall_clock_elapsed_s": self.metadata.wall_clock_elapsed_s,
+            },
+            "markets": market_data,
+            "agent_leaderboard": leaderboard,
+            "warnings": warnings_list,
+        }
