@@ -40,7 +40,7 @@ repos:
     hooks:
       - id: pytest-check
         name: pytest-check
-        entry: sh -c "uv run pytest abides-core/tests abides-markets/tests"
+        entry: pytest abides-core/tests abides-markets/tests
         language: system
         pass_filenames: false
         always_run: true
@@ -50,7 +50,7 @@ repos:
     hooks:
       - id: nb-clean
         name: nb-clean
-        entry: uv run nb-clean clean
+        entry: nb-clean clean
         language: system
         files: \.ipynb$
         pass_filenames: true
