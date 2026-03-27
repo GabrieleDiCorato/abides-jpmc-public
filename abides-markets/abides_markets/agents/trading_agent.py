@@ -588,27 +588,26 @@ class TradingAgent(FinancialAgent):
                 return True
 
         # --- order-rate check ---
-        if self.max_order_rate is not None:
-            if (
-                self._window_start is not None
-                and self.current_time - self._window_start
-                < self.order_rate_window_ns
-                and self._order_count_in_window >= self.max_order_rate
-            ):
-                self._circuit_breaker_tripped = True
-                logger.warning(
-                    f"TradingAgent circuit-breaker tripped (order rate): "
-                    f"orders={self._order_count_in_window} "
-                    f">= max_order_rate={self.max_order_rate}"
-                )
-                self.logEvent(
-                    "CIRCUIT_BREAKER_TRIPPED",
-                    {
-                        "reason": "max_order_rate",
-                        "orders": self._order_count_in_window,
-                    },
-                )
-                return True
+        if (
+            self.max_order_rate is not None
+            and self._window_start is not None
+            and self.current_time - self._window_start < self.order_rate_window_ns
+            and self._order_count_in_window >= self.max_order_rate
+        ):
+            self._circuit_breaker_tripped = True
+            logger.warning(
+                f"TradingAgent circuit-breaker tripped (order rate): "
+                f"orders={self._order_count_in_window} "
+                f">= max_order_rate={self.max_order_rate}"
+            )
+            self.logEvent(
+                "CIRCUIT_BREAKER_TRIPPED",
+                {
+                    "reason": "max_order_rate",
+                    "orders": self._order_count_in_window,
+                },
+            )
+            return True
 
         return False
 
@@ -618,8 +617,7 @@ class TradingAgent(FinancialAgent):
             return
         if (
             self._window_start is None
-            or self.current_time - self._window_start
-            >= self.order_rate_window_ns
+            or self.current_time - self._window_start >= self.order_rate_window_ns
         ):
             self._window_start = self.current_time
             self._order_count_in_window = 0

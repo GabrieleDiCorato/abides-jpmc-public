@@ -13,11 +13,10 @@ Covers:
 from copy import deepcopy
 
 import numpy as np
-import pytest
 
 from abides_core.utils import datetime_str_to_ns, str_to_ns
 from abides_markets.agents.trading_agent import TradingAgent
-from abides_markets.orders import LimitOrder, MarketOrder, Side
+from abides_markets.orders import LimitOrder, Side
 
 DATE = datetime_str_to_ns("20210205")
 MKT_OPEN = DATE + str_to_ns("09:30:00")
@@ -296,7 +295,7 @@ class TestOrderRateViaPlacement:
         agent = _make_agent(max_order_rate=3)
         agent.send_message = lambda dest, msg: sent.append(msg)
         # Place 3 orders — all should succeed.
-        for i in range(3):
+        for _i in range(3):
             agent.place_limit_order(SYMBOL, 10, Side.BID, 10_000)
         assert len(sent) == 3
         # 4th order should be blocked (breaker trips at check time).
