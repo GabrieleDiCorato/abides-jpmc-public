@@ -467,6 +467,13 @@ class MomentumAgentConfig(BaseAgentConfig):
         ge=1,
         description="Number of bars for the slow (long) moving average.",
     )
+    subscribe: bool = Field(
+        default=False,
+        description=(
+            "If True, subscribe to L2 market data instead of polling. "
+            "Subscription mode receives updates asynchronously."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_window_order(self) -> MomentumAgentConfig:
@@ -608,6 +615,44 @@ class AdaptiveMarketMakerConfig(BaseAgentConfig):
             "Extra order quantity placed at the outermost price level on "
             "each side. Acts as a safety net to capture large sweeping "
             "orders.  0 = no backstop."
+        ),
+    )
+    anchor: str = Field(
+        default="middle",
+        description=(
+            "Anchor point for the price ladder relative to the mid-price. "
+            "'top' = ladder top at mid, 'bottom' = ladder bottom at mid, "
+            "'middle' = ladder centered on mid."
+        ),
+    )
+    subscribe: bool = Field(
+        default=False,
+        description=(
+            "If True, subscribe to L2 market data instead of polling. "
+            "Subscription mode receives book updates asynchronously."
+        ),
+    )
+    subscribe_freq: int = Field(
+        default=10_000_000_000,
+        ge=0,
+        description=(
+            "Frequency in nanoseconds at which to receive market data "
+            "updates in subscribe mode."
+        ),
+        json_schema_extra={"unit": "nanoseconds"},
+    )
+    subscribe_num_levels: int = Field(
+        default=1,
+        ge=1,
+        description="Number of order book levels to subscribe to.",
+    )
+    min_imbalance: float = Field(
+        default=0.9,
+        ge=0,
+        le=1,
+        description=(
+            "Minimum book imbalance ratio to trigger order adjustment. "
+            "Values close to 1.0 require extreme imbalance."
         ),
     )
 
