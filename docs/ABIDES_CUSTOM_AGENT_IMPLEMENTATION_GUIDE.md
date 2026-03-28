@@ -308,6 +308,162 @@ end_state = abides.run(runtime)
 
 ---
 
+## 9. Copy-Paste Agent Scaffold
+
+Use this minimal working skeleton as a starting point. Each `# TODO:` marker indicates a line you **must** customise.
+
+```python
+"""TODO: module docstring — describe what this agent does."""
+
+from pydantic import Field
+
+from abides_markets.agents import TradingAgent
+from abides_markets.config_system import BaseAgentConfig, register_agent
+from abides_markets.messages.market import MarketHoursMsg
+from abides_core.utils import str_to_ns
+
+
+# ── Agent class ──────────────────────────────────────────────────────────
+
+class MyAgent(TradingAgent):                      # TODO: rename class
+    """TODO: one-line description of strategy behaviour."""
+
+    # Declare every state string your agent uses (enables runtime validation).
+    VALID_STATES: frozenset[str] = frozenset({
+        "AWAITING_WAKEUP",
+        "AWAITING_SPREAD",
+        # TODO: add more states as needed
+    })
+
+    def __init__(self, id, symbol, starting_cash, *,
+                 name=None, type=None, random_state=None,
+                 log_orders=False, risk_config=None,
+                 wake_up_freq=str_to_ns("30s"),    # TODO: add your params
+                 ):
+        super().__init__(id, name=name, type=type, random_state=random_state,
+                         starting_cash=starting_cash, log_orders=log_orders,
+                         risk_config=risk_config)
+        self.symbol = symbol                       # REQUIRED — TradingAgent uses it
+        self.wake_up_freq = wake_up_freq           # TODO: store your params
+        self.state = "AWAITING_WAKEUP"
+
+    def wakeup(self, current_time):
+        # Guard: returns False when market hours unknown or market closed.
+        if not super().wakeup(current_time):
+            return
+        self.state = "AWAITING_SPREAD"
+        self.get_current_spread(self.symbol)       # async — response arrives later
+
+    def receive_message(self, current_time, sender_id, message):
+        # MUST call super first — it updates portfolio, known_bids/asks, etc.
+        super().receive_message(current_time, sender_id, message)
+
+        if self.state == "AWAITING_SPREAD":
+            bids = self.known_bids.get(self.symbol, [])
+            asks = self.known_asks.get(self.symbol, [])
+            if bids and asks:
+                # TODO: replace with your trading logic
+                mid = (bids[0][0] + asks[0][0]) // 2
+                self.place_limit_order(self.symbol, 1, "BID", mid)
+
+        # Always schedule the next wakeup.
+        self.set_wakeup(current_time + self.wake_up_freq)
+        self.state = "AWAITING_WAKEUP"
+
+
+# ── Config model + registration ──────────────────────────────────────────
+
+@register_agent(
+    "my_agent",                                    # TODO: unique registry name
+    agent_class=MyAgent,
+    category="strategy",                           # TODO: pick category
+    description="TODO: one-line description",
+)
+class MyAgentConfig(BaseAgentConfig):              # TODO: rename class
+    wake_up_freq: str = Field(default="30s")
+    # TODO: add your config fields here
+
+    def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
+        kwargs = super()._prepare_constructor_kwargs(kwargs, agent_id, agent_rng, context)
+        kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
+        # TODO: inject non-serializable objects here (e.g. strategy instances)
+        return kwargs
+```
+
+> [!TIP]
+> See `abides-markets/abides_markets/agents/noise_agent.py` for a **fully annotated** reference implementation with WHY comments explaining every ABIDES pattern.
+
+---
+
+## 10. Agent-Building Checklist
+
+A step-by-step checklist. Complete every item before considering your agent done.
+
+1. **Subclass `TradingAgent`** — not `Agent` or `FinancialAgent`.
+2. **Call `super().__init__(...)`** — pass through `id`, `name`, `type`, `random_state`, `starting_cash`, `log_orders`, `risk_config`. Store `self.symbol`.
+3. **Declare `VALID_STATES`** — a `frozenset[str]` of every state your agent uses (enables runtime typo detection).
+4. **Guard `wakeup()` entry** — `if not super().wakeup(current_time): return`. Handles unknown market hours and closed market.
+5. **Call `super().receive_message(...)` first** — the base class updates portfolio, `known_bids`, `known_asks`, and order tracking.
+6. **Schedule the next wakeup** — every code path in `wakeup()` or `receive_message()` that should wake the agent must call `self.set_wakeup(...)`.
+7. **Guard `None`/empty data** — `self.known_bids.get(symbol, [])` can be `[]`; `L1DataMsg.bid` can be `None`. Always check before indexing.
+8. **Create a `BaseAgentConfig`** — declare tunable parameters as Pydantic fields. Override `_prepare_constructor_kwargs()` for computed or non-serializable args.
+9. **Register with `@register_agent`** — provide `agent_class`, `category`, and `description`.
+10. **Write a test** — use `make_agent()` from `tests/conftest.py` for unit tests; use `SimulationBuilder` for integration tests (see §11).
+
+---
+
+## 11. Testing Your Agent
+
+### Unit tests with `make_agent()`
+
+`abides-markets/tests/conftest.py` provides `make_agent()` — a helper that constructs any `TradingAgent` subclass with kernel stubs already wired (exchange ID, market hours, RNG, current time). This lets you test agent logic without running a full simulation.
+
+```python
+from abides_markets.agents import NoiseAgent
+from tests.conftest import make_agent, MKT_OPEN
+from abides_core.utils import str_to_ns
+
+def test_initial_state():
+    agent = make_agent(NoiseAgent, wakeup_time=MKT_OPEN + str_to_ns("00:05:00"))
+    assert agent.state == "AWAITING_WAKEUP"
+
+def test_wakeup_requests_spread(stub_kernel):
+    agent = make_agent(NoiseAgent)
+    agent.kernel = stub_kernel
+    agent.wakeup(agent.current_time)
+    assert agent.state == "AWAITING_SPREAD"
+```
+
+### Integration tests with `SimulationBuilder`
+
+For end-to-end tests that verify your agent interacts correctly with the exchange, build a short simulation:
+
+```python
+from abides_markets.config_system import SimulationBuilder
+from abides_markets.simulation import run_simulation
+
+def test_my_agent_runs_in_simulation():
+    config = (SimulationBuilder()
+        .from_template("rmsc04")
+        .market(end_time="09:32:00")   # 2-minute sim for speed
+        .enable_agent("my_agent", count=1, wake_up_freq="5s")
+        .seed(42)
+        .build())
+    result = run_simulation(config)
+    assert len(result.agents) > 0
+```
+
+### When to use each
+
+| Scope | What it tests | Speed | Use `make_agent()` | Use `SimulationBuilder` |
+|-------|--------------|-------|--------------------|------------------------|
+| **Unit** | State transitions, order placement logic, data guards | Fast (ms) | ✓ | |
+| **Integration** | Full lifecycle with exchange, fills, portfolio tracking | Slower (seconds) | | ✓ |
+
+Start with unit tests for rapid iteration, then add one integration test to confirm end-to-end behaviour.
+
+---
+
 ## Further Reading
 
 - [`ABIDES_CONFIG_SYSTEM.md`](./ABIDES_CONFIG_SYSTEM.md) — declarative config system, builder, templates, serialization
