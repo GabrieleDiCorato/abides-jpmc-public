@@ -340,11 +340,11 @@ class TestPOVAgentTypes:
 
 
 class TestNoiseAgentBuyDirection:
-    def test_placeorder_uses_bool_buy(self):
-        """NoiseAgent.placeOrder should use bool for buy direction."""
+    def test_place_order_uses_bool_buy(self):
+        """NoiseAgent.place_order should use bool for buy direction."""
 
         # Verify randint(0, 2) is called (not 1+1)
-        source = inspect.getsource(NoiseAgent.placeOrder)
+        source = inspect.getsource(NoiseAgent.place_order)
         assert "randint(0, 2)" in source
         assert "1 + 1" not in source
 
@@ -462,13 +462,13 @@ class TestValueAgentReplaceOrder:
             r_bar=100_000,
             sigma_n=10_000,
         )
-        # Fake enough state so placeOrder doesn't crash.
+        # Fake enough state so place_order doesn't crash.
         agent.current_time = MKT_OPEN + str_to_ns("00:05:00")
         agent.mkt_open = MKT_OPEN
         agent.mkt_close = MKT_CLOSE
         agent.exchange_id = 99
 
-        # Stub oracle so updateEstimates() works without a kernel.
+        # Stub oracle so update_estimates() works without a kernel.
         class _FakeOracle:
             def observe_price(self, symbol, current_time, sigma_n=0, random_state=None):
                 return 100_000
@@ -477,7 +477,7 @@ class TestValueAgentReplaceOrder:
         return agent
 
     def test_first_cycle_uses_place_limit_order(self):
-        """When self.orders is empty, placeOrder should use place_limit_order (no replace)."""
+        """When self.orders is empty, place_order should use place_limit_order (no replace)."""
         agent = self._make_agent()
         assert len(agent.orders) == 0
 
@@ -493,17 +493,17 @@ class TestValueAgentReplaceOrder:
         agent.place_limit_order = mock_place
         agent.replace_order = mock_replace
 
-        # Seed known_bids/asks so placeOrder has spread data.
+        # Seed known_bids/asks so place_order has spread data.
         agent.known_bids = {"TEST": [[99_900, 100]]}
         agent.known_asks = {"TEST": [[100_100, 100]]}
 
-        agent.placeOrder()
+        agent.place_order()
 
         assert len(placed) == 1, "Should call place_limit_order on first cycle"
         assert len(replaced) == 0, "Should NOT call replace_order on first cycle"
 
     def test_subsequent_cycle_uses_replace_order(self):
-        """When self.orders has an open LimitOrder, placeOrder should use replace_order."""
+        """When self.orders has an open LimitOrder, place_order should use replace_order."""
         from abides_markets.orders import LimitOrder
 
         agent = self._make_agent()
@@ -534,7 +534,7 @@ class TestValueAgentReplaceOrder:
         agent.known_bids = {"TEST": [[99_900, 100]]}
         agent.known_asks = {"TEST": [[100_100, 100]]}
 
-        agent.placeOrder()
+        agent.place_order()
 
         assert len(replaced) == 1, "Should call replace_order when open order exists"
         assert len(placed) == 0, "Should NOT call place_limit_order when replacing"

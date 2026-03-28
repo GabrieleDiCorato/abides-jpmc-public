@@ -527,7 +527,7 @@ class TestDiffAndReplaceCornerCases:
 
 class TestValueAgentPartialFillReplace:
     """If an existing order was partially filled (reduced quantity),
-    placeOrder should still replace it."""
+    place_order should still replace it."""
 
     def _make_agent(self) -> ValueAgent:
         agent = ValueAgent(
@@ -565,7 +565,7 @@ class TestValueAgentPartialFillReplace:
         agent.known_bids = {"TEST": [[99_900, 100]]}
         agent.known_asks = {"TEST": [[100_100, 100]]}
 
-        agent.placeOrder()
+        agent.place_order()
 
         assert len(replaced) == 1, "Should replace the partially-filled order"
         assert replaced[0][0] is old
@@ -590,7 +590,7 @@ class TestValueAgentPartialFillReplace:
         agent.known_bids = {"TEST": [[99_900, 100]]}
         agent.known_asks = {"TEST": [[100_100, 100]]}
 
-        agent.placeOrder()
+        agent.place_order()
 
         assert len(placed) == 1, "Should place fresh when no LimitOrder found"
         assert len(replaced) == 0
