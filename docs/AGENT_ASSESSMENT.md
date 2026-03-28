@@ -351,11 +351,6 @@ ordered by impact.
 
 ### TODO — Error Context & Documentation
 
-- [ ] **8.8 — Wrap compiler agent instantiation with error context.**
-  If `entry.config_model(**group.params)` or `create_agents()` raises, the error
-  message does not identify which agent type failed.
-  File: `abides-markets/abides_markets/config_system/compiler.py`.
-
 - [ ] **8.9 — Document `allow_overwrite` asymmetry in registry.**
   `@register_agent` defaults `allow_overwrite=True` (notebook safety); direct
   `registry.register()` defaults `False` (production safety).  Undocumented.
