@@ -349,14 +349,6 @@ ordered by impact.
 > recalibrated after the config system was introduced.  **Fix direction: update
 > constructors to match config/rmsc04, not the reverse.**
 
-### TODO — Silent Data Loss & Fragile Internals
-
-- [ ] **8.4 — Make `_EXCLUDE_FROM_KWARGS` composable via set union.**
-  `NoiseAgentConfig` and `POVExecutionAgentConfig` copy-paste the base frozenset
-  instead of extending it.  A new risk field in `BaseAgentConfig` would silently
-  leak into constructor kwargs.  Fix: `BaseAgentConfig._EXCLUDE_FROM_KWARGS | frozenset({...})`.
-  File: `abides-markets/abides_markets/config_system/agent_configs.py`.
-
 ### TODO — Missing Validation Guards
 
 - [ ] **8.5 — Add model-level `oracle ↔ opening_price` coupling validator.**
