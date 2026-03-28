@@ -349,14 +349,6 @@ ordered by impact.
 > recalibrated after the config system was introduced.  **Fix direction: update
 > constructors to match config/rmsc04, not the reverse.**
 
-### TODO — Hidden Constructor Parameters
-
-- [ ] **8.7 — Expose hidden AMM and Momentum constructor parameters in config.**
-  `AdaptiveMarketMakerAgent` has 4 constructor params not in config: `anchor`,
-  `subscribe`, `subscribe_num_levels`, `min_imbalance`.  `MomentumAgent` has
-  `subscribe`.  Users cannot customize these via the declarative config system.
-  File: `abides-markets/abides_markets/config_system/agent_configs.py`.
-
 ### TODO — Error Context & Documentation
 
 - [ ] **8.8 — Wrap compiler agent instantiation with error context.**
