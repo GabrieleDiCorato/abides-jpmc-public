@@ -7,6 +7,7 @@ returns, so it works with ``abides.run()``, gymnasium envs, and
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any
 
@@ -240,10 +241,14 @@ def _build_oracle(config, mkt_open, mkt_close, oracle_rng):
         symbols = {
             config.market.ticker: {
                 "r_bar": oc.r_bar,
-                "kappa": oc.kappa,
+                "kappa": math.log(2) / str_to_ns(oc.mean_reversion_half_life),
                 "sigma_s": oc.sigma_s,
                 "fund_vol": oc.fund_vol,
-                "megashock_lambda_a": oc.megashock_lambda_a,
+                "megashock_lambda_a": (
+                    0
+                    if oc.megashock_mean_interval is None
+                    else 1.0 / str_to_ns(oc.megashock_mean_interval)
+                ),
                 "megashock_mean": oc.megashock_mean,
                 "megashock_var": oc.megashock_var,
             }
@@ -275,8 +280,14 @@ def _build_oracle(config, mkt_open, mkt_close, oracle_rng):
 def _get_oracle_params(
     config,
 ) -> tuple[int | None, float | None, float | None]:
-    """Extract r_bar, kappa, sigma_s from oracle config for ValueAgent auto-inheritance."""
+    """Extract r_bar, kappa, sigma_s from oracle config for ValueAgent auto-inheritance.
+
+    kappa is returned in per-nanosecond units (converted from half-life).
+    """
     oc = config.market.oracle
-    if isinstance(oc, (SparseMeanRevertingOracleConfig, MeanRevertingOracleConfig)):
+    if isinstance(oc, SparseMeanRevertingOracleConfig):
+        kappa = math.log(2) / str_to_ns(oc.mean_reversion_half_life)
+        return oc.r_bar, kappa, oc.sigma_s
+    if isinstance(oc, MeanRevertingOracleConfig):
         return oc.r_bar, oc.kappa, oc.sigma_s
     return None, None, None

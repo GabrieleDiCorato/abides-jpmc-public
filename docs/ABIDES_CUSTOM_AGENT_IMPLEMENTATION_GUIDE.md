@@ -106,7 +106,7 @@ All orders are placed via `TradingAgent` helpers:
 **Risk Guards (inherited from TradingAgent):**
 - `position_limit` / `position_limit_clamp` — per-symbol position cap (block or clamp).
 - `max_drawdown` — if `starting_cash − mark_to_market(holdings) ≥ max_drawdown`, the agent is permanently halted (circuit breaker).
-- `max_order_rate` / `order_rate_window_ns` — if more than `max_order_rate` orders are placed within the tumbling window, the agent is permanently halted.
+- `max_order_rate` / `order_rate_window` — if more than `max_order_rate` orders are placed within the tumbling window, the agent is permanently halted.
 
 All guards default to `None` (disabled). Set them via the constructor or as `BaseAgentConfig` fields in your config model (see §6). When using the config system, these fields are automatically bundled into a `RiskConfig` object by `BaseAgentConfig._prepare_constructor_kwargs()` and passed to the `TradingAgent` constructor — you do not need to handle this manually.
 
@@ -118,7 +118,7 @@ config = (SimulationBuilder()
                   position_limit=100,         # max 100 shares per symbol
                   max_drawdown=500_000,        # halt if loss >= $5,000
                   max_order_rate=50,           # max 50 orders per window
-                  order_rate_window_ns=60_000_000_000)  # 60-second window
+                  order_rate_window="1min")  # 60-second window
     .seed(42)
     .build())
 ```

@@ -83,7 +83,7 @@ market:
   oracle:                        # REQUIRED — set explicitly or use null
     type: sparse_mean_reverting
     r_bar: 100000          # $1000.00 in cents
-    kappa: 1.67e-16
+    mean_reversion_half_life: "48d"
     fund_vol: 5.0e-05
   exchange:
     book_logging: true
@@ -100,8 +100,8 @@ agents:
     count: 102
     params:
       r_bar: 100000
-      kappa: 1.67e-15
-      lambda_a: 5.7e-12
+      mean_reversion_half_life: "4.8d"
+      mean_wakeup_gap: "175s"
       computation_delay: 200   # per-agent-type override (ns)
   momentum:
     enabled: true

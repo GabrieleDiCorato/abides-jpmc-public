@@ -326,7 +326,7 @@ class TestConfigSystemRiskConfig:
             position_limit=500,
             max_drawdown=1_000_000,
             max_order_rate=10,
-            order_rate_window_ns=30_000_000_000,
+            order_rate_window="30s",
         )
         context = _stub_context()
         kwargs = config._prepare_constructor_kwargs(
@@ -348,7 +348,7 @@ class TestConfigSystemRiskConfig:
         assert "position_limit_clamp" in excluded
         assert "max_drawdown" in excluded
         assert "max_order_rate" in excluded
-        assert "order_rate_window_ns" in excluded
+        assert "order_rate_window" in excluded
 
     def test_noise_config_inherits_risk_config_injection(self):
         from abides_markets.config_system.agent_configs import NoiseAgentConfig

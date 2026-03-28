@@ -33,7 +33,7 @@ _BASE_EXCLUDE: frozenset[str] = frozenset(
         "position_limit_clamp",
         "max_drawdown",
         "max_order_rate",
-        "order_rate_window_ns",
+        "order_rate_window",
     }
 )
 
@@ -120,14 +120,14 @@ class BaseAgentConfig(BaseModel):
             "permanently halts the agent.  None = disabled."
         ),
     )
-    order_rate_window_ns: int = Field(
-        default=60_000_000_000,
-        ge=1,
+    order_rate_window: str = Field(
+        default="1min",
         description=(
-            "Tumbling window duration in nanoseconds for the order-rate "
-            "circuit breaker.  Default is 1 minute (60_000_000_000 ns)."
+            "Tumbling window duration for the order-rate circuit breaker "
+            "as a duration string (e.g. '1min', '30s', '2min')."
         ),
-        json_schema_extra={"unit": "nanoseconds"},
+        examples=["1min", "30s", "2min"],
+        json_schema_extra={"format": "duration"},
     )
 
     # Fields excluded from automatic constructor mapping.
@@ -227,7 +227,7 @@ class BaseAgentConfig(BaseModel):
             position_limit_clamp=self.position_limit_clamp,
             max_drawdown=self.max_drawdown,
             max_order_rate=self.max_order_rate,
-            order_rate_window_ns=self.order_rate_window_ns,
+            order_rate_window_ns=str_to_ns(self.order_rate_window),
         )
         return kwargs
 
@@ -315,18 +315,19 @@ class ValueAgentConfig(BaseAgentConfig):
       cents, e.g. $100.00 = 10_000).  Typically matches the oracle's ``r_bar``
       so the agent's prior is centered on the true long-run mean.  Auto-inherited
       from the oracle config when ``None``.
-    - ``kappa``: Mean-reversion speed — how quickly the agent's belief reverts to
-      ``r_bar``.  A larger kappa means the agent trusts the long-run mean more
-      relative to recent observations.  Auto-inherited from the oracle config
-      when ``None``.
+    - ``kappa`` / ``mean_reversion_half_life``: Mean-reversion speed — how quickly
+      the agent's belief reverts to ``r_bar``.  A larger kappa means the agent
+      trusts the long-run mean more relative to recent observations.
+      Specified as a duration half-life (e.g. '48d').  Auto-inherited
+      from the oracle config when ``None``.
     - ``sigma_s``: Variance of fundamental price shocks in the agent's model.
       Controls how much the agent expects the fundamental to move per unit time.
       Auto-inherited from the oracle config when ``None``.
     - ``sigma_n``: Observation noise variance — how noisy the agent's oracle
       observations are.  This is agent-specific (different agents can have
       different observation quality) and defaults to ``r_bar / 100``.
-    - ``lambda_a``: Poisson arrival rate for the agent's wakeup schedule
-      (per nanosecond).
+    - ``mean_wakeup_gap``: Average interval between agent wake-ups as a
+      duration string (e.g. '175s').
 
     **Parameter inheritance**: When ``r_bar``, ``kappa``, or ``sigma_s`` are
     ``None``, they are auto-inherited from the oracle config at compile time.
@@ -343,13 +344,15 @@ class ValueAgentConfig(BaseAgentConfig):
         examples=[100_000, 50_000],
         json_schema_extra={"unit": "cents"},
     )
-    kappa: float | None = Field(
+    mean_reversion_half_life: str | None = Field(
         default=None,
         description=(
-            "Mean-reversion speed for the agent's Bayesian prior.  None = "
-            "auto-inherit from oracle config (recommended).  Larger values "
-            "mean stronger mean-reversion toward r_bar."
+            "Half-life of mean reversion as a duration string (e.g. '48d'). "
+            "None = auto-inherit from oracle config (recommended). "
+            "Shorter half-lives mean stronger mean-reversion toward r_bar."
         ),
+        examples=["48d", "4.8d", "30d"],
+        json_schema_extra={"format": "duration"},
     )
     sigma_s: float | None = Field(
         default=None,
@@ -359,9 +362,15 @@ class ValueAgentConfig(BaseAgentConfig):
             "much price movement the agent expects per unit time."
         ),
     )
-    lambda_a: float = Field(
-        default=5.7e-12,
-        description="Arrival rate (per nanosecond) for Poisson wakeups.",
+    mean_wakeup_gap: str = Field(
+        default="175s",
+        description=(
+            "Average time between agent wake-ups as a duration string "
+            "(e.g. '175s', '3min'). Internally converted to a Poisson "
+            "arrival rate."
+        ),
+        examples=["175s", "60s", "5min"],
+        json_schema_extra={"format": "duration"},
     )
     sigma_n: int | None = Field(
         default=None,
@@ -377,7 +386,16 @@ class ValueAgentConfig(BaseAgentConfig):
         description="Depth spread multiplier for passive order price adjustment.",
     )
 
+    _EXCLUDE_FROM_KWARGS: frozenset[str] = _BASE_EXCLUDE | frozenset(
+        {
+            "mean_reversion_half_life",
+            "mean_wakeup_gap",
+        }
+    )
+
     def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
+        import math
+
         from abides_markets.models import OrderSizeModel
 
         kwargs = super()._prepare_constructor_kwargs(
@@ -396,17 +414,19 @@ class ValueAgentConfig(BaseAgentConfig):
                 )
         kwargs["r_bar"] = r_bar
 
-        # Auto-inherit kappa from oracle if not explicitly set
-        kappa = self.kappa
-        if kappa is None:
-            if context.oracle_kappa is not None:
-                kappa = context.oracle_kappa
-            else:
-                raise ValueError(
-                    "ValueAgentConfig.kappa is None and no oracle kappa available. "
-                    "Either set kappa explicitly or provide an oracle with kappa."
-                )
-        kwargs["kappa"] = kappa
+        # Auto-inherit kappa from oracle if not explicitly set.
+        # context.oracle_kappa is already in per-ns units (converted by compiler).
+        hl = self.mean_reversion_half_life
+        if hl is not None:
+            kwargs["kappa"] = math.log(2) / str_to_ns(hl)
+        elif context.oracle_kappa is not None:
+            kwargs["kappa"] = context.oracle_kappa
+        else:
+            raise ValueError(
+                "ValueAgentConfig.mean_reversion_half_life is None and no oracle "
+                "kappa available. Either set mean_reversion_half_life explicitly "
+                "or provide an oracle with a half-life."
+            )
 
         # Auto-inherit sigma_s from oracle if not explicitly set
         sigma_s = self.sigma_s
@@ -419,6 +439,9 @@ class ValueAgentConfig(BaseAgentConfig):
                     "Either set sigma_s explicitly or provide an oracle with sigma_s."
                 )
         kwargs["sigma_s"] = sigma_s
+
+        # Convert mean_wakeup_gap (duration string) → lambda_a (per-ns rate)
+        kwargs["lambda_a"] = 1.0 / str_to_ns(self.mean_wakeup_gap)
 
         # sigma_n is agent-specific: default to r_bar / 100
         if kwargs.get("sigma_n") is None:
@@ -632,14 +655,14 @@ class AdaptiveMarketMakerConfig(BaseAgentConfig):
             "Subscription mode receives book updates asynchronously."
         ),
     )
-    subscribe_freq: int = Field(
-        default=10_000_000_000,
-        ge=0,
+    subscribe_freq: str = Field(
+        default="10s",
         description=(
-            "Frequency in nanoseconds at which to receive market data "
-            "updates in subscribe mode."
+            "Frequency at which to receive market data updates in "
+            "subscribe mode, as a duration string (e.g. '10s', '1s')."
         ),
-        json_schema_extra={"unit": "nanoseconds"},
+        examples=["10s", "5s", "1s"],
+        json_schema_extra={"format": "duration"},
     )
     subscribe_num_levels: int = Field(
         default=1,
@@ -656,11 +679,18 @@ class AdaptiveMarketMakerConfig(BaseAgentConfig):
         ),
     )
 
+    _EXCLUDE_FROM_KWARGS: frozenset[str] = _BASE_EXCLUDE | frozenset(
+        {
+            "subscribe_freq",
+        }
+    )
+
     def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         kwargs = super()._prepare_constructor_kwargs(
             kwargs, agent_id, agent_rng, context
         )
         kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
+        kwargs["subscribe_freq"] = str_to_ns(self.subscribe_freq)
         kwargs["name"] = f"ADAPTIVE_POV_MARKET_MAKER_AGENT_{agent_id}"
         kwargs["type"] = "AdaptivePOVMarketMakerAgent"
         return kwargs

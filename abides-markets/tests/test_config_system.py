@@ -67,7 +67,7 @@ class TestRegistry:
         schema = registry.get_json_schema("value")
         assert "properties" in schema
         assert "r_bar" in schema["properties"]
-        assert "kappa" in schema["properties"]
+        assert "mean_reversion_half_life" in schema["properties"]
 
 
 # ---------------------------------------------------------------------------
@@ -688,7 +688,7 @@ class TestModelValidation:
     def test_sparse_mean_reverting_defaults(self):
         oracle = SparseMeanRevertingOracleConfig()
         assert oracle.r_bar == 100_000
-        assert oracle.kappa == 1.67e-16
+        assert oracle.mean_reversion_half_life == "48d"
 
     def test_exchange_config_defaults(self):
         exc = ExchangeConfig()
@@ -1150,7 +1150,9 @@ class TestEagerValidation:
             SimulationBuilder()
             .from_template("rmsc04")
             .seed(42)
-            .enable_agent("value", count=10, r_bar=150_000, kappa=2e-15)
+            .enable_agent(
+                "value", count=10, r_bar=150_000, mean_reversion_half_life="4d"
+            )
             .build()
         )
         assert config.agents["value"].params["r_bar"] == 150_000
@@ -1275,7 +1277,7 @@ class TestOracleOptional:
                     "count": 5,
                     "params": {
                         "r_bar": 100_000,
-                        "kappa": 1.67e-16,
+                        "mean_reversion_half_life": "48d",
                         "sigma_s": 0,
                     },
                 },
@@ -1343,7 +1345,7 @@ class TestValueAgentAutoInheritance:
 
         config = ValueAgentConfig(
             r_bar=300_000,
-            kappa=0.01,
+            mean_reversion_half_life="1s",
             sigma_s=999,
             sigma_n=5000,
         )
@@ -1363,7 +1365,9 @@ class TestValueAgentAutoInheritance:
         )
         agent = agents[0]
         assert agent.r_bar == 300_000
-        assert agent.kappa == 0.01
+        import math
+
+        assert agent.kappa == pytest.approx(math.log(2) / 1_000_000_000)
         assert agent.sigma_s == 999
         assert agent.sigma_n == 5000
 
@@ -1404,7 +1408,10 @@ class TestValueAgentAutoInheritance:
                 end_time="10:00:00",
             )
             .oracle(
-                type="sparse_mean_reverting", r_bar=250_000, kappa=5e-16, sigma_s=100
+                type="sparse_mean_reverting",
+                r_bar=250_000,
+                mean_reversion_half_life="16d",
+                sigma_s=100,
             )
             .enable_agent("noise", count=10)
             .enable_agent("value", count=2)  # no explicit r_bar/kappa/sigma_s
@@ -1417,7 +1424,12 @@ class TestValueAgentAutoInheritance:
         assert len(value_agents) == 2
         va = value_agents[0]
         assert va.r_bar == 250_000
-        assert va.kappa == 5e-16
+        import math
+
+        from abides_core.utils import str_to_ns
+
+        expected_kappa = math.log(2) / str_to_ns("16d")
+        assert va.kappa == pytest.approx(expected_kappa)
         assert va.sigma_s == 100
         assert va.sigma_n == 2500.0  # 250_000 / 100
 
@@ -1526,10 +1538,11 @@ class TestConstructorConfigAlignment:
         sig = inspect.signature(AdaptiveMarketMakerAgent.__init__)
         # log_orders excluded: config uses None (inherit from context), constructor uses False
         # wake_up_freq excluded: config stores "60s" string, constructor stores nanoseconds
+        # subscribe_freq excluded: config stores "10s" string, constructor stores nanoseconds
         shared_fields = (
             set(AdaptiveMarketMakerConfig.model_fields.keys())
             & set(sig.parameters.keys())
-        ) - {"log_orders", "wake_up_freq"}
+        ) - {"log_orders", "wake_up_freq", "subscribe_freq"}
 
         for field_name in shared_fields:
             config_val = getattr(config, field_name)
@@ -1543,15 +1556,18 @@ class TestConstructorConfigAlignment:
             )
 
     def test_value_agent_lambda_a_matches_config(self):
-        """ValueAgent.lambda_a constructor default should match config."""
+        """Config mean_wakeup_gap should convert to a value close to constructor default."""
         import inspect
 
+        from abides_core.utils import str_to_ns
         from abides_markets.agents.value_agent import ValueAgent
         from abides_markets.config_system.agent_configs import ValueAgentConfig
 
         config = ValueAgentConfig()
         sig = inspect.signature(ValueAgent.__init__)
-        assert sig.parameters["lambda_a"].default == config.lambda_a
+        constructor_default = sig.parameters["lambda_a"].default
+        config_lambda_a = 1.0 / str_to_ns(config.mean_wakeup_gap)
+        assert config_lambda_a == pytest.approx(constructor_default, rel=0.01)
 
 
 class TestOracleKwargDrop:

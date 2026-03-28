@@ -1,3 +1,41 @@
+2026-03 Release v2.3.0
+==================
+
+Config UX — Human-Readable Units
+---------------------------------
+
+Config fields that previously required obscure nanosecond values or
+per-nanosecond scientific-notation rates now accept **duration strings**
+(e.g. ``"1min"``, ``"175s"``, ``"48d"``).  Internal constructors and
+the oracle still use per-nanosecond values — only the config layer changed.
+
+* **``order_rate_window``** (was ``order_rate_window_ns: int``).
+  ``BaseAgentConfig`` field now accepts a duration string (default ``"1min"``).
+  Converted to nanoseconds when building ``RiskConfig``.
+
+* **``mean_wakeup_gap``** (was ``lambda_a: float``).
+  ``ValueAgentConfig`` field now accepts a duration string (default ``"175s"``).
+  Converted to a Poisson arrival rate (``1/ns``) in ``_prepare_constructor_kwargs``.
+
+* **``mean_reversion_half_life``** (was ``kappa: float``).
+  Both ``SparseMeanRevertingOracleConfig`` and ``ValueAgentConfig`` now
+  accept a duration string (oracle default ``"48d"``, agent default ``None``
+  = auto-inherit).  Converted to per-nanosecond kappa via ``ln(2)/ns``.
+
+* **``subscribe_freq``** — ``AdaptiveMarketMakerConfig`` field changed from
+  ``int`` (nanoseconds) to duration string (default ``"10s"``).
+
+* **``megashock_mean_interval``** (was ``megashock_lambda_a: float``).
+  ``SparseMeanRevertingOracleConfig`` field now accepts a duration string
+  or ``None`` to disable megashocks (default ``"100000h"`` ≈ 11.4 years).
+  Converted to a Poisson rate in the compiler.
+
+* **``fund_vol`` description improved** — now explains per-√(ns) units and
+  practical impact on daily price variation.
+
+* Templates and documentation updated to use new field names.
+
+
 2026-03 Release v2.2.1
 ==================
 

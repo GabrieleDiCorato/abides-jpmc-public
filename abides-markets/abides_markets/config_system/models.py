@@ -34,12 +34,16 @@ class SparseMeanRevertingOracleConfig(BaseModel):
         examples=[100_000, 50_000],
         json_schema_extra={"unit": "cents"},
     )
-    kappa: float = Field(
-        default=1.67e-16,
+    mean_reversion_half_life: str = Field(
+        default="48d",
         description=(
-            "Mean-reversion speed of the OU process (per nanosecond). "
-            "Larger values pull the fundamental price back to r_bar faster."
+            "Half-life of mean reversion as a duration string "
+            "(e.g. '48d', '1152h'). After this much time the "
+            "fundamental price has reverted halfway to r_bar. "
+            "Converted to the OU kappa via ln(2)/half_life_ns."
         ),
+        examples=["48d", "30d", "7d"],
+        json_schema_extra={"format": "duration"},
     )
     sigma_s: float = Field(
         default=0,
@@ -51,17 +55,22 @@ class SparseMeanRevertingOracleConfig(BaseModel):
     fund_vol: float = Field(
         default=5e-5,
         description=(
-            "Volatility (standard deviation) of the continuous-time "
-            "fundamental price. Controls daily price variation."
+            "Per-sqrt(nanosecond) volatility of the OU diffusion term. "
+            "Controls the magnitude of continuous random fluctuations "
+            "around r_bar. The default (5e-5) produces roughly ±$4.60 "
+            "daily variation on a $1000 stock."
         ),
     )
-    megashock_lambda_a: float = Field(
-        default=2.77778e-18,
+    megashock_mean_interval: str | None = Field(
+        default="100000h",
         description=(
-            "Megashock arrival rate (per nanosecond). Megashocks are rare, "
-            "large jumps in fundamental value. The default corresponds "
-            "to roughly one megashock per hour."
+            "Average time between megashock events as a duration string "
+            "(e.g. '100000h' ≈ 11.4 years). Megashocks are rare, large "
+            "jumps in fundamental value. Set to None to disable "
+            "megashocks entirely."
         ),
+        examples=["100000h", "50000h", "10000h"],
+        json_schema_extra={"format": "duration"},
     )
     megashock_mean: float = Field(
         default=1000,

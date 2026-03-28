@@ -364,11 +364,11 @@ class TestConfigSystemCircuitBreaker:
         config = BaseAgentConfig(
             max_drawdown=500_000,
             max_order_rate=100,
-            order_rate_window_ns=30_000_000_000,
+            order_rate_window="30s",
         )
         assert config.max_drawdown == 500_000
         assert config.max_order_rate == 100
-        assert config.order_rate_window_ns == 30_000_000_000
+        assert config.order_rate_window == "30s"
 
     def test_base_agent_config_defaults(self):
         from abides_markets.config_system.agent_configs import BaseAgentConfig
@@ -376,4 +376,4 @@ class TestConfigSystemCircuitBreaker:
         config = BaseAgentConfig()
         assert config.max_drawdown is None
         assert config.max_order_rate is None
-        assert config.order_rate_window_ns == 60_000_000_000
+        assert config.order_rate_window == "1min"
