@@ -63,7 +63,38 @@ class TradingAgent(FinancialAgent):
     It handles a lot of messaging (inbound and outbound) and state maintenance
     automatically, so subclasses can focus just on implementing a strategy without
     too much bookkeeping.
+
+    Constructor parameters
+    ----------------------
+    When using the config system (``BaseAgentConfig``), the following parameters
+    are **auto-injected** — you do NOT pass them in your config model::
+
+        id, name, type, random_state, symbol (injected per-agent)
+        risk_config (bundled from position_limit / max_drawdown / … fields)
+
+    Your config model only needs to declare strategy-specific fields (e.g.
+    ``threshold``, ``wake_up_freq``) plus any inherited ``BaseAgentConfig``
+    fields you want to override (``starting_cash``, ``log_orders``, etc.).
     """
+
+    # Subclasses can declare VALID_STATES as a frozenset of allowed string
+    # states.  When set, assigning an unknown state raises ValueError.
+    # Leave as None (the default) to allow any value (e.g. dict states in AMM).
+    VALID_STATES: frozenset[str] | None = None
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, value):
+        valid = type(self).VALID_STATES
+        if valid is not None and value not in valid:
+            raise ValueError(
+                f"{type(self).__name__}: invalid state {value!r}. "
+                f"Valid states: {sorted(valid)}"
+            )
+        self._state = value
 
     def __init__(
         self,
@@ -82,6 +113,10 @@ class TradingAgent(FinancialAgent):
     ) -> None:
         # Base class init.
         super().__init__(id, name, type, random_state)
+
+        # Backing store for the state property.  Subclasses override in
+        # their own __init__ (e.g. self.state = "AWAITING_WAKEUP").
+        self._state = None
 
         # We don't yet know when the exchange opens or closes.
         self.mkt_open: NanosecondTime | None = None

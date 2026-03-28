@@ -21,6 +21,10 @@ class MomentumAgent(TradingAgent):
     sell limit order if the short MA < long MA.
     """
 
+    VALID_STATES = frozenset(
+        {"AWAITING_WAKEUP", "AWAITING_SPREAD", "AWAITING_MARKET_DATA"}
+    )
+
     def __init__(
         self,
         id: int,

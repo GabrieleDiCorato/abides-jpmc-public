@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 class ValueAgent(TradingAgent):
+
+    VALID_STATES = frozenset(
+        {"AWAITING_WAKEUP", "INACTIVE", "AWAITING_SPREAD", "ACTIVE"}
+    )
+
     def __init__(
         self,
         id: int,
@@ -158,7 +163,7 @@ class ValueAgent(TradingAgent):
         else:
             self.state = "ACTIVE"
 
-    def updateEstimates(self) -> int:
+    def update_estimates(self) -> int:
         # Called by a background agent that wishes to obtain a new fundamental observation,
         # update its internal estimation parameters, and compute a new total valuation for the
         # action it is considering.
@@ -233,10 +238,10 @@ class ValueAgent(TradingAgent):
 
         return r_T
 
-    def placeOrder(self) -> None:
+    def place_order(self) -> None:
         # estimate final value of the fundamental price
         # used for surplus calculation
-        r_T = self.updateEstimates()
+        r_T = self.update_estimates()
 
         bid, bid_vol, ask, ask_vol = self.get_known_bid_ask(self.symbol)
 
@@ -311,7 +316,7 @@ class ValueAgent(TradingAgent):
 
             # We now have the information needed to place a limit order with the eta
             # strategic threshold parameter.
-            self.placeOrder()
+            self.place_order()
             self.state = "AWAITING_WAKEUP"
 
         # Cancel all open orders.

@@ -54,6 +54,10 @@ class POVExecutionAgent(TradingAgent):
         trade: Whether to actually place trades (if False, just logs).
     """
 
+    VALID_STATES = frozenset(
+        {"AWAITING_WAKEUP", "AWAITING_MARKET_DATA", "EXECUTING", "COMPLETE"}
+    )
+
     def __init__(
         self,
         id: int,

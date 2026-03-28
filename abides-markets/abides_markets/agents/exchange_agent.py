@@ -877,7 +877,7 @@ class ExchangeAgent(FinancialAgent):
 
         return messages
 
-    def logL2style(self, symbol: str) -> tuple[list, list] | None:
+    def log_l2_style(self, symbol: str) -> tuple[list, list] | None:
         book = self.order_books[symbol]
         if not book.book_log2:
             return None
