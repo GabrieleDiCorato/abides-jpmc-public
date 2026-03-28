@@ -349,13 +349,6 @@ ordered by impact.
 > recalibrated after the config system was introduced.  **Fix direction: update
 > constructors to match config/rmsc04, not the reverse.**
 
-### TODO — Error Context & Documentation
-
-- [ ] **8.9 — Document `allow_overwrite` asymmetry in registry.**
-  `@register_agent` defaults `allow_overwrite=True` (notebook safety); direct
-  `registry.register()` defaults `False` (production safety).  Undocumented.
-  File: `abides-markets/abides_markets/config_system/registry.py`.
-
 ### TODO — Test Coverage
 
 - [ ] **8.10 — Add tests for config system fixes.**
