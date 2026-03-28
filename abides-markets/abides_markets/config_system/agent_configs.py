@@ -116,8 +116,18 @@ class BaseAgentConfig(BaseModel):
         json_schema_extra={"unit": "nanoseconds"},
     )
 
-    # Fields excluded from automatic constructor mapping
-    _EXCLUDE_FROM_KWARGS: frozenset[str] = frozenset({"computation_delay"})
+    # Fields excluded from automatic constructor mapping.
+    # Risk fields are bundled into a RiskConfig object instead.
+    _EXCLUDE_FROM_KWARGS: frozenset[str] = frozenset(
+        {
+            "computation_delay",
+            "position_limit",
+            "position_limit_clamp",
+            "max_drawdown",
+            "max_order_rate",
+            "order_rate_window_ns",
+        }
+    )
 
     def create_agents(
         self,
@@ -205,6 +215,15 @@ class BaseAgentConfig(BaseModel):
         Returns:
             Modified kwargs dict.
         """
+        from abides_markets.models import RiskConfig
+
+        kwargs["risk_config"] = RiskConfig(
+            position_limit=self.position_limit,
+            position_limit_clamp=self.position_limit_clamp,
+            max_drawdown=self.max_drawdown,
+            max_order_rate=self.max_order_rate,
+            order_rate_window_ns=self.order_rate_window_ns,
+        )
         return kwargs
 
     def _resolve_agent_class(self) -> type | None:
@@ -244,11 +263,24 @@ class NoiseAgentConfig(BaseAgentConfig):
     )
 
     _EXCLUDE_FROM_KWARGS: frozenset[str] = frozenset(
-        {"computation_delay", "noise_mkt_open_offset", "noise_mkt_close_time"}
+        {
+            "computation_delay",
+            "noise_mkt_open_offset",
+            "noise_mkt_close_time",
+            "position_limit",
+            "position_limit_clamp",
+            "max_drawdown",
+            "max_order_rate",
+            "order_rate_window_ns",
+        }
     )
 
     def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         from abides_markets.models import OrderSizeModel
+
+        kwargs = super()._prepare_constructor_kwargs(
+            kwargs, agent_id, agent_rng, context
+        )
 
         noise_mkt_open = context.mkt_open + str_to_ns(self.noise_mkt_open_offset)
         noise_mkt_close = context.date_ns + str_to_ns(self.noise_mkt_close_time)
@@ -341,6 +373,10 @@ class ValueAgentConfig(BaseAgentConfig):
 
     def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         from abides_markets.models import OrderSizeModel
+
+        kwargs = super()._prepare_constructor_kwargs(
+            kwargs, agent_id, agent_rng, context
+        )
 
         # Auto-inherit r_bar from oracle if not explicitly set
         r_bar = self.r_bar
@@ -437,6 +473,9 @@ class MomentumAgentConfig(BaseAgentConfig):
     def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         from abides_markets.models import OrderSizeModel
 
+        kwargs = super()._prepare_constructor_kwargs(
+            kwargs, agent_id, agent_rng, context
+        )
         kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
         kwargs["order_size_model"] = OrderSizeModel()
         kwargs["name"] = f"MOMENTUM_AGENT_{agent_id}"
@@ -567,6 +606,9 @@ class AdaptiveMarketMakerConfig(BaseAgentConfig):
     )
 
     def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
+        kwargs = super()._prepare_constructor_kwargs(
+            kwargs, agent_id, agent_rng, context
+        )
         kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
         kwargs["name"] = f"ADAPTIVE_POV_MARKET_MAKER_AGENT_{agent_id}"
         kwargs["type"] = "AdaptivePOVMarketMakerAgent"
@@ -650,12 +692,20 @@ class POVExecutionAgentConfig(BaseAgentConfig):
             "end_time_offset",
             "freq",
             "direction",
+            "position_limit",
+            "position_limit_clamp",
+            "max_drawdown",
+            "max_order_rate",
+            "order_rate_window_ns",
         }
     )
 
     def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
         from abides_markets.orders import Side
 
+        kwargs = super()._prepare_constructor_kwargs(
+            kwargs, agent_id, agent_rng, context
+        )
         freq_ns = str_to_ns(self.freq)
         kwargs["freq"] = freq_ns
         kwargs["lookback_period"] = freq_ns
