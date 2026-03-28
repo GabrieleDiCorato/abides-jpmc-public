@@ -25,11 +25,41 @@ Execution is solely driven by two callbacks:
 ## 2. The Recommended Pattern: Interface + Adapter
 
 Do not tightly couple your trading strategy logic directly to ABIDES internals.
-Use the **Adapter Pattern**:
+Use the **Adapter Pattern** — define your own decoupling layer, then bridge it to ABIDES:
 
-1. **Strategy Interface (Your Code):** Defines a clean API entirely agnostic of ABIDES (e.g., `on_tick()`, `on_fill()`). Takes clean dataclasses (e.g., `MarketSnapshot`).
-2. **Strategy Implementation (Your Code):** Implements the logic.
-3. **Adapter (Bridge):** A class that inherits from `TradingAgent` (from `abides_markets.agents.trading_agent`). It manages ABIDES events and calls your strategy.
+1. **Strategy Protocol (Your Code):** A `typing.Protocol` (or ABC) entirely agnostic of ABIDES. Defines callbacks like `on_tick(snapshot, portfolio)`, `on_fill(fill_info, portfolio)`, `get_wakeup_interval_ns()`. Takes clean dataclasses you define (e.g., `MarketSnapshot`, `PortfolioState`).
+2. **Strategy Implementation (Your Code):** Implements the protocol with your trading logic. Zero ABIDES imports.
+3. **Adapter (Bridge — Your Code):** A class that inherits from `TradingAgent` and translates ABIDES events into your protocol's callbacks. Registered with the ABIDES config system via `@register_agent`.
+
+> [!NOTE]
+> ABIDES does **not** ship a built-in strategy protocol or adapter. You define these in your own project — ABIDES provides the base class (`TradingAgent`) and the config-system hooks (`@register_agent`, `BaseAgentConfig`) to plug them in. This keeps the simulation framework decoupled from any particular strategy interface.
+
+### Adapter skeleton
+
+Your adapter subclasses `TradingAgent` and holds a reference to a strategy instance:
+
+```python
+class MyStrategyAdapter(TradingAgent):
+    def __init__(self, id, symbol, starting_cash, strategy, *,
+                 name=None, type=None, random_state=None,
+                 log_orders=False, risk_config=None):
+        super().__init__(id, name=name, type=type, random_state=random_state,
+                         starting_cash=starting_cash, log_orders=log_orders,
+                         risk_config=risk_config)
+        self.symbol = symbol
+        self.strategy = strategy
+
+    def wakeup(self, current_time):
+        if not super().wakeup(current_time):
+            return
+        # Build a snapshot from ABIDES internals, call strategy.on_tick(...)
+        # Translate returned orders → self.place_limit_order / place_market_order
+        self.set_wakeup(current_time + self.strategy.get_wakeup_interval_ns())
+
+    def receive_message(self, current_time, sender_id, message):
+        super().receive_message(current_time, sender_id, message)
+        # Intercept OrderExecutedMsg → call strategy.on_fill(...)
+```
 
 ### Why extend `TradingAgent`?
 `TradingAgent` implements ~1,200 lines of necessary plumbing: exchange discovery, market hours tracking, bid/ask spread caching, portfolio tracking, and order lifecycle management. If you inherit from `Agent` or `FinancialAgent`, you will have to reimplement all of this.
@@ -78,7 +108,20 @@ All orders are placed via `TradingAgent` helpers:
 - `max_drawdown` — if `starting_cash − mark_to_market(holdings) ≥ max_drawdown`, the agent is permanently halted (circuit breaker).
 - `max_order_rate` / `order_rate_window_ns` — if more than `max_order_rate` orders are placed within the tumbling window, the agent is permanently halted.
 
-All guards default to `None` (disabled). Set them via the constructor or `BaseAgentConfig` fields in the declarative config system.
+All guards default to `None` (disabled). Set them via the constructor or as `BaseAgentConfig` fields in your config model (see §6). When using the config system, these fields are automatically bundled into a `RiskConfig` object by `BaseAgentConfig._prepare_constructor_kwargs()` and passed to the `TradingAgent` constructor — you do not need to handle this manually.
+
+```python
+# Declarative risk guards via config system
+config = (SimulationBuilder()
+    .from_template("rmsc04")
+    .enable_agent("my_strategy", count=1,
+                  position_limit=100,         # max 100 shares per symbol
+                  max_drawdown=500_000,        # halt if loss >= $5,000
+                  max_order_rate=50,           # max 50 orders per window
+                  order_rate_window_ns=60_000_000_000)  # 60-second window
+    .seed(42)
+    .build())
+```
 
 **Open Orders Tracking:**
 - Monitored in `self.orders` (Dict by `order_id`).
@@ -91,23 +134,87 @@ All guards default to `None` (disabled). Set them via the constructor or `BaseAg
 
 ## 6. Simulation Configuration
 
-To inject your custom agent, instantiate your adapter and append it to the configuration's agent list.
+Inject your custom agent into an ABIDES simulation using the **declarative config system**. This gives you build-time validation, YAML/JSON serialization, reusable configs, and typed results.
+
+### Step 1: Register your agent
+
+Use `@register_agent` to make your adapter available to the config system. Create a `BaseAgentConfig` subclass that declares your strategy's tunable parameters as Pydantic fields. All `BaseAgentConfig` fields (`starting_cash`, `log_orders`, risk guards, `computation_delay`) are inherited automatically.
 
 ```python
-from abides_markets.configs.rmsc04 import build_config
+from pydantic import Field
+from abides_markets.config_system import BaseAgentConfig, register_agent
 
-config = build_config(seed=42)
-# Create your adapter (which extends TradingAgent)
-my_adapter = MyAbidesAdapter(
-    id=len(config["agents"]),
-    strategy=MyStrategy(),
-    symbol="AAPL"
+@register_agent(
+    "my_strategy",
+    agent_class=MyStrategyAdapter,       # your TradingAgent subclass
+    category="strategy",
+    description="Custom mean-reversion strategy",
 )
-config["agents"].append(my_adapter)
+class MyStrategyConfig(BaseAgentConfig):
+    threshold: float = Field(default=0.05, description="Signal threshold")
+    wake_up_freq: str = Field(default="30s", description="Wakeup interval")
+```
 
-# Run simulation
-from abides_core import abides
-end_state = abides.run(config)
+When `agent_class` is provided, the config system **auto-generates** `create_agents()` by introspecting your adapter's constructor and mapping config field names → constructor parameter names. Fields listed in `_BASE_EXCLUDE` (risk guard fields) are excluded from this mapping — they flow through `RiskConfig` instead.
+
+### Step 2: Override `_prepare_constructor_kwargs()` for computed args
+
+If your adapter needs arguments that aren't simple config-field pass-throughs (e.g., converting a duration string to nanoseconds, or creating a non-serializable strategy instance), override the hook:
+
+```python
+class MyStrategyConfig(BaseAgentConfig):
+    threshold: float = Field(default=0.05)
+    wake_up_freq: str = Field(default="30s")
+
+    def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
+        kwargs = super()._prepare_constructor_kwargs(kwargs, agent_id, agent_rng, context)
+        from abides_core.utils import str_to_ns
+        # Convert string → nanoseconds
+        kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
+        # Inject a non-serializable strategy object (created fresh per agent)
+        kwargs["strategy"] = MyStrategy(
+            threshold=self.threshold,
+            rng=agent_rng,
+        )
+        return kwargs
+```
+
+> [!IMPORTANT]
+> Always call `super()._prepare_constructor_kwargs(...)` first — the base implementation bundles risk guard fields into `RiskConfig`.
+>
+> Pydantic fields must be JSON-serializable (for YAML/JSON config export). Non-serializable objects like strategy instances must be created inside `_prepare_constructor_kwargs()`, not stored as fields.
+
+### Step 3: Build and run
+
+```python
+from abides_markets.config_system import SimulationBuilder
+from abides_markets.simulation import run_simulation
+
+config = (SimulationBuilder()
+    .from_template("rmsc04")
+    .enable_agent("my_strategy", count=1, threshold=0.08)
+    .seed(42)
+    .build())
+
+result = run_simulation(config)
+```
+
+`enable_agent()` accepts any parameters your config model defines. Agent name validation happens at `.build()` time — register your agent **before** calling `.build()`.
+
+The same `SimulationConfig` can be passed to `run_simulation()` any number of times — each call compiles fresh agents, so results are always reproducible.
+
+### Per-agent computation delays
+
+Override how long your agent "thinks" after each wakeup or message:
+
+```python
+.enable_agent("my_strategy", count=1, computation_delay=100)  # 100 ns
+```
+
+Or set a global default that applies to agents without an override:
+
+```python
+.computation_delay(50)   # 50 ns default
 ```
 
 ---
@@ -123,11 +230,88 @@ See `abides-markets/abides_markets/oracles/external_data_oracle.py` for a full-f
 - **Batch mode:** Use `DataFrameProvider` to load full series at initialization.
 - **Point mode:** Implement `PointDataProvider` to query a database or generator on demand (uses LRU cache).
 
-Example config modification:
+### Injecting via the config system
+
+Build the oracle externally and pass it to the builder:
+
 ```python
 from abides_markets.oracles import ExternalDataOracle, DataFrameProvider
+
 provider = DataFrameProvider({"AAPL": my_historical_series})
-config["kernel"]["oracle"] = ExternalDataOracle(
-    mkt_open, mkt_close, ["AAPL"], provider=provider
-)
+oracle = ExternalDataOracle(provider)
+
+config = (SimulationBuilder()
+    .oracle_instance(oracle)               # inject pre-built oracle
+    .market(ticker="AAPL")
+    .enable_agent("noise", count=500)
+    .enable_agent("my_strategy", count=1)
+    .seed(42)
+    .build())
 ```
+
+For YAML/JSON configs that reference an externally-constructed oracle, use `ExternalDataOracleConfig` as a marker type (`oracle: { type: external_data }`) and pass the oracle instance at compile time: `compile(config, oracle_instance=my_oracle)`.
+
+### Oracle-less simulations
+
+Set `oracle: null` to run without a fundamental-value oracle. This requires `opening_price` (integer cents) and disallows `ValueAgent`:
+
+```python
+config = (SimulationBuilder()
+    .oracle(type=None)                     # explicitly no oracle
+    .market(ticker="ABM", opening_price=100_000)  # $1,000.00
+    .enable_agent("noise", count=500)
+    .seed(42)
+    .build())
+```
+
+---
+
+## 8. Running Simulations
+
+### Recommended: `run_simulation()`
+
+```python
+from abides_markets.simulation import run_simulation
+
+result = run_simulation(config)              # returns SimulationResult (frozen)
+result = run_simulation(config, profile=ResultProfile.QUANT)  # include L1/L2 series
+```
+
+`SimulationResult` is an immutable Pydantic model with:
+- `result.agents` — list of `AgentData` (per-agent PnL, final holdings, mark-to-market)
+- `result.markets` — dict of `MarketSummary` (L1 close, liquidity metrics, optional L1/L2 series)
+- `result.metadata` — seed, timing, agent count
+
+Result depth is controlled by `ResultProfile`: `SUMMARY` (default), `QUANT` (adds L1/L2 series), or `FULL` (adds raw agent logs).
+
+### Parallel execution
+
+```python
+from abides_markets.simulation import run_batch
+
+configs = [SimulationBuilder().from_template("rmsc04").seed(i).build() for i in range(10)]
+results = run_batch(configs, n_workers=4)
+```
+
+### Low-level path
+
+For direct Kernel access (e.g., gymnasium environments):
+
+```python
+from abides_markets.config_system import compile
+from abides_core import abides
+
+runtime = compile(config)          # fresh runtime dict — consumed once
+end_state = abides.run(runtime)
+# Do NOT reuse `runtime` — call compile() again for another run.
+```
+
+---
+
+## Further Reading
+
+- [`ABIDES_CONFIG_SYSTEM.md`](./ABIDES_CONFIG_SYSTEM.md) — declarative config system, builder, templates, serialization
+- [`ABIDES_LLM_INTEGRATION_GOTCHAS.md`](./ABIDES_LLM_INTEGRATION_GOTCHAS.md) — all `None`/`KeyError` traps, safe patterns
+- [`ABIDES_DATA_EXTRACTION.md`](./ABIDES_DATA_EXTRACTION.md) — parsing simulation logs and L1/L2 book history
+- [`PARALLEL_SIMULATION_GUIDE.md`](./PARALLEL_SIMULATION_GUIDE.md) — multiprocessing, RNG hierarchy, log layout
+- [`notebooks/demo_Config_System.ipynb`](../notebooks/demo_Config_System.ipynb) — interactive walkthrough of the config system

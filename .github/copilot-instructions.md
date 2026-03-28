@@ -35,7 +35,8 @@ Always: `if not super().wakeup(current_time): return`
 - **External data injection**: `ExternalDataOracleConfig` is a marker type (no `data_path`). Build the oracle yourself, then pass via `builder.oracle_instance(my_oracle)` or `compile(config, oracle_instance=my_oracle)`.
 
 ## Custom agent pattern
-Implement `TradingStrategy` → wrap in `AbidesStrategyAdapter(TradingAgent)`.
+Subclass `TradingAgent` for your adapter → define a strategy protocol in your own project → register via `@register_agent(name, agent_class=..., category=...)`.
+Use `BaseAgentConfig._prepare_constructor_kwargs()` to inject non-serializable strategy instances at compile time.
 See: `docs/ABIDES_CUSTOM_AGENT_IMPLEMENTATION_GUIDE.md`
 
 ## Declarative config system
