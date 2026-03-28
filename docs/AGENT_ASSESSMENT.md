@@ -349,13 +349,6 @@ ordered by impact.
 > recalibrated after the config system was introduced.  **Fix direction: update
 > constructors to match config/rmsc04, not the reverse.**
 
-### TODO — Missing Validation Guards
-
-- [ ] **8.6 — Add time-window inversion guards in agent factories.**
-  `NoiseAgentConfig` and `POVExecutionAgentConfig` compute execution windows
-  from offsets that can produce empty or inverted ranges without any error.
-  File: `abides-markets/abides_markets/config_system/agent_configs.py`.
-
 ### TODO — Hidden Constructor Parameters
 
 - [ ] **8.7 — Expose hidden AMM and Momentum constructor parameters in config.**
