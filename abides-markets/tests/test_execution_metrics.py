@@ -15,9 +15,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import pytest
+from pydantic import ValidationError
 
+from abides_markets.simulation.profiles import ResultProfile
 from abides_markets.simulation.result import (
     AgentData,
     ExecutionMetrics,
@@ -27,9 +28,7 @@ from abides_markets.simulation.result import (
     SimulationMetadata,
     SimulationResult,
 )
-from abides_markets.simulation.profiles import ResultProfile
 from abides_markets.simulation.runner import _extract_execution_metrics
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -51,7 +50,9 @@ class _FakeExecutionAgent:
     ) -> None:
         self.quantity = quantity
         self.executed_quantity = executed_quantity
-        self.execution_history = execution_history if execution_history is not None else []
+        self.execution_history = (
+            execution_history if execution_history is not None else []
+        )
         self.symbol = symbol
         self.last_bid = last_bid
         self.last_ask = last_ask
@@ -120,8 +121,8 @@ class TestExecutionMetricsModel:
         em = ExecutionMetrics(
             target_quantity=1000, filled_quantity=500, fill_rate_pct=50.0
         )
-        with pytest.raises(Exception):
-            em.filled_quantity = 600  # type: ignore[misc]
+        with pytest.raises((TypeError, AttributeError, ValidationError)):
+            em.filled_quantity = 600
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +168,9 @@ class TestExtractExecutionMetrics:
             last_bid=10000,
             last_ask=10100,
         )
-        liquidity = {"ABM": _make_liquidity(vwap_cents=10050, total_exchanged_volume=5000)}
+        liquidity = {
+            "ABM": _make_liquidity(vwap_cents=10050, total_exchanged_volume=5000)
+        }
         result = _extract_execution_metrics(agent, liquidity)  # type: ignore[arg-type]
         assert result is not None
 
@@ -250,7 +253,9 @@ class TestExtractExecutionMetrics:
         assert result.participation_rate_pct is None
 
     def test_zero_target_quantity(self) -> None:
-        agent = _FakeExecutionAgent(quantity=0, executed_quantity=0, execution_history=[])
+        agent = _FakeExecutionAgent(
+            quantity=0, executed_quantity=0, execution_history=[]
+        )
         liquidity = {"ABM": _make_liquidity()}
         result = _extract_execution_metrics(agent, liquidity)  # type: ignore[arg-type]
         assert result is not None

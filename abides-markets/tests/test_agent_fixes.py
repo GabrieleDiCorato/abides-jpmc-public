@@ -6,7 +6,7 @@ Covers:
 - MomentumAgent: safe dict access, MA values as integer cents
 - TradingAgent: get_known_bid_ask return type, KeyError safety
 - ExchangeAgent: metric_tracker initialization, L3 dispatch
-- POVExecutionAgent: price type annotations
+- POVExecutionAgent: price type annotations, constructor attribute storage (v2.4.0 regression)
 - NoiseAgent: buy direction as bool
 - Oracle ABC: f_log default
 - ExternalDataOracle: inherits f_log default
@@ -325,13 +325,83 @@ class TestPOVAgentTypes:
             end_time=MKT_CLOSE,
             random_state=np.random.RandomState(42),
         )
-        # Type hints should be int: verify via source code annotation
-        source = inspect.getsource(POVExecutionAgent.__init__)
+        # Type hints should be int: verify via source code annotation in the
+        # base class (BaseSlicingExecutionAgent) which defines these attributes.
+        from abides_markets.agents.base_execution_agent import BaseSlicingExecutionAgent
+
+        source = inspect.getsource(BaseSlicingExecutionAgent.__init__)
         assert "last_bid: int | None" in source
         assert "last_ask: int | None" in source
         # last_bid and last_ask are initialized as None — just verify they exist and are correct type
         assert agent.last_bid is None
         assert agent.last_ask is None
+
+
+# ---------------------------------------------------------------------------
+# POVExecutionAgent — constructor stores all parameters (regression: v2.4.0)
+# ---------------------------------------------------------------------------
+
+
+class TestPOVAgentConstructorAttributes:
+    """Regression: POVExecutionAgent must store every __init__ parameter.
+
+    v2.4.0 shipped with ``symbol`` accepted but never assigned to
+    ``self.symbol``, causing AttributeError on the first ``wakeup()``.
+    """
+
+    def _make(self, **overrides):
+        defaults = dict(
+            id=0,
+            symbol="ABM",
+            starting_cash=10_000_000,
+            start_time=MKT_OPEN,
+            end_time=MKT_CLOSE,
+            random_state=np.random.RandomState(42),
+        )
+        return POVExecutionAgent(**{**defaults, **overrides})
+
+    def test_symbol_stored(self):
+        agent = self._make(symbol="XYZ")
+        assert agent.symbol == "XYZ"
+
+    def test_symbol_default_value(self):
+        agent = self._make()
+        assert agent.symbol == "ABM"
+
+    def test_start_time_stored(self):
+        agent = self._make()
+        assert agent.start_time == MKT_OPEN
+
+    def test_end_time_stored(self):
+        agent = self._make()
+        assert agent.end_time == MKT_CLOSE
+
+    def test_pov_stored(self):
+        agent = self._make(pov=0.25)
+        assert agent.pov == 0.25
+
+    def test_direction_stored(self):
+        agent = self._make(direction=Side.ASK)
+        assert agent.direction == Side.ASK
+
+    def test_quantity_stored(self):
+        agent = self._make(quantity=5000)
+        assert agent.quantity == 5000
+
+    def test_remaining_quantity_equals_quantity(self):
+        agent = self._make(quantity=5000)
+        assert agent.remaining_quantity == 5000
+
+    def test_trade_flag_stored(self):
+        agent = self._make(trade=False)
+        assert agent.trade is False
+
+    def test_symbol_accessible_like_wakeup(self):
+        """self.symbol must be usable in the same way wakeup() uses it."""
+        agent = self._make(symbol="TEST")
+        # These are the exact attribute accesses that crashed in v2.4.0
+        _ = agent.symbol
+        assert isinstance(agent.symbol, str)
 
 
 # ---------------------------------------------------------------------------
