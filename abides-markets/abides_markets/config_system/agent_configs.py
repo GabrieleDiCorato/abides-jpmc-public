@@ -902,3 +902,95 @@ class POVExecutionAgentConfig(BaseAgentConfig):
         kwargs["name"] = f"POV_EXECUTION_AGENT_{agent_id}"
         kwargs["type"] = "ExecutionAgent"
         return kwargs
+
+
+# ---------------------------------------------------------------------------
+# TWAP Execution Agent
+# ---------------------------------------------------------------------------
+class TWAPExecutionAgentConfig(BaseAgentConfig):
+    """Configuration for TWAPExecutionAgent — uniform time-sliced execution.
+
+    Divides a parent order into equal-sized slices across a time window.
+    Partial fills are caught up in subsequent slices automatically.
+    """
+
+    start_time_offset: str = Field(
+        default="00:30:00",
+        description=(
+            "Offset from market open when execution begins.  "
+            "Format: 'HH:MM:SS'.  '00:30:00' = start 30 min after open."
+        ),
+        examples=["00:30:00", "00:00:00", "01:00:00"],
+        json_schema_extra={"format": "duration"},
+    )
+    end_time_offset: str = Field(
+        default="00:30:00",
+        description=(
+            "Offset before market close when execution stops.  "
+            "Format: 'HH:MM:SS'.  '00:30:00' = stop 30 min before close."
+        ),
+        examples=["00:30:00", "00:00:00"],
+        json_schema_extra={"format": "duration"},
+    )
+    freq: str = Field(
+        default="1min",
+        description=(
+            "Wake-up frequency as a duration string. Controls how often "
+            "the agent submits child orders (one slice per wakeup). "
+            "Supported: 'Ns', 'Nmin', 'Nh', 'HH:MM:SS'."
+        ),
+        examples=["1min", "30s", "5min"],
+        json_schema_extra={"format": "duration"},
+    )
+    direction: Literal["BID", "ASK"] = Field(
+        default="BID",
+        description="Order direction: 'BID' (buy) or 'ASK' (sell).",
+    )
+    quantity: int = Field(
+        default=1_200_000,
+        ge=1,
+        description="Total parent order quantity in shares.",
+        examples=[1_200_000, 500_000],
+    )
+    trade: bool = Field(
+        default=True,
+        description="If True, submits live orders; if False, dry-run mode.",
+    )
+    order_style: Literal["ioc_limit", "market"] = Field(
+        default="ioc_limit",
+        description=(
+            "Order type for each slice: 'ioc_limit' = IOC limit at the "
+            "near touch (default), 'market' = market order."
+        ),
+    )
+
+    _EXCLUDE_FROM_KWARGS: frozenset[str] = _BASE_EXCLUDE | frozenset(
+        {
+            "start_time_offset",
+            "end_time_offset",
+            "freq",
+            "direction",
+        }
+    )
+
+    def _prepare_constructor_kwargs(self, kwargs, agent_id, agent_rng, context):
+        from abides_markets.orders import Side
+
+        kwargs = super()._prepare_constructor_kwargs(
+            kwargs, agent_id, agent_rng, context
+        )
+        kwargs["freq"] = str_to_ns(self.freq)
+        kwargs["start_time"] = context.mkt_open + str_to_ns(self.start_time_offset)
+        kwargs["end_time"] = context.mkt_close - str_to_ns(self.end_time_offset)
+
+        if kwargs["start_time"] >= kwargs["end_time"]:
+            raise ValueError(
+                f"TWAP execution window is empty or inverted: "
+                f"start offset '{self.start_time_offset}' → {kwargs['start_time']}, "
+                f"end offset '{self.end_time_offset}' → {kwargs['end_time']}."
+            )
+
+        kwargs["direction"] = Side.BID if self.direction.upper() == "BID" else Side.ASK
+        kwargs["name"] = f"TWAP_EXECUTION_AGENT_{agent_id}"
+        kwargs["type"] = "ExecutionAgent"
+        return kwargs

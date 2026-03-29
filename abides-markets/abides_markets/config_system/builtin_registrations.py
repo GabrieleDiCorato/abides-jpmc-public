@@ -13,6 +13,7 @@ from abides_markets.agents import (
     MomentumAgent,
     NoiseAgent,
     POVExecutionAgent,
+    TWAPExecutionAgent,
     ValueAgent,
 )
 from abides_markets.config_system.agent_configs import (
@@ -21,6 +22,7 @@ from abides_markets.config_system.agent_configs import (
     MomentumAgentConfig,
     NoiseAgentConfig,
     POVExecutionAgentConfig,
+    TWAPExecutionAgentConfig,
     ValueAgentConfig,
 )
 from abides_markets.config_system.registry import register_agent
@@ -118,6 +120,19 @@ def _register_builtins() -> None:
         typical_count_range=(1, 1),
         recommended_with=("noise", "value", "adaptive_market_maker"),
     )(POVExecutionAgentConfig)
+
+    register_agent(
+        "twap_execution",
+        agent_class=TWAPExecutionAgent,
+        category="execution",
+        description=(
+            "Time-weighted average price execution agent that divides a "
+            "parent order into uniform time slices with catch-up logic."
+        ),
+        requires_oracle=False,
+        typical_count_range=(1, 1),
+        recommended_with=("noise", "value", "adaptive_market_maker"),
+    )(TWAPExecutionAgentConfig)
 
 
 _register_builtins()

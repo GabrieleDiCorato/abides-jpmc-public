@@ -7,6 +7,7 @@ from .market_makers.adaptive_market_maker_agent import AdaptiveMarketMakerAgent
 from .noise_agent import NoiseAgent
 from .pov_execution_agent import POVExecutionAgent
 from .trading_agent import TradingAgent
+from .twap_execution_agent import TWAPExecutionAgent
 from .value_agent import ValueAgent
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "MomentumAgent",
     "NoiseAgent",
     "POVExecutionAgent",
+    "TWAPExecutionAgent",
     "TradingAgent",
     "ValueAgent",
 ]
