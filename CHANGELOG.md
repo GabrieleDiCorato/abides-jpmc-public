@@ -1,3 +1,102 @@
+2026-03 Release v2.5.0
+==================
+
+New Agents
+----------
+
+* **MeanReversionAgent** — contrarian strategy that trades on z-score
+  deviations from a rolling mean.  Buys when price is significantly below
+  the mean, sells when above.  Configurable lookback, entry/exit thresholds,
+  and position sizing.  Registered as ``mean_reversion`` (category: strategy).
+
+* **TWAPExecutionAgent** — time-weighted average price execution.  Slices a
+  parent order into equal-sized child IOC orders at regular intervals across
+  the execution window.  Shares ``BaseSlicingExecutionAgent`` base class with
+  POV.  Registered as ``twap_execution`` (category: execution).
+
+* **VWAPExecutionAgent** — volume-weighted average price execution.  Accepts
+  a configurable intraday volume profile and sizes each child slice
+  proportional to the expected volume in each bucket.  Registered as
+  ``vwap_execution`` (category: execution).
+
+Execution Agent Infrastructure
+------------------------------
+
+* **BaseSlicingExecutionAgent** — extracted from POVExecutionAgent as a shared
+  base for all slicing execution agents (POV, TWAP, VWAP).  Handles common
+  concerns: execution window management, IOC child order submission, fill
+  tracking, arrival-price capture, and summary logging.
+
+* **NoiseAgent multi-wake mode** — ``NoiseAgent`` can now be configured for
+  continuous wakeups (``multi_wake=True``), producing a steady background
+  noise flow throughout the session instead of a single trade-and-sleep.
+
+Order Types
+-----------
+
+* **Time-in-Force qualifiers** — ``LimitOrder`` now supports ``IOC``
+  (immediate-or-cancel), ``FOK`` (fill-or-kill), and ``DAY`` (cancel at
+  close) via the ``TimeInForce`` enum.  The exchange enforces each qualifier
+  at order entry and at end-of-day.
+
+* **Stop orders** — new ``StopOrder`` type with exchange-side trigger logic.
+  When the market price crosses the stop price, the exchange converts the
+  stop into a limit or market order.  ``TradingAgent.place_stop_order()``
+  provides the high-level API.
+
+Market Maker Enhancements
+-------------------------
+
+* **End-of-day position flatten** — ``AdaptiveMarketMakerAgent`` now
+  aggressively flattens its inventory near market close, reducing overnight
+  risk.  Logged as ``AMM_FLATTEN`` events.
+
+Data Extraction & Analytics
+---------------------------
+
+* **Execution-quality metrics** — ``ExecutionMetrics`` model captures
+  VWAP slippage, participation rate, implementation shortfall, and
+  arrival-price comparison for every execution-category agent.
+
+* **Causal trade attribution** — ``TradeAttribution`` model links each
+  execution to its passive and aggressive orders, enabling post-simulation
+  market-impact analysis.  Extracted via ``ResultProfile.TRADE_ATTRIBUTION``.
+
+* **Equity curves** — ``EquityCurve`` model built from ``FILL_PNL`` log
+  events provides per-fill NAV time-series and max-drawdown computation.
+  Extracted via ``ResultProfile.EQUITY_CURVE``.
+
+Bug Fixes
+---------
+
+* **Fixed: execution agents killed simulations** —
+  ``BaseSlicingExecutionAgent.wakeup()`` returned ``bool`` instead of
+  ``None``, triggering the kernel's gym-agent interrupt mechanism and
+  terminating the simulation after ~2 wakeups.  All execution agents
+  (TWAP, VWAP, POV) were completely non-functional.
+
+* **Fixed: OrderBook EXEC history stored price=None** — non-PTC trade
+  executions recorded ``None`` for price in history entries, breaking
+  trade attribution and equity curve extraction.  Changed to always
+  use ``fill_price``.
+
+* **Fixed: execution agent default offsets too large** — default
+  ``start_time_offset`` and ``end_time_offset`` of 30 minutes consumed
+  the entire rmsc04 market window.  Changed to 5 minutes.
+
+Tests & Tooling
+---------------
+
+* **972 tests** — up from ~762 in v2.4.0.  New test files cover order book
+  invariants, PTC edge cases, thin-market scenarios, execution-quality
+  numerics, market boundary behavior, oracle numerics, risk interactions,
+  and TradingAgent async gotchas.
+
+* **Full-feature evaluation script** — ``version_testing/evaluate_all_agents.py``
+  runs 10 scenarios covering all templates, agent types, and data extraction
+  profiles.
+
+
 2026-03 Release v2.4.0
 ==================
 

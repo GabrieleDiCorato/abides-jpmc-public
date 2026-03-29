@@ -10,9 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from abides_markets.simulation.result import (
-    LiquidityMetrics,
-)
+from abides_markets.simulation.result import LiquidityMetrics
 from abides_markets.simulation.runner import (
     _extract_execution_metrics,
     _extract_liquidity,
@@ -42,9 +40,7 @@ class TestVWAPfromHistory:
 
     def test_single_trade(self):
         """One execution at 10000 cents, qty 100 → VWAP=10000."""
-        book = _FakeBook(
-            history=[{"type": "EXEC", "price": 10_000, "quantity": 100}]
-        )
+        book = _FakeBook(history=[{"type": "EXEC", "price": 10_000, "quantity": 100}])
         liq = _extract_liquidity(_FakeExchange(), "TEST", book)
         assert liq.vwap_cents == 10_000
 
@@ -117,9 +113,7 @@ class TestVWAPfromHistory:
         """Pin VWAP for a 5-trade sequence."""
         # Prices: 100, 102, 98, 101, 99 (cents). Qty: 10 each.
         prices = [100, 102, 98, 101, 99]
-        history = [
-            {"type": "EXEC", "price": p, "quantity": 10} for p in prices
-        ]
+        history = [{"type": "EXEC", "price": p, "quantity": 10} for p in prices]
         book = _FakeBook(history=history)
         liq = _extract_liquidity(_FakeExchange(), "TEST", book)
         expected = sum(prices) * 10 // (10 * len(prices))
@@ -303,7 +297,7 @@ class TestLiquidityMetricsModel:
             total_exchanged_volume=100,
         )
         with pytest.raises((TypeError, ValidationError)):
-            liq.total_exchanged_volume = 999  # type: ignore[misc]
+            liq.total_exchanged_volume = 999
 
     def test_defaults(self):
         liq = LiquidityMetrics(

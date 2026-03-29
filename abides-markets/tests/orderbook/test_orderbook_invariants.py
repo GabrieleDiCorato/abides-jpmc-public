@@ -19,6 +19,7 @@ from . import SYMBOL, TIME, FakeExchangeAgent, setup_book_with_orders
 # Invariant checker — reusable across all tests
 # ---------------------------------------------------------------------------
 
+
 def assert_book_invariants(book: OrderBook) -> None:
     """Assert that all structural invariants of the order book hold."""
 
@@ -48,17 +49,15 @@ def assert_book_invariants(book: OrderBook) -> None:
     if book.bids and book.asks:
         best_bid = book.bids[0].price
         best_ask = book.asks[0].price
-        assert best_ask >= best_bid, (
-            f"Negative spread: best_bid={best_bid}, best_ask={best_ask}"
-        )
+        assert (
+            best_ask >= best_bid
+        ), f"Negative spread: best_bid={best_bid}, best_ask={best_ask}"
 
     # 5. L1 matches first visible-quantity level
     #    (Hidden-only levels from PTC orders have total_quantity=0 and are
     #     skipped by get_l1_*_data, so we compare against the first level
     #     with total_quantity > 0.)
-    first_visible_bid = next(
-        (pl for pl in book.bids if pl.total_quantity > 0), None
-    )
+    first_visible_bid = next((pl for pl in book.bids if pl.total_quantity > 0), None)
     if first_visible_bid is not None:
         l1_bid = book.get_l1_bid_data()
         assert l1_bid is not None
@@ -66,9 +65,7 @@ def assert_book_invariants(book: OrderBook) -> None:
     else:
         assert book.get_l1_bid_data() is None
 
-    first_visible_ask = next(
-        (pl for pl in book.asks if pl.total_quantity > 0), None
-    )
+    first_visible_ask = next((pl for pl in book.asks if pl.total_quantity > 0), None)
     if first_visible_ask is not None:
         l1_ask = book.get_l1_ask_data()
         assert l1_ask is not None
@@ -80,9 +77,9 @@ def assert_book_invariants(book: OrderBook) -> None:
     for pl in book.bids + book.asks:
         visible_qty = sum(o.quantity for o, _ in pl.visible_orders)
         hidden_qty = sum(o.quantity for o, _ in pl.hidden_orders)
-        assert visible_qty + hidden_qty > 0, (
-            f"PriceLevel at {pl.price} has zero total quantity"
-        )
+        assert (
+            visible_qty + hidden_qty > 0
+        ), f"PriceLevel at {pl.price} has zero total quantity"
 
 
 # ---------------------------------------------------------------------------
@@ -131,9 +128,7 @@ class TestInsertionInvariants:
 
     def test_multiple_orders_same_price_level(self):
         """Multiple orders at the same price → single PriceLevel, FIFO order."""
-        book, agent, _ = setup_book_with_orders(
-            bids=[(100, [10, 20, 30])]
-        )
+        book, agent, _ = setup_book_with_orders(bids=[(100, [10, 20, 30])])
         assert_book_invariants(book)
         assert len(book.bids) == 1
         assert len(book.bids[0].visible_orders) == 3
@@ -203,21 +198,15 @@ class TestExecutionInvariants:
 
         # Build up the book
         for price in [100, 101, 102]:
-            book.handle_limit_order(
-                LimitOrder(1, TIME, SYMBOL, 20, Side.ASK, price)
-            )
+            book.handle_limit_order(LimitOrder(1, TIME, SYMBOL, 20, Side.ASK, price))
             assert_book_invariants(book)
 
         for price in [97, 98, 99]:
-            book.handle_limit_order(
-                LimitOrder(1, TIME, SYMBOL, 20, Side.BID, price)
-            )
+            book.handle_limit_order(LimitOrder(1, TIME, SYMBOL, 20, Side.BID, price))
             assert_book_invariants(book)
 
         # Execute a crossing order
-        book.handle_limit_order(
-            LimitOrder(2, TIME, SYMBOL, 25, Side.BID, 101)
-        )
+        book.handle_limit_order(LimitOrder(2, TIME, SYMBOL, 25, Side.BID, 101))
         assert_book_invariants(book)
 
         # Cancel a resting order

@@ -34,7 +34,7 @@ def _make_agent(**kwargs) -> TradingAgent:
     agent.current_time = MKT_OPEN
     agent.mkt_open = MKT_OPEN
     agent.mkt_close = MKT_CLOSE
-    agent.kernel = object()  # stub — Agent.wakeup() asserts kernel is not None
+    agent.kernel = object()  # type: ignore[assignment]  # stub — Agent.wakeup() asserts kernel is not None
     agent.send_message = lambda *a, **kw: None  # type: ignore[method-assign]
     agent.send_message_batch = lambda *a, **kw: None  # type: ignore[method-assign]
     agent.logEvent = lambda *a, **kw: None  # type: ignore[method-assign]
@@ -125,7 +125,7 @@ class TestPendingOrderDelta:
             quantity = 100
             side = Side.BID
 
-        agent.orders[999] = BrokenOrder()  # type: ignore[assignment]
+        agent.orders[999] = BrokenOrder()
 
         # Should not raise, should return 0 (broken order is skipped)
         delta = agent._pending_order_delta(SYMBOL)

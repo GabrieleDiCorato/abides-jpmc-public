@@ -15,7 +15,11 @@ print("=" * 70)
 print("ABIDES — Full Feature Evaluation")
 print("=" * 70)
 
-from abides_markets.config_system import SimulationBuilder, list_agent_types, list_templates
+from abides_markets.config_system import (
+    SimulationBuilder,
+    list_agent_types,
+    list_templates,
+)
 from abides_markets.simulation import ResultProfile, run_simulation
 
 print("\n[1] Templates available:")
@@ -34,12 +38,7 @@ print("\n" + "=" * 70)
 print("TEST A: Basic rmsc04 simulation (SUMMARY profile)")
 print("=" * 70)
 
-config_a = (
-    SimulationBuilder()
-    .from_template("rmsc04")
-    .seed(42)
-    .build()
-)
+config_a = SimulationBuilder().from_template("rmsc04").seed(42).build()
 result_a = run_simulation(config_a, profile=ResultProfile.SUMMARY)
 print(f"  Wall clock: {result_a.metadata.wall_clock_elapsed_s:.2f}s")
 print(f"  Tickers: {result_a.metadata.tickers}")
@@ -47,9 +46,11 @@ for sym, mkt in result_a.markets.items():
     liq = mkt.liquidity
     last = f"${liq.last_trade_cents / 100:.2f}" if liq.last_trade_cents else "None"
     vwap = f"${liq.vwap_cents / 100:.2f}" if liq.vwap_cents else "None"
-    print(f"  {sym}: last={last}  VWAP={vwap}  "
-          f"vol={liq.total_exchanged_volume:,}  "
-          f"no_bid={liq.pct_time_no_bid:.1f}%  no_ask={liq.pct_time_no_ask:.1f}%")
+    print(
+        f"  {sym}: last={last}  VWAP={vwap}  "
+        f"vol={liq.total_exchanged_volume:,}  "
+        f"no_bid={liq.pct_time_no_bid:.1f}%  no_ask={liq.pct_time_no_ask:.1f}%"
+    )
 print(f"  Agents: {len(result_a.agents)}")
 
 # PnL distribution
@@ -64,12 +65,7 @@ print("\n" + "=" * 70)
 print("TEST B: QUANT profile with all data extraction")
 print("=" * 70)
 
-config_b = (
-    SimulationBuilder()
-    .from_template("rmsc04")
-    .seed(123)
-    .build()
-)
+config_b = SimulationBuilder().from_template("rmsc04").seed(123).build()
 result_b = run_simulation(config_b, profile=ResultProfile.QUANT)
 
 sym = result_b.metadata.tickers[0]
@@ -98,8 +94,10 @@ else:
 if mkt_b.trades:
     print(f"  Trade attribution: {len(mkt_b.trades)} executions")
     t0 = mkt_b.trades[0]
-    print(f"    First trade: passive={t0.passive_agent_id} aggressor={t0.aggressive_agent_id} "
-          f"side={t0.side} price=${t0.price_cents/100:.2f} qty={t0.quantity}")
+    print(
+        f"    First trade: passive={t0.passive_agent_id} aggressor={t0.aggressive_agent_id} "
+        f"side={t0.side} price=${t0.price_cents/100:.2f} qty={t0.quantity}"
+    )
 else:
     print("  Trade attribution: NOT POPULATED (unexpected!)")
 
@@ -108,12 +106,18 @@ agents_with_curves = [a for a in result_b.agents if a.equity_curve is not None]
 print(f"  Agents with equity curves: {len(agents_with_curves)}/{len(result_b.agents)}")
 if agents_with_curves:
     # Show top 3 by max drawdown
-    by_dd = sorted(agents_with_curves, key=lambda a: a.equity_curve.max_drawdown_cents, reverse=True)
+    by_dd = sorted(
+        agents_with_curves,
+        key=lambda a: a.equity_curve.max_drawdown_cents,
+        reverse=True,
+    )
     print("  Top 3 drawdowns:")
     for a in by_dd[:3]:
         ec = a.equity_curve
-        print(f"    [{a.agent_id}] {a.agent_type}: max_dd=${ec.max_drawdown_cents/100:.2f}  "
-              f"fills={len(ec.times_ns)}")
+        print(
+            f"    [{a.agent_id}] {a.agent_type}: max_dd=${ec.max_drawdown_cents/100:.2f}  "
+            f"fills={len(ec.times_ns)}"
+        )
 
 # ===========================================================================
 # 4. TWAP execution agent
@@ -126,8 +130,9 @@ try:
     config_c = (
         SimulationBuilder()
         .from_template("rmsc04")
-        .enable_agent("twap_execution", count=1, direction="BID", quantity=500,
-                       freq="30s")
+        .enable_agent(
+            "twap_execution", count=1, direction="BID", quantity=500, freq="30s"
+        )
         .seed(42)
         .build()
     )
@@ -137,7 +142,9 @@ try:
     for ea in exec_agents_c:
         em = ea.execution_metrics
         print(f"  [{ea.agent_id}] {ea.agent_type}")
-        print(f"    Target: {em.target_quantity}  Filled: {em.filled_quantity}  Rate: {em.fill_rate_pct:.1f}%")
+        print(
+            f"    Target: {em.target_quantity}  Filled: {em.filled_quantity}  Rate: {em.fill_rate_pct:.1f}%"
+        )
         if em.avg_fill_price_cents:
             print(f"    Avg fill: ${em.avg_fill_price_cents/100:.2f}")
         if em.vwap_cents:
@@ -150,8 +157,10 @@ try:
             print(f"    Impl shortfall: {em.implementation_shortfall_bps} bps")
         # Check equity curve
         if ea.equity_curve:
-            print(f"    Equity curve: {len(ea.equity_curve.times_ns)} fills  "
-                  f"max_dd=${ea.equity_curve.max_drawdown_cents/100:.2f}")
+            print(
+                f"    Equity curve: {len(ea.equity_curve.times_ns)} fills  "
+                f"max_dd=${ea.equity_curve.max_drawdown_cents/100:.2f}"
+            )
 except Exception as e:
     print(f"  ERROR: {e}")
     traceback.print_exc()
@@ -167,8 +176,14 @@ try:
     config_d = (
         SimulationBuilder()
         .from_template("rmsc04")
-        .enable_agent("vwap_execution", count=1, direction="ASK", quantity=500,
-                       freq="30s", volume_profile=[0.3, 0.1, 0.1, 0.1, 0.1, 0.3])
+        .enable_agent(
+            "vwap_execution",
+            count=1,
+            direction="ASK",
+            quantity=500,
+            freq="30s",
+            volume_profile=[0.3, 0.1, 0.1, 0.1, 0.1, 0.3],
+        )
         .seed(42)
         .build()
     )
@@ -178,7 +193,9 @@ try:
     for ea in exec_agents_d:
         em = ea.execution_metrics
         print(f"  [{ea.agent_id}] {ea.agent_type}")
-        print(f"    Target: {em.target_quantity}  Filled: {em.filled_quantity}  Rate: {em.fill_rate_pct:.1f}%")
+        print(
+            f"    Target: {em.target_quantity}  Filled: {em.filled_quantity}  Rate: {em.fill_rate_pct:.1f}%"
+        )
         if em.avg_fill_price_cents:
             print(f"    Avg fill: ${em.avg_fill_price_cents/100:.2f}")
         if em.vwap_slippage_bps is not None:
@@ -234,8 +251,10 @@ try:
     for a in mm_agents:
         sym = [s for s in a.final_holdings if s != "CASH"]
         pos = {s: a.final_holdings[s] for s in sym}
-        print(f"    [{a.agent_id}] {a.agent_type}: PnL=${a.pnl_cents/100:.2f}  "
-              f"positions={pos}")
+        print(
+            f"    [{a.agent_id}] {a.agent_type}: PnL=${a.pnl_cents/100:.2f}  "
+            f"positions={pos}"
+        )
 
     # Check raw logs for AMM_FLATTEN event
     if result_f.logs is not None:
@@ -264,23 +283,19 @@ print("TEST H: Thin market template (stress test — low liquidity)")
 print("=" * 70)
 
 try:
-    config_h = (
-        SimulationBuilder()
-        .from_template("thin_market")
-        .seed(42)
-        .build()
-    )
+    config_h = SimulationBuilder().from_template("thin_market").seed(42).build()
     result_h = run_simulation(config_h, profile=ResultProfile.QUANT)
 
     sym = result_h.metadata.tickers[0]
     liq = result_h.markets[sym].liquidity
     last = f"${liq.last_trade_cents / 100:.2f}" if liq.last_trade_cents else "None"
     vwap = f"${liq.vwap_cents / 100:.2f}" if liq.vwap_cents else "None"
-    print(f"  {sym}: last={last}  VWAP={vwap}  "
-          f"vol={liq.total_exchanged_volume:,}")
+    print(f"  {sym}: last={last}  VWAP={vwap}  " f"vol={liq.total_exchanged_volume:,}")
     print(f"  No-bid: {liq.pct_time_no_bid:.1f}%  No-ask: {liq.pct_time_no_ask:.1f}%")
-    print(f"  Agents: {len(result_h.agents)}  "
-          f"Trade attributions: {len(result_h.markets[sym].trades or [])}")
+    print(
+        f"  Agents: {len(result_h.agents)}  "
+        f"Trade attributions: {len(result_h.markets[sym].trades or [])}"
+    )
 except Exception as e:
     print(f"  ERROR: {e}")
     traceback.print_exc()
@@ -296,12 +311,13 @@ try:
     config_i = (
         SimulationBuilder()
         .from_template("liquid_market")
-        .enable_agent("twap_execution", count=1, direction="BID", quantity=1000,
-                       freq="1min")
-        .enable_agent("vwap_execution", count=1, direction="BID", quantity=1000,
-                       freq="1min")
-        .enable_agent("pov_execution", count=1, direction="ASK", quantity=1000,
-                       pov=0.1)
+        .enable_agent(
+            "twap_execution", count=1, direction="BID", quantity=1000, freq="1min"
+        )
+        .enable_agent(
+            "vwap_execution", count=1, direction="BID", quantity=1000, freq="1min"
+        )
+        .enable_agent("pov_execution", count=1, direction="ASK", quantity=1000, pov=0.1)
         .seed(42)
         .build()
     )
@@ -311,12 +327,22 @@ try:
     exec_agents_i = [a for a in result_i.agents if a.execution_metrics is not None]
     for ea in sorted(exec_agents_i, key=lambda a: a.agent_type):
         em = ea.execution_metrics
-        avg = f"${em.avg_fill_price_cents/100:.2f}" if em.avg_fill_price_cents else "N/A"
-        vwap_slip = f"{em.vwap_slippage_bps}bps" if em.vwap_slippage_bps is not None else "N/A"
-        is_bps = f"{em.implementation_shortfall_bps}bps" if em.implementation_shortfall_bps is not None else "N/A"
-        print(f"    {ea.agent_type:<25} fill={em.fill_rate_pct:5.1f}%  "
-              f"avg={avg}  "
-              f"vwap_slip={vwap_slip:>6}  IS={is_bps:>6}")
+        avg = (
+            f"${em.avg_fill_price_cents/100:.2f}" if em.avg_fill_price_cents else "N/A"
+        )
+        vwap_slip = (
+            f"{em.vwap_slippage_bps}bps" if em.vwap_slippage_bps is not None else "N/A"
+        )
+        is_bps = (
+            f"{em.implementation_shortfall_bps}bps"
+            if em.implementation_shortfall_bps is not None
+            else "N/A"
+        )
+        print(
+            f"    {ea.agent_type:<25} fill={em.fill_rate_pct:5.1f}%  "
+            f"avg={avg}  "
+            f"vwap_slip={vwap_slip:>6}  IS={is_bps:>6}"
+        )
 except Exception as e:
     print(f"  ERROR: {e}")
     traceback.print_exc()

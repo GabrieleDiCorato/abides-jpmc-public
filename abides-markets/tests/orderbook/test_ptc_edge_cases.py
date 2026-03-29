@@ -31,7 +31,12 @@ class TestPTCPairCreation:
         book = OrderBook(agent, SYMBOL)
 
         order = LimitOrder(
-            1, TIME, SYMBOL, 100, Side.BID, limit_price=100,
+            1,
+            TIME,
+            SYMBOL,
+            100,
+            Side.BID,
+            limit_price=100,
             is_price_to_comply=True,
         )
         book.handle_limit_order(order)
@@ -57,7 +62,12 @@ class TestPTCPairCreation:
         book = OrderBook(agent, SYMBOL)
 
         order = LimitOrder(
-            1, TIME, SYMBOL, 100, Side.ASK, limit_price=100,
+            1,
+            TIME,
+            SYMBOL,
+            100,
+            Side.ASK,
+            limit_price=100,
             is_price_to_comply=True,
         )
         book.handle_limit_order(order)
@@ -82,7 +92,12 @@ class TestPTCPairCreation:
         book = OrderBook(agent, SYMBOL)
 
         order = LimitOrder(
-            1, TIME, SYMBOL, 50, Side.BID, limit_price=200,
+            1,
+            TIME,
+            SYMBOL,
+            50,
+            Side.BID,
+            limit_price=200,
             is_price_to_comply=True,
         )
         book.handle_limit_order(order)
@@ -117,7 +132,12 @@ class TestPTCLowPriceBoundary:
         book = OrderBook(agent, SYMBOL)
 
         order = LimitOrder(
-            1, TIME, SYMBOL, 50, Side.ASK, limit_price=1,
+            1,
+            TIME,
+            SYMBOL,
+            50,
+            Side.ASK,
+            limit_price=1,
             is_price_to_comply=True,
         )
         book.handle_limit_order(order)
@@ -135,7 +155,12 @@ class TestPTCLowPriceBoundary:
         book = OrderBook(agent, SYMBOL)
 
         order = LimitOrder(
-            1, TIME, SYMBOL, 50, Side.ASK, limit_price=2,
+            1,
+            TIME,
+            SYMBOL,
+            50,
+            Side.ASK,
+            limit_price=2,
             is_price_to_comply=True,
         )
         book.handle_limit_order(order)
@@ -165,7 +190,12 @@ class TestFOKWithPTCLiquidity:
 
         # Place a PTC ask at 100 → visible at 100 (50 qty), hidden at 99 (50 qty)
         ptc = LimitOrder(
-            1, TIME, SYMBOL, 50, Side.ASK, limit_price=100,
+            1,
+            TIME,
+            SYMBOL,
+            50,
+            Side.ASK,
+            limit_price=100,
             is_price_to_comply=True,
         )
         book.handle_limit_order(ptc)
@@ -176,7 +206,12 @@ class TestFOKWithPTCLiquidity:
         # The total visible across both levels (99 and 100) is 0 + 50 = 50
         # (hidden orders contribute to hidden_orders, not visible_orders)
         fok = LimitOrder(
-            2, TIME, SYMBOL, 80, Side.BID, limit_price=100,
+            2,
+            TIME,
+            SYMBOL,
+            80,
+            Side.BID,
+            limit_price=100,
             time_in_force=TimeInForce.FOK,
         )
         book.handle_limit_order(fok)
@@ -184,17 +219,23 @@ class TestFOKWithPTCLiquidity:
         # Verify: FOK should have been rejected (only 50 visible qty vs 80 needed)
         # Check the agent received a cancellation
         cancel_msgs = [
-            m for m in agent.messages
-            if type(m[1]).__name__ == "OrderCancelledMsg"
+            m for m in agent.messages if type(m[1]).__name__ == "OrderCancelledMsg"
         ]
-        assert len(cancel_msgs) >= 1, "FOK should be rejected when visible qty insufficient"
+        assert (
+            len(cancel_msgs) >= 1
+        ), "FOK should be rejected when visible qty insufficient"
 
     def test_fok_succeeds_with_sufficient_visible_qty(self):
         """FOK order that fits entirely within visible liquidity → filled."""
         book, agent, _ = setup_book_with_orders(asks=[(100, [50, 50])])
 
         fok = LimitOrder(
-            2, TIME, SYMBOL, 80, Side.BID, limit_price=100,
+            2,
+            TIME,
+            SYMBOL,
+            80,
+            Side.BID,
+            limit_price=100,
             time_in_force=TimeInForce.FOK,
         )
         book.handle_limit_order(fok)
@@ -202,8 +243,7 @@ class TestFOKWithPTCLiquidity:
 
         # Should be executed (100 visible >= 80 needed)
         exec_msgs = [
-            m for m in agent.messages
-            if type(m[1]).__name__ == "OrderExecutedMsg"
+            m for m in agent.messages if type(m[1]).__name__ == "OrderExecutedMsg"
         ]
         assert len(exec_msgs) >= 1, "FOK should execute when visible qty sufficient"
 
@@ -222,7 +262,12 @@ class TestPTCCancellation:
         book = OrderBook(agent, SYMBOL)
 
         ptc = LimitOrder(
-            1, TIME, SYMBOL, 50, Side.BID, limit_price=100,
+            1,
+            TIME,
+            SYMBOL,
+            50,
+            Side.BID,
+            limit_price=100,
             is_price_to_comply=True,
         )
         book.handle_limit_order(ptc)
@@ -241,7 +286,12 @@ class TestPTCCancellation:
         book = OrderBook(agent, SYMBOL)
 
         ptc = LimitOrder(
-            1, TIME, SYMBOL, 50, Side.BID, limit_price=100,
+            1,
+            TIME,
+            SYMBOL,
+            50,
+            Side.BID,
+            limit_price=100,
             is_price_to_comply=True,
         )
         book.handle_limit_order(ptc)
@@ -270,7 +320,12 @@ class TestPTCPartialFill:
 
         # PTC ask at 100 → hidden at 99, visible at 100
         ptc = LimitOrder(
-            1, TIME, SYMBOL, 50, Side.ASK, limit_price=100,
+            1,
+            TIME,
+            SYMBOL,
+            50,
+            Side.ASK,
+            limit_price=100,
             is_price_to_comply=True,
         )
         book.handle_limit_order(ptc)
@@ -295,4 +350,6 @@ class TestPTCPartialFill:
                 + sum(o.quantity for o, _ in pl.hidden_orders)
                 for pl in book.asks
             )
-            assert total_remaining == 60  # 50 + 50 - 20 = 80 (both halves), or 30 + 30 = 60
+            assert (
+                total_remaining == 60
+            )  # 50 + 50 - 20 = 80 (both halves), or 30 + 30 = 60

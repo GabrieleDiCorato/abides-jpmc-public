@@ -41,6 +41,7 @@ SYMBOL = "TEST"
 # Helpers
 # ===================================================================
 
+
 def _make_trading_agent(**kwargs) -> TradingAgent:
     defaults = dict(
         id=1,
@@ -51,7 +52,7 @@ def _make_trading_agent(**kwargs) -> TradingAgent:
     agent = TradingAgent(**merged)
     agent.exchange_id = 0
     agent.current_time = MKT_OPEN
-    agent.kernel = object()  # stub — Agent.wakeup needs kernel not None
+    agent.kernel = object()  # type: ignore[assignment]  # stub — Agent.wakeup needs kernel not None
     agent.send_message = lambda *a, **kw: None  # type: ignore[method-assign]
     agent.send_message_batch = lambda *a, **kw: None  # type: ignore[method-assign]
     agent.logEvent = lambda *a, **kw: None  # type: ignore[method-assign]
@@ -75,18 +76,24 @@ def _make_exchange(**kwargs) -> ExchangeAgent:
     ex.current_time = MKT_OPEN
     ex.kernel = object()  # type: ignore[assignment]
     # Stub messaging — collect sent messages
-    ex._sent: list[tuple[int, object]] = []  # type: ignore[attr-defined]
-    ex.send_message = lambda rcpt, msg: ex._sent.append((rcpt, msg))  # type: ignore[method-assign]
+    ex._sent: list[tuple[int, object]] = []  # type: ignore[attr-defined, misc]
+    ex.send_message = lambda rcpt, msg: ex._sent.append((rcpt, msg))  # type: ignore[method-assign, assignment, attr-defined]
     ex.logEvent = lambda *a, **kw: None  # type: ignore[method-assign]
-    ex.set_computation_delay = lambda d: None  # type: ignore[method-assign]
-    ex.set_wakeup = lambda t: None  # type: ignore[method-assign]
+    ex.set_computation_delay = lambda d: None  # type: ignore[method-assign, assignment]
+    ex.set_wakeup = lambda t: None  # type: ignore[method-assign, assignment]
     # Give the book an opening price
     ex.order_books[SYMBOL].last_trade = 10_000
     return ex
 
 
-def _place_limit(exchange: ExchangeAgent, agent_id: int, side: Side, price: int,
-                 qty: int, tif: TimeInForce = TimeInForce.GTC) -> LimitOrder:
+def _place_limit(
+    exchange: ExchangeAgent,
+    agent_id: int,
+    side: Side,
+    price: int,
+    qty: int,
+    tif: TimeInForce = TimeInForce.GTC,
+) -> LimitOrder:
     """Place a limit order directly into the exchange's order book."""
     order = LimitOrder(
         agent_id=agent_id,
@@ -104,6 +111,7 @@ def _place_limit(exchange: ExchangeAgent, agent_id: int, side: Side, price: int,
 # ===================================================================
 # TradingAgent wakeup gating
 # ===================================================================
+
 
 class TestTradingAgentWakeupGating:
     """Verify wakeup() returns False when market hours unknown or market closed."""
@@ -150,6 +158,7 @@ class TestTradingAgentWakeupGating:
 # TradingAgent receives MarketHoursMsg
 # ===================================================================
 
+
 class TestMarketHoursReception:
     """Verify TradingAgent records market hours from the exchange response."""
 
@@ -175,6 +184,7 @@ class TestMarketHoursReception:
 # ===================================================================
 # TradingAgent mkt_closed flag from query responses
 # ===================================================================
+
 
 class TestMktClosedFlag:
     """When the exchange sends mkt_closed=True on a query response,
@@ -213,6 +223,7 @@ class TestMktClosedFlag:
 # ===================================================================
 # ExchangeAgent DAY order cancellation at market close
 # ===================================================================
+
 
 class TestDAYOrderCancellation:
     """_cancel_day_orders() removes DAY orders but leaves GTC orders."""
@@ -281,6 +292,7 @@ class TestDAYOrderCancellation:
 # ExchangeAgent post-close message rejection
 # ===================================================================
 
+
 class TestPostCloseRejection:
     """After mkt_close, ExchangeAgent rejects OrderMsgs with MarketClosedMsg."""
 
@@ -289,8 +301,12 @@ class TestPostCloseRejection:
         ex.current_time = MKT_CLOSE + 1  # 1ns past close
 
         order = LimitOrder(
-            agent_id=1, time_placed=ex.current_time, symbol=SYMBOL,
-            quantity=100, side=Side.BID, limit_price=9_900,
+            agent_id=1,
+            time_placed=ex.current_time,
+            symbol=SYMBOL,
+            quantity=100,
+            side=Side.BID,
+            limit_price=9_900,
         )
         ex.receive_message(ex.current_time, 1, LimitOrderMsg(order))
 
@@ -302,8 +318,11 @@ class TestPostCloseRejection:
         ex.current_time = MKT_CLOSE + 1
 
         order = MarketOrder(
-            agent_id=1, time_placed=ex.current_time, symbol=SYMBOL,
-            quantity=100, side=Side.BID,
+            agent_id=1,
+            time_placed=ex.current_time,
+            symbol=SYMBOL,
+            quantity=100,
+            side=Side.BID,
         )
         ex.receive_message(ex.current_time, 1, MarketOrderMsg(order))
 
@@ -315,9 +334,7 @@ class TestPostCloseRejection:
         ex = _make_exchange()
         ex.current_time = MKT_CLOSE + 1
 
-        ex.receive_message(
-            ex.current_time, 1, QueryLastTradeMsg(symbol=SYMBOL)
-        )
+        ex.receive_message(ex.current_time, 1, QueryLastTradeMsg(symbol=SYMBOL))
 
         # Should get a QueryLastTradeResponseMsg, not MarketClosedMsg
         assert any(isinstance(msg, QueryLastTradeResponseMsg) for _, msg in ex._sent)
@@ -327,6 +344,7 @@ class TestPostCloseRejection:
 # ===================================================================
 # ExchangeAgent wakeup at mkt_close
 # ===================================================================
+
 
 class TestExchangeCloseWakeup:
     """When ExchangeAgent wakes up at mkt_close, it should cancel DAY orders
@@ -343,8 +361,11 @@ class TestExchangeCloseWakeup:
         ex.wakeup(MKT_CLOSE)
 
         # Find MarketClosePriceMsg messages
-        close_msgs = [(rcpt, msg) for rcpt, msg in ex._sent
-                       if isinstance(msg, MarketClosePriceMsg)]
+        close_msgs = [
+            (rcpt, msg)
+            for rcpt, msg in ex._sent
+            if isinstance(msg, MarketClosePriceMsg)
+        ]
         assert len(close_msgs) == 2
         recipients = {rcpt for rcpt, _ in close_msgs}
         assert recipients == {1, 2}
@@ -357,7 +378,9 @@ class TestExchangeCloseWakeup:
 
         ex.wakeup(MKT_CLOSE)
 
-        close_msgs = [msg for _, msg in ex._sent if isinstance(msg, MarketClosePriceMsg)]
+        close_msgs = [
+            msg for _, msg in ex._sent if isinstance(msg, MarketClosePriceMsg)
+        ]
         assert len(close_msgs) == 1
         assert close_msgs[0].close_prices[SYMBOL] == 12_345
 
@@ -368,13 +391,16 @@ class TestExchangeCloseWakeup:
 
         ex.wakeup(MKT_CLOSE)
 
-        close_msgs = [msg for _, msg in ex._sent if isinstance(msg, MarketClosePriceMsg)]
+        close_msgs = [
+            msg for _, msg in ex._sent if isinstance(msg, MarketClosePriceMsg)
+        ]
         assert len(close_msgs) == 0
 
 
 # ===================================================================
 # Market hours request handling
 # ===================================================================
+
 
 class TestMarketHoursRequestHandling:
     """ExchangeAgent responds to MarketHoursRequestMsg with correct hours."""
@@ -401,6 +427,7 @@ class TestMarketHoursRequestHandling:
 # kernel_stopping — TradingAgent end-of-day reporting
 # ===================================================================
 
+
 class TestTradingAgentKernelStopping:
     """Verify kernel_stopping() computes final holdings and mark-to-market."""
 
@@ -423,7 +450,7 @@ class TestTradingAgentKernelStopping:
         agent.starting_cash = 5_000_000
 
         events: list[tuple] = []
-        agent.logEvent = lambda *a, **kw: events.append(a)  # type: ignore[method-assign]
+        agent.logEvent = lambda *a, **kw: events.append(a)
 
         agent.kernel_stopping()
 
@@ -455,7 +482,7 @@ class TestTradingAgentKernelStopping:
         agent.starting_cash = 10_000_000
 
         events: list[tuple] = []
-        agent.logEvent = lambda *a, **kw: events.append(a)  # type: ignore[method-assign]
+        agent.logEvent = lambda *a, **kw: events.append(a)
 
         agent.kernel_stopping()
 
@@ -468,6 +495,7 @@ class TestTradingAgentKernelStopping:
 # TradingAgent.market_closed() callback
 # ===================================================================
 
+
 class TestMarketClosedCallback:
     """TradingAgent.market_closed() should log MKT_CLOSED and set mkt_closed."""
 
@@ -475,11 +503,16 @@ class TestMarketClosedCallback:
         """stop_triggered() has a side effect of setting mkt_closed=True.
         This is how the exchange signals market close to agents who have stops."""
         from abides_markets.orders import StopOrder
+
         agent = _make_trading_agent()
         agent.mkt_closed = False
         stop = StopOrder(
-            agent_id=1, time_placed=MKT_CLOSE, symbol=SYMBOL,
-            quantity=100, side=Side.BID, stop_price=10_000,
+            agent_id=1,
+            time_placed=MKT_CLOSE,
+            symbol=SYMBOL,
+            quantity=100,
+            side=Side.BID,
+            stop_price=10_000,
         )
         agent.orders[stop.order_id] = stop
         agent.stop_triggered(stop)
@@ -492,6 +525,7 @@ class TestMarketClosedCallback:
 # Boundary: order placed exactly at mkt_close (edge of time)
 # ===================================================================
 
+
 class TestOrderAtExactClose:
     """Orders arriving exactly at mkt_close vs. mkt_close + 1."""
 
@@ -503,8 +537,12 @@ class TestOrderAtExactClose:
         ex.current_time = MKT_CLOSE
 
         order = LimitOrder(
-            agent_id=1, time_placed=MKT_CLOSE, symbol=SYMBOL,
-            quantity=100, side=Side.BID, limit_price=9_900,
+            agent_id=1,
+            time_placed=MKT_CLOSE,
+            symbol=SYMBOL,
+            quantity=100,
+            side=Side.BID,
+            limit_price=9_900,
         )
         ex.receive_message(MKT_CLOSE, 1, LimitOrderMsg(order))
 
@@ -519,8 +557,12 @@ class TestOrderAtExactClose:
         ex.current_time = t
 
         order = LimitOrder(
-            agent_id=1, time_placed=t, symbol=SYMBOL,
-            quantity=100, side=Side.BID, limit_price=9_900,
+            agent_id=1,
+            time_placed=t,
+            symbol=SYMBOL,
+            quantity=100,
+            side=Side.BID,
+            limit_price=9_900,
         )
         ex.receive_message(t, 1, LimitOrderMsg(order))
 

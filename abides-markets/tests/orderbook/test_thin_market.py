@@ -20,9 +20,7 @@ class TestOneSidedBook:
 
     def test_bid_only_book_ask_order_executes(self):
         """Incoming ask crosses the lone bid."""
-        book, agent, orders = setup_book_with_orders(
-            bids=[(100, [10])], asks=[]
-        )
+        book, agent, orders = setup_book_with_orders(bids=[(100, [10])], asks=[])
         ask = LimitOrder(2, TIME, SYMBOL, 10, Side.ASK, 100)
         book.handle_limit_order(ask)
 
@@ -33,9 +31,7 @@ class TestOneSidedBook:
 
     def test_ask_only_book_bid_order_executes(self):
         """Incoming bid crosses the lone ask."""
-        book, agent, orders = setup_book_with_orders(
-            bids=[], asks=[(100, [10])]
-        )
+        book, agent, orders = setup_book_with_orders(bids=[], asks=[(100, [10])])
         bid = LimitOrder(2, TIME, SYMBOL, 10, Side.BID, 100)
         book.handle_limit_order(bid)
 
@@ -46,9 +42,7 @@ class TestOneSidedBook:
 
     def test_bid_only_book_bid_order_rests(self):
         """Incoming bid into bid-only book rests at its price."""
-        book, agent, _ = setup_book_with_orders(
-            bids=[(100, [10])], asks=[]
-        )
+        book, agent, _ = setup_book_with_orders(bids=[(100, [10])], asks=[])
         new_bid = LimitOrder(2, TIME, SYMBOL, 5, Side.BID, 99)
         book.handle_limit_order(new_bid)
 
@@ -59,9 +53,7 @@ class TestOneSidedBook:
 
     def test_ask_only_book_ask_order_rests(self):
         """Incoming ask into ask-only book rests."""
-        book, agent, _ = setup_book_with_orders(
-            bids=[], asks=[(100, [10])]
-        )
+        book, agent, _ = setup_book_with_orders(bids=[], asks=[(100, [10])])
         new_ask = LimitOrder(2, TIME, SYMBOL, 5, Side.ASK, 101)
         book.handle_limit_order(new_ask)
 
@@ -120,9 +112,7 @@ class TestWideSpreads:
 
     def test_wide_spread_resting_order(self):
         """Order within the spread rests without executing."""
-        book, agent, _ = setup_book_with_orders(
-            bids=[(100, [10])], asks=[(200, [10])]
-        )
+        book, agent, _ = setup_book_with_orders(bids=[(100, [10])], asks=[(200, [10])])
         # Place a bid within the spread but below the ask.
         mid_bid = LimitOrder(2, TIME, SYMBOL, 5, Side.BID, 150)
         book.handle_limit_order(mid_bid)
@@ -134,9 +124,7 @@ class TestWideSpreads:
 
     def test_wide_spread_crossing_ask(self):
         """Bid at the ask price crosses despite wide spread."""
-        book, agent, _ = setup_book_with_orders(
-            bids=[(100, [10])], asks=[(200, [10])]
-        )
+        book, agent, _ = setup_book_with_orders(bids=[(100, [10])], asks=[(200, [10])])
         crossing_bid = LimitOrder(2, TIME, SYMBOL, 5, Side.BID, 200)
         book.handle_limit_order(crossing_bid)
 
@@ -145,9 +133,7 @@ class TestWideSpreads:
 
     def test_spread_narrows_after_mid_order(self):
         """Placing orders within the spread narrows it."""
-        book, agent, _ = setup_book_with_orders(
-            bids=[(100, [10])], asks=[(200, [10])]
-        )
+        book, agent, _ = setup_book_with_orders(bids=[(100, [10])], asks=[(200, [10])])
         # Place a bid at 150 and an ask at 160
         bid = LimitOrder(2, TIME, SYMBOL, 5, Side.BID, 150)
         ask = LimitOrder(3, TIME, SYMBOL, 5, Side.ASK, 160)
@@ -166,9 +152,7 @@ class TestMinimalLiquidity:
 
     def test_single_share_full_fill(self):
         """1-share bid + 1-share ask → full execution."""
-        book, agent, _ = setup_book_with_orders(
-            bids=[(100, [1])], asks=[]
-        )
+        book, agent, _ = setup_book_with_orders(bids=[(100, [1])], asks=[])
         ask = LimitOrder(2, TIME, SYMBOL, 1, Side.ASK, 100)
         book.handle_limit_order(ask)
 
