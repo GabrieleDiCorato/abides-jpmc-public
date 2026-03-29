@@ -127,12 +127,12 @@ Items are ordered by combined value: **ABIDES as a library** × **agentic stress
 
 ### P0 — High value for both ABIDES and stress-testing
 
-| # | Item | Type | Rationale |
-|---|------|:----:|-----------|
-| 1 | **MeanReversionAgent** | New agent | Cheapest new agent (follows MomentumAgent pattern). Adds contrarian flow — critically important for adversarial scenarios ("what if contrarians fight your momentum strategy?"). No dependencies. |
-| 2 | **NoiseAgent multi-wake mode** | Agent fix | Single-shot NoiseAgent produces unrealistically sparse background flow. Continuous noise is essential for meaningful microstructure in any scenario. Small change, large impact on simulation quality. |
-| 3 | **Time-in-force (IOC, FOK, DAY)** | Exchange | Simplest exchange enhancement. IOC is prerequisite for realistic execution agents (TWAP/VWAP). DAY orders eliminate stale-order cleanup hacks. Required for any new execution agent to be credible. |
-| 4 | **Execution-quality metrics in SimulationResult** | Observability | VWAP slippage, fill rate, participation rate. Without these, an AI agent has no structured way to grade strategy performance. Critical for stress-testing interpretation. Builds on existing `summary_dict()`. |
+| # | Item | Type | Status | Rationale |
+|---|------|:----:|:------:|-----------|
+| 1 | **MeanReversionAgent** | New agent | ✅ Done | Cheapest new agent (follows MomentumAgent pattern). Adds contrarian flow — critically important for adversarial scenarios ("what if contrarians fight your momentum strategy?"). No dependencies. |
+| 2 | **NoiseAgent multi-wake mode** | Agent fix | ✅ Done | Single-shot NoiseAgent produces unrealistically sparse background flow. Continuous noise is essential for meaningful microstructure in any scenario. Small change, large impact on simulation quality. |
+| 3 | **Time-in-force (IOC, FOK, DAY)** | Exchange | ✅ Done | Simplest exchange enhancement. IOC is prerequisite for realistic execution agents (TWAP/VWAP). DAY orders eliminate stale-order cleanup hacks. Required for any new execution agent to be credible. |
+| 4 | **Execution-quality metrics in SimulationResult** | Observability | ✅ Done | VWAP slippage, fill rate, participation rate. Without these, an AI agent has no structured way to grade strategy performance. Critical for stress-testing interpretation. Builds on existing `summary_dict()`. |
 
 ### P1 — High value for ABIDES; enables next tier of stress scenarios
 
