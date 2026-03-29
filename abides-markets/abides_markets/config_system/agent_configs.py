@@ -827,21 +827,21 @@ class POVExecutionAgentConfig(BaseAgentConfig):
     """
 
     start_time_offset: str = Field(
-        default="00:30:00",
+        default="00:05:00",
         description=(
             "Offset from market open when execution begins.  "
-            "Format: 'HH:MM:SS'.  '00:30:00' = start 30 min after open."
+            "Format: 'HH:MM:SS'.  '00:05:00' = start 5 min after open."
         ),
-        examples=["00:30:00", "00:00:00", "01:00:00"],
+        examples=["00:05:00", "00:00:00", "00:30:00"],
         json_schema_extra={"format": "duration"},
     )
     end_time_offset: str = Field(
-        default="00:30:00",
+        default="00:05:00",
         description=(
             "Offset before market close when execution stops.  "
-            "Format: 'HH:MM:SS'.  '00:30:00' = stop 30 min before close."
+            "Format: 'HH:MM:SS'.  '00:05:00' = stop 5 min before close."
         ),
-        examples=["00:30:00", "00:00:00"],
+        examples=["00:05:00", "00:00:00", "00:30:00"],
         json_schema_extra={"format": "duration"},
     )
     freq: str = Field(
@@ -931,21 +931,21 @@ class TWAPExecutionAgentConfig(BaseAgentConfig):
     """
 
     start_time_offset: str = Field(
-        default="00:30:00",
+        default="00:05:00",
         description=(
             "Offset from market open when execution begins.  "
-            "Format: 'HH:MM:SS'.  '00:30:00' = start 30 min after open."
+            "Format: 'HH:MM:SS'.  '00:05:00' = start 5 min after open."
         ),
-        examples=["00:30:00", "00:00:00", "01:00:00"],
+        examples=["00:05:00", "00:00:00", "00:30:00"],
         json_schema_extra={"format": "duration"},
     )
     end_time_offset: str = Field(
-        default="00:30:00",
+        default="00:05:00",
         description=(
             "Offset before market close when execution stops.  "
-            "Format: 'HH:MM:SS'.  '00:30:00' = stop 30 min before close."
+            "Format: 'HH:MM:SS'.  '00:05:00' = stop 5 min before close."
         ),
-        examples=["00:30:00", "00:00:00"],
+        examples=["00:05:00", "00:00:00", "00:30:00"],
         json_schema_extra={"format": "duration"},
     )
     freq: str = Field(
@@ -1024,19 +1024,19 @@ class VWAPExecutionAgentConfig(BaseAgentConfig):
     """
 
     start_time_offset: str = Field(
-        default="00:30:00",
+        default="00:05:00",
         description=(
             "Offset from market open when execution begins.  " "Format: 'HH:MM:SS'."
         ),
-        examples=["00:30:00", "00:00:00", "01:00:00"],
+        examples=["00:05:00", "00:00:00", "00:30:00"],
         json_schema_extra={"format": "duration"},
     )
     end_time_offset: str = Field(
-        default="00:30:00",
+        default="00:05:00",
         description=(
             "Offset before market close when execution stops.  " "Format: 'HH:MM:SS'."
         ),
-        examples=["00:30:00", "00:00:00"],
+        examples=["00:05:00", "00:00:00", "00:30:00"],
         json_schema_extra={"format": "duration"},
     )
     freq: str = Field(

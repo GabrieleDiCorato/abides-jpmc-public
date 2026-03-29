@@ -294,7 +294,6 @@ class OrderBook:
             # among those with the best price.  (i.e. best price, then FIFO)
 
             # The matched order might be only partially filled. (i.e. new order is smaller)
-            is_ptc_exec = False
             if order.quantity >= book[0].peek()[0].quantity:
                 # Consume entire matched order.
                 matched_order, matched_order_metadata = book[0].pop()
@@ -302,7 +301,6 @@ class OrderBook:
                 # If the order is a part of a price to comply pair, also remove the other
                 # half of the order from the book.
                 if matched_order.is_price_to_comply:
-                    is_ptc_exec = True
                     if not matched_order_metadata["ptc_hidden"]:
                         raise Exception(
                             "Should not be executing on the visible half of a price to comply order!"
@@ -328,7 +326,6 @@ class OrderBook:
                 # If the order is a part of a price to comply pair, also adjust the
                 # quantity of the other half of the pair.
                 if book_order.is_price_to_comply:
-                    is_ptc_exec = True
                     if not book_order_metadata["ptc_hidden"]:
                         raise Exception(
                             "Should not be executing on the visible half of a price to comply order!"
@@ -363,7 +360,7 @@ class OrderBook:
                         "SELL" if order.side.is_bid() else "BUY"
                     ),  # by def exec if from point of view of passive order being exec
                     quantity=matched_order.quantity,
-                    price=matched_order.limit_price if is_ptc_exec else None,
+                    price=matched_order.fill_price,
                 )
             )
 

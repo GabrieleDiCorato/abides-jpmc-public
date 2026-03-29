@@ -306,8 +306,8 @@ class SimulationBuilder:
             from abides_markets.config_system.agent_configs import str_to_ns
 
             pov_params = enabled["pov_execution"].params
-            start_off = pov_params.get("start_time_offset", "00:30:00")
-            end_off = pov_params.get("end_time_offset", "00:30:00")
+            start_off = pov_params.get("start_time_offset", "00:05:00")
+            end_off = pov_params.get("end_time_offset", "00:05:00")
             try:
                 mkt_ns = str_to_ns(config.market.end_time) - str_to_ns(
                     config.market.start_time

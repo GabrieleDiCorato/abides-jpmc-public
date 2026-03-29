@@ -143,25 +143,29 @@ class BaseSlicingExecutionAgent(TradingAgent, abc.ABC):
     # ------------------------------------------------------------------
     # Wakeup / message handling
     # ------------------------------------------------------------------
-    def wakeup(self, current_time: NanosecondTime) -> bool:  # type: ignore[override]
-        can_trade = super().wakeup(current_time)
+    def wakeup(self, current_time: NanosecondTime) -> None:  # type: ignore[override]
+        super().wakeup(current_time)
 
         if not self._should_be_trading(current_time):
-            return can_trade
+            return
 
         if not self.execution_started:
             self.execution_started = True
             logger.info(f"{self.name}: Starting execution at {current_time}")
 
         if self.execution_complete or self.remaining_quantity <= 0:
-            return can_trade
+            return
 
         # Query spread (needed for IOC pricing + arrival price)
         self.get_current_spread(self.symbol)
         self.state = "AWAITING_MARKET_DATA"
-        return can_trade
 
     def _should_be_trading(self, current_time: NanosecondTime) -> bool:
+        if not self.mkt_open or not self.mkt_close:
+            # Market hours not yet known — re-wakeup shortly so we retry
+            # once the MarketHoursMsg arrives.
+            self.set_wakeup(current_time + self.freq)
+            return False
         if current_time < self.start_time:
             self.set_wakeup(self.start_time)
             return False
