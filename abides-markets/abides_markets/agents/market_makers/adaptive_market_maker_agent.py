@@ -71,6 +71,7 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         log_orders: bool = False,
         min_imbalance=0.9,
         risk_config: RiskConfig | None = None,
+        flatten_before_close_ns: NanosecondTime | None = 300_000_000_000,
     ) -> None:
 
         super().__init__(
@@ -163,6 +164,9 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         )  # switch to control self.get_transacted_volume
         # method
 
+        self.flatten_before_close_ns: NanosecondTime | None = flatten_before_close_ns
+        self._flattened: bool = False
+
     def initialise_state(self) -> dict[str, bool]:
         """Returns variables that keep track of whether spread and transacted volume have been observed."""
 
@@ -218,6 +222,16 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         """Agent wakeup is determined by self.wake_up_freq."""
 
         can_trade = super().wakeup(current_time)
+
+        # --- End-of-day flatten ---
+        if (
+            not self._flattened
+            and self.flatten_before_close_ns is not None
+            and self.mkt_close is not None
+            and current_time >= self.mkt_close - self.flatten_before_close_ns
+        ):
+            self._flatten_position(current_time)
+            return
 
         if not self.has_subscribed:
             super().request_data_subscription(
@@ -530,6 +544,33 @@ class AdaptiveMarketMakerAgent(TradingAgent):
             new_orders.append(
                 self.create_limit_order(self.symbol, want_size, side, want_price)
             )
+
+    def _flatten_position(self, current_time: NanosecondTime) -> None:
+        """Cancel all outstanding quotes and place market orders to zero out
+        the position in ``self.symbol``.  Called once when the flatten window
+        is reached; sets ``self._flattened = True`` so it cannot fire again.
+        """
+        self._flattened = True
+        self.cancel_all_orders()
+
+        position = self.get_holdings(self.symbol)
+        if position > 0:
+            self.place_market_order(self.symbol, abs(position), Side.ASK)
+        elif position < 0:
+            self.place_market_order(self.symbol, abs(position), Side.BID)
+
+        self.logEvent(
+            "AMM_FLATTEN",
+            {"symbol": self.symbol, "position_closed": position},
+            deepcopy_event=False,
+        )
+        logger.info(
+            "%s flattened position: %d shares of %s at %s",
+            self.name,
+            position,
+            self.symbol,
+            current_time,
+        )
 
     def get_wake_frequency(self) -> NanosecondTime:
         if not self.poisson_arrival:

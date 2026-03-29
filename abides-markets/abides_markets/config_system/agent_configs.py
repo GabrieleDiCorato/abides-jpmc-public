@@ -782,10 +782,22 @@ class AdaptiveMarketMakerConfig(BaseAgentConfig):
             "Values close to 1.0 require extreme imbalance."
         ),
     )
+    flatten_before_close: str | None = Field(
+        default="5min",
+        description=(
+            "Duration before market close at which the agent cancels all "
+            "outstanding quotes and places market orders to zero out its "
+            "position.  Set to null to disable end-of-day flattening.  "
+            "Supported formats: 'Ns', 'Nmin', 'Nh', 'HH:MM:SS'."
+        ),
+        examples=["5min", "10min", "00:05:00", None],
+        json_schema_extra={"format": "duration"},
+    )
 
     _EXCLUDE_FROM_KWARGS: frozenset[str] = _BASE_EXCLUDE | frozenset(
         {
             "subscribe_freq",
+            "flatten_before_close",
         }
     )
 
@@ -795,6 +807,10 @@ class AdaptiveMarketMakerConfig(BaseAgentConfig):
         )
         kwargs["wake_up_freq"] = str_to_ns(self.wake_up_freq)
         kwargs["subscribe_freq"] = str_to_ns(self.subscribe_freq)
+        if self.flatten_before_close is not None:
+            kwargs["flatten_before_close_ns"] = str_to_ns(self.flatten_before_close)
+        else:
+            kwargs["flatten_before_close_ns"] = None
         kwargs["name"] = f"ADAPTIVE_POV_MARKET_MAKER_AGENT_{agent_id}"
         kwargs["type"] = "AdaptivePOVMarketMakerAgent"
         return kwargs
