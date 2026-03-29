@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from abides_core import Message
 
-from ..orders import LimitOrder, MarketOrder
+from ..orders import LimitOrder, MarketOrder, StopOrder
 
 
 @dataclass
@@ -47,3 +47,8 @@ class ReplaceOrderMsg(OrderMsg):
     agent_id: int
     old_order: LimitOrder
     new_order: LimitOrder
+
+
+@dataclass
+class StopOrderMsg(OrderMsg):
+    order: StopOrder

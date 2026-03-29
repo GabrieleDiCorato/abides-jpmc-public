@@ -27,6 +27,7 @@ from ..messages.order import (
     ModifyOrderMsg,
     PartialCancelOrderMsg,
     ReplaceOrderMsg,
+    StopOrderMsg,
 )
 from ..messages.orderbook import (
     OrderAcceptedMsg,
@@ -35,6 +36,7 @@ from ..messages.orderbook import (
     OrderModifiedMsg,
     OrderPartialCancelledMsg,
     OrderReplacedMsg,
+    StopTriggeredMsg,
 )
 from ..messages.query import (
     QueryLastTradeMsg,
@@ -47,7 +49,7 @@ from ..messages.query import (
     QueryTransactedVolResponseMsg,
 )
 from ..models.risk_config import RiskConfig
-from ..orders import LimitOrder, MarketOrder, Order, Side, TimeInForce
+from ..orders import LimitOrder, MarketOrder, Order, Side, StopOrder, TimeInForce
 from .exchange_agent import ExchangeAgent
 from .financial_agent import FinancialAgent
 
@@ -336,6 +338,7 @@ class TradingAgent(FinancialAgent):
         OrderPartialCancelledMsg: "_handle_order_partial_cancelled_msg",
         OrderModifiedMsg: "_handle_order_modified_msg",
         OrderReplacedMsg: "_handle_order_replaced_msg",
+        StopTriggeredMsg: "_handle_stop_triggered_msg",
         QueryLastTradeResponseMsg: "_handle_query_last_trade_response_msg",
         QuerySpreadResponseMsg: "_handle_query_spread_response_msg",
         QueryOrderStreamResponseMsg: "_handle_query_order_stream_response_msg",
@@ -378,6 +381,9 @@ class TradingAgent(FinancialAgent):
 
     def _handle_order_replaced_msg(self, message: OrderReplacedMsg) -> None:
         self.order_replaced(message.old_order, message.new_order)
+
+    def _handle_stop_triggered_msg(self, message: StopTriggeredMsg) -> None:
+        self.stop_triggered(message.order)
 
     def _handle_query_last_trade_response_msg(
         self, message: QueryLastTradeResponseMsg
@@ -887,6 +893,41 @@ class TradingAgent(FinancialAgent):
                 "TradingAgent ignored market order of quantity zero: {}", order
             )
 
+    def place_stop_order(
+        self,
+        symbol: str,
+        quantity: int,
+        side: Side,
+        stop_price: int,
+        tag: Any = None,
+    ) -> None:
+        """Place a stop order with the exchange.
+
+        The exchange holds the order (it never enters the visible book).
+        When the last trade price crosses ``stop_price`` the exchange
+        converts it to a market order and submits it automatically.
+
+        Arguments:
+            symbol: Symbol to trade.
+            quantity: Number of shares.
+            side: ``Side.BID`` (buy stop) or ``Side.ASK`` (sell stop).
+            stop_price: Price in integer cents that triggers the order.
+            tag: Optional free-form tag.
+        """
+        order = StopOrder(
+            self.id,
+            self.current_time,
+            symbol,
+            quantity,
+            side,
+            stop_price,
+            tag=tag,
+        )
+        self.orders[order.order_id] = deepcopy(order)
+        self.send_message(self.exchange_id, StopOrderMsg(order))
+        if self.log_orders:
+            self.logEvent("STOP_ORDER_SUBMITTED", order.to_dict(), deepcopy_event=False)
+
     def place_multiple_orders(
         self, orders: list[Union[LimitOrder, MarketOrder]]
     ) -> None:
@@ -1267,6 +1308,22 @@ class TradingAgent(FinancialAgent):
 
         # Log this activity.
         self.logEvent("MKT_CLOSED")
+
+    def stop_triggered(self, order: StopOrder) -> None:
+        """Called when the exchange triggers one of this agent's stop orders.
+
+        The exchange has already converted the stop into a market order and
+        submitted it.  This callback removes the stop from ``self.orders``
+        and logs the event.
+
+        Arguments:
+            order: The original ``StopOrder`` that was triggered.
+        """
+        logger.debug("Stop order triggered: %s", order)
+        if order.order_id in self.orders:
+            del self.orders[order.order_id]
+        if self.log_orders:
+            self.logEvent("STOP_TRIGGERED", order.to_dict(), deepcopy_event=False)
 
         # Remember that this has happened.
         self.mkt_closed = True

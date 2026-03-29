@@ -10,10 +10,9 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
-import pytest
 
 from abides_core.utils import str_to_ns
 
@@ -128,18 +127,18 @@ class TestFlattenWakeupTrigger:
         # Skip subscription and polling steps that need a real kernel.
         agent.has_subscribed = True
         agent.subscription_requested = True
-        with patch(
-            "abides_markets.agents.market_makers.adaptive_market_maker_agent.TradingAgent.wakeup",
-            return_value=True,
+        with (
+            patch(
+                "abides_markets.agents.market_makers.adaptive_market_maker_agent.TradingAgent.wakeup",
+                return_value=True,
+            ),
+            patch.object(agent, "cancel_all_orders"),
+            patch.object(agent, "place_market_order"),
+            patch.object(agent, "logEvent"),
+            patch.object(agent, "get_current_spread"),
+            patch.object(agent, "get_transacted_volume"),
         ):
-            with (
-                patch.object(agent, "cancel_all_orders"),
-                patch.object(agent, "place_market_order"),
-                patch.object(agent, "logEvent"),
-                patch.object(agent, "get_current_spread"),
-                patch.object(agent, "get_transacted_volume"),
-            ):
-                agent.wakeup(current_time)
+            agent.wakeup(current_time)
 
     def test_flatten_triggered_at_boundary(self):
         """Flatten fires exactly at mkt_close - flatten_before_close_ns."""
@@ -170,18 +169,18 @@ class TestFlattenWakeupTrigger:
         agent._flattened = True  # already flattened
         agent.has_subscribed = True
         agent.subscription_requested = True
-        with patch(
-            "abides_markets.agents.market_makers.adaptive_market_maker_agent.TradingAgent.wakeup",
-            return_value=True,
+        with (
+            patch(
+                "abides_markets.agents.market_makers.adaptive_market_maker_agent.TradingAgent.wakeup",
+                return_value=True,
+            ),
+            patch.object(agent, "cancel_all_orders") as mock_cancel,
+            patch.object(agent, "place_market_order") as mock_mkt,
+            patch.object(agent, "logEvent"),
+            patch.object(agent, "get_current_spread"),
+            patch.object(agent, "get_transacted_volume"),
         ):
-            with (
-                patch.object(agent, "cancel_all_orders") as mock_cancel,
-                patch.object(agent, "place_market_order") as mock_mkt,
-                patch.object(agent, "logEvent"),
-                patch.object(agent, "get_current_spread"),
-                patch.object(agent, "get_transacted_volume"),
-            ):
-                agent.wakeup(MKT_CLOSE - str_to_ns("1min"))
+            agent.wakeup(MKT_CLOSE - str_to_ns("1min"))
 
         # Should not have called flatten methods again
         mock_cancel.assert_not_called()
@@ -202,25 +201,19 @@ class TestAMMFlattenConfig:
     """Config field mapping for flatten_before_close."""
 
     def test_config_default(self):
-        from abides_markets.config_system.agent_configs import (
-            AdaptiveMarketMakerConfig,
-        )
+        from abides_markets.config_system.agent_configs import AdaptiveMarketMakerConfig
 
         cfg = AdaptiveMarketMakerConfig()
         assert cfg.flatten_before_close == "5min"
 
     def test_config_none_disables(self):
-        from abides_markets.config_system.agent_configs import (
-            AdaptiveMarketMakerConfig,
-        )
+        from abides_markets.config_system.agent_configs import AdaptiveMarketMakerConfig
 
         cfg = AdaptiveMarketMakerConfig(flatten_before_close=None)
         assert cfg.flatten_before_close is None
 
     def test_config_custom_value(self):
-        from abides_markets.config_system.agent_configs import (
-            AdaptiveMarketMakerConfig,
-        )
+        from abides_markets.config_system.agent_configs import AdaptiveMarketMakerConfig
 
         cfg = AdaptiveMarketMakerConfig(flatten_before_close="10min")
         assert cfg.flatten_before_close == "10min"

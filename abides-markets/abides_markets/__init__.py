@@ -11,7 +11,7 @@ from .agents import (
     ValueAgent,
 )
 from .order_book import OrderBook
-from .orders import LimitOrder, MarketOrder, Order, Side, TimeInForce
+from .orders import LimitOrder, MarketOrder, Order, Side, StopOrder, TimeInForce
 from .price_level import PriceLevel
 
 __all__ = [
@@ -32,5 +32,6 @@ __all__ = [
     "MarketOrder",
     "Order",
     "Side",
+    "StopOrder",
     "TimeInForce",
 ]

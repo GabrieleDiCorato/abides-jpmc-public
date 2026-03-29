@@ -235,3 +235,59 @@ class MarketOrder(Order):
         order.fill_price = self.fill_price
 
         return order
+
+
+class StopOrder(Order):
+    """A stop order that triggers a market order when the last trade price
+    crosses the stop price.
+
+    - **Buy stop** (``Side.BID``): triggers when ``last_trade >= stop_price``.
+    - **Sell stop** (``Side.ASK``): triggers when ``last_trade <= stop_price``.
+
+    The exchange holds stop orders (they never enter the visible book).
+    When triggered, the exchange converts them to a ``MarketOrder`` and
+    submits it to the order book.
+    """
+
+    def __init__(
+        self,
+        agent_id: int,
+        time_placed: NanosecondTime,
+        symbol: str,
+        quantity: int,
+        side: Side,
+        stop_price: int,
+        order_id: int | None = None,
+        tag: Any | None = None,
+    ) -> None:
+        super().__init__(
+            agent_id, time_placed, symbol, quantity, side, order_id=order_id, tag=tag
+        )
+        self.stop_price: int = stop_price
+
+    def __str__(self) -> str:
+        return (
+            f"(Agent {self.agent_id} @ {fmt_ts(self.time_placed)}) : "
+            f"STOP {self.side.value} {self.quantity} {self.symbol} "
+            f"@ {dollarize(self.stop_price)}"
+        )
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def __deepcopy__(self, memodict={}) -> "StopOrder":
+        tag = None if self.tag is None else deepcopy(self.tag)
+
+        order = StopOrder(
+            self.agent_id,
+            self.time_placed,
+            self.symbol,
+            self.quantity,
+            self.side,
+            self.stop_price,
+            order_id=self.order_id,
+            tag=tag,
+        )
+        order.fill_price = self.fill_price
+
+        return order

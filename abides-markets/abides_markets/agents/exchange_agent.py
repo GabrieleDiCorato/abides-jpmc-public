@@ -39,8 +39,9 @@ from ..messages.order import (
     OrderMsg,
     PartialCancelOrderMsg,
     ReplaceOrderMsg,
+    StopOrderMsg,
 )
-from ..messages.orderbook import OrderBookMsg
+from ..messages.orderbook import OrderBookMsg, StopTriggeredMsg
 from ..messages.query import (
     QueryLastTradeMsg,
     QueryLastTradeResponseMsg,
@@ -53,7 +54,7 @@ from ..messages.query import (
     QueryTransactedVolResponseMsg,
 )
 from ..order_book import OrderBook
-from ..orders import Side
+from ..orders import MarketOrder, Side, StopOrder
 from .financial_agent import FinancialAgent
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,7 @@ class ExchangeAgent(FinancialAgent):
         PartialCancelOrderMsg: "_handle_partial_cancel_order",
         ModifyOrderMsg: "_handle_modify_order",
         ReplaceOrderMsg: "_handle_replace_order",
+        StopOrderMsg: "_handle_stop_order",
     }
     # Lazy cache: maps concrete message types to resolved handler names
     # (populated on first encounter via MRO walk, O(1) thereafter).
@@ -230,6 +232,12 @@ class ExchangeAgent(FinancialAgent):
 
         # Fallback opening prices when no oracle is present (set by compiler).
         self._opening_prices: dict[str, int] | None = opening_prices
+
+        # Stop orders held exchange-side, keyed by symbol.
+        # Each symbol maps to a list of (StopOrder, sender_id) tuples.
+        self.stop_orders: dict[str, list[tuple[StopOrder, int]]] = {
+            symbol: [] for symbol in symbols
+        }
 
     def kernel_initializing(self, kernel: "Kernel") -> None:
         """
@@ -613,6 +621,7 @@ class ExchangeAgent(FinancialAgent):
             # place_limit_order ever stops deepcopying, this must be revisited.
             self.order_books[message.order.symbol].handle_limit_order(message.order)
             self.publish_order_book_data(message.order.symbol)
+            self._check_stop_orders(message.order.symbol)
 
     def _handle_market_order(
         self, sender_id: int, current_time: NanosecondTime, message: MarketOrderMsg
@@ -625,6 +634,7 @@ class ExchangeAgent(FinancialAgent):
         else:
             self.order_books[message.order.symbol].handle_market_order(message.order)
             self.publish_order_book_data(message.order.symbol)
+            self._check_stop_orders(message.order.symbol)
 
     def _handle_cancel_order(
         self, sender_id: int, current_time: NanosecondTime, message: CancelOrderMsg
@@ -698,6 +708,59 @@ class ExchangeAgent(FinancialAgent):
             # message's new_order reference is consumed here and not retained.
             self.order_books[order.symbol].replace_order(agent_id, order, new_order)
             self.publish_order_book_data(order.symbol)
+
+    def _handle_stop_order(
+        self, sender_id: int, current_time: NanosecondTime, message: StopOrderMsg
+    ) -> None:
+        order = message.order
+        logger.debug(f"{self.name} received STOP_ORDER: {order}")
+        if order.symbol not in self.order_books:
+            warnings.warn(f"Stop Order discarded. Unknown symbol: {order.symbol}")
+        else:
+            self.stop_orders[order.symbol].append((order, sender_id))
+            if self.log_orders:
+                self.logEvent("STOP_ORDER_ACCEPTED", str(order))
+
+    def _check_stop_orders(self, symbol: str) -> None:
+        """Evaluate all pending stop orders for *symbol* against ``last_trade``.
+
+        Triggered stops are converted to market orders and submitted to the
+        order book.  The originating agent receives a ``StopTriggeredMsg``.
+        """
+        book = self.order_books[symbol]
+        last_trade = getattr(book, "last_trade", None)
+        if last_trade is None:
+            return
+
+        pending = self.stop_orders[symbol]
+        remaining: list[tuple[StopOrder, int]] = []
+        triggered: list[tuple[StopOrder, int]] = []
+
+        for stop, sid in pending:
+            if (
+                stop.side.is_bid()
+                and last_trade >= stop.stop_price
+                or stop.side.is_ask()
+                and last_trade <= stop.stop_price
+            ):
+                triggered.append((stop, sid))
+            else:
+                remaining.append((stop, sid))
+
+        self.stop_orders[symbol] = remaining
+
+        for stop, _sid in triggered:
+            self.send_message(stop.agent_id, StopTriggeredMsg(stop))
+            mkt = MarketOrder(
+                stop.agent_id,
+                self.current_time,
+                stop.symbol,
+                stop.quantity,
+                stop.side,
+                tag=stop.tag,
+            )
+            book.handle_market_order(mkt)
+            self.publish_order_book_data(symbol)
 
     # ------------------------------------------------------------------
     # DAY order cleanup
