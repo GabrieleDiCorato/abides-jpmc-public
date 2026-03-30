@@ -24,9 +24,10 @@ Always guard: `bids = self.known_bids.get(symbol, []); bid = bids[0][0] if bids 
 `get_current_spread()` sends a message. The response arrives later in `receive_message()`.
 The only agent entry points are `wakeup()` and `receive_message()`.
 
-### Check `super().wakeup()` return value
+### Use `super().wakeup()` return value for trading actions
 `TradingAgent.wakeup()` returns `False` when market hours are unknown or market is closed.
-Always: `if not super().wakeup(current_time): return`
+For **polling agents** (spread queries, order placement): `if not super().wakeup(current_time): return`
+For **subscribe-mode agents**: call `super().wakeup()` but proceed with one-time subscription setup even when it returns `False` — subscriptions must be registered before market hours arrive so the agent receives data as soon as it's available. Guard only the *trading* logic on `can_trade`.
 
 ## Oracle system (v2.2.0)
 `MarketConfig.oracle` is **required** (no default) — every config must explicitly choose an oracle or set `oracle: null`.
