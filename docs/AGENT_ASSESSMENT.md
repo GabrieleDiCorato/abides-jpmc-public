@@ -1,7 +1,7 @@
 # ABIDES — Roadmap & Priority List
 
-**Date**: 2026-03-28
-**Baseline**: v2.2.0 — all known bugs resolved, 491 tests passing, zero runtime/data-corruption issues.
+**Date**: 2026-03-30
+**Baseline**: v2.2.0 — all P0/P1 work complete, 979 tests passing, zero runtime/data-corruption issues.
 
 ---
 
@@ -13,14 +13,16 @@
 |------|:------:|-------|
 | Simulation engine | **Production** | Kernel, message passing, order book, matching — tested and performant. |
 | Config system | **Production** | `SimulationBuilder`, `@register_agent`, compiler, YAML/JSON — AI-friendly with schema introspection. |
-| Risk controls | **Production** | `RiskConfig` wires position limits, circuit breakers, per-fill P&L (`FILL_PNL`) through all 5 concrete agents. |
+| Risk controls | **Production** | `RiskConfig` wires position limits, circuit breakers, per-fill P&L (`FILL_PNL`) through all 8 concrete agents. |
 | Oracle system | **Production** | Required oracle field, oracle-absent mode, `ExternalDataOracle` with injection pattern, ValueAgent auto-inherits params. |
+| Order types | **Production** | `TimeInForce` (GTC, IOC, FOK, DAY), `StopOrder` with exchange-side trigger queue. |
+| Observability | **Production** | `ExecutionMetrics`, `TradeAttribution`, `EquityCurve` in `SimulationResult`. Profile-gated extraction. |
 | Data extraction | **Good** | `parse_logs_df`, L1/L2/L3 snapshots, `SimulationResult` with `summary_dict()` / `narrative()`, VWAP computation. |
 | Parallel execution | **Good** | `run_batch()` with unique log dirs, deterministic seed hierarchy. |
 | AI discoverability | **Good** | `list_agent_types()`, `get_config_schema()`, `validate_config()` — designed for LLM tool-calling. |
 | Documentation | **Good** | Config system, custom agent guide, LLM gotchas, data extraction — current and accurate. |
 
-### Agent Inventory (5 trading + 1 infrastructure)
+### Agent Inventory (8 trading + 1 infrastructure)
 
 | Agent | Category | Registered | Oracle? |
 |-------|----------|:----------:|:-------:|
@@ -28,8 +30,11 @@
 | NoiseAgent | Background | `"noise"` | No |
 | ValueAgent | Background | `"value"` | Yes — Bayesian |
 | MomentumAgent | Strategy | `"momentum"` | No |
+| MeanReversionAgent | Strategy | `"mean_reversion"` | No |
 | AdaptiveMarketMakerAgent | Market Maker | `"adaptive_market_maker"` | No |
 | POVExecutionAgent | Execution | `"pov_execution"` | No |
+| TWAPExecutionAgent | Execution | `"twap_execution"` | No |
+| VWAPExecutionAgent | Execution | `"vwap_execution"` | No |
 
 The informed/uninformed split is **correct by design** — ValueAgent pushes prices toward fundamentals; everyone else reacts to LOB state. This heterogeneity IS the price discovery mechanism.
 
@@ -49,9 +54,7 @@ The informed/uninformed split is **correct by design** — ValueAgent pushes pri
 
 | Agent | Issue | Impact |
 |-------|-------|--------|
-| **NoiseAgent** | Single-shot — places one order then goes silent | Unrealistic microstructure; fewer background messages than real markets |
 | **MomentumAgent** | No exit/reversal logic — rides trend indefinitely | Overstates trend-following impact; no stop-loss or profit-target |
-| **AdaptiveMarketMakerAgent** | ~~No end-of-day inventory flatten~~ ✅ Fixed | `flatten_before_close` parameter added; configurable via `AdaptiveMarketMakerConfig`. |
 | **POVExecutionAgent** | Market orders only; no urgency parameter | No price improvement; can't model time-adaptive execution |
 | **TradingAgent** | Drawdown measured from `starting_cash`, not peak NAV | `_peak_nav` is tracked but not used for enforcement |
 | **TradingAgent** | `FILL_PNL` logs NAV but not per-symbol position | Limits per-instrument analysis |
@@ -64,9 +67,6 @@ The informed/uninformed split is **correct by design** — ValueAgent pushes pri
 
 | Agent | Description | Oracle? | Depends On |
 |-------|-------------|:-------:|------------|
-| **MeanReversionAgent** | Bollinger-band/z-score contrarian strategy. Complement to MomentumAgent. | No | Nothing — LOB-only |
-| ~~**TWAPExecutionAgent**~~ | ✅ Implemented — uniform time-sliced child orders with IOC limit. Subclasses `BaseSlicingExecutionAgent`. | No | Nothing |
-| ~~**VWAPExecutionAgent**~~ | ✅ Implemented — volume-profile-weighted execution. Configurable U-shape or custom profile. | No | Nothing |
 | **InformedTraderAgent** | Reacts to discrete oracle events (megashocks, earnings) with configurable delay/precision/aggressiveness. Models adverse selection. | Yes — events | Oracle event subscription API |
 | **ImplementationShortfallAgent** | Almgren-Chriss optimal execution balancing market impact vs. timing risk. | No | Nothing |
 | **PairsArbitrageAgent** | Trades two correlated symbols on spread z-score. First multi-symbol agent. | No | Correlated oracle |
@@ -74,12 +74,10 @@ The informed/uninformed split is **correct by design** — ValueAgent pushes pri
 
 ### 3.2 Exchange Features
 
-Iceberg and stop orders are **exchange-level mechanisms** — implementing them as agents introduces unrealistic latency. The matching engine must manage them.
+Iceberg orders are **exchange-level mechanisms** — implementing them as agents introduces unrealistic latency. The matching engine must manage them.
 
 | Feature | Detail |
 |---------|--------|
-| ~~**Time-in-force (IOC, FOK, DAY)**~~ | ✅ Implemented. All orders support IOC, FOK, DAY time-in-force. |
-| ~~**Stop orders**~~ | ✅ Implemented. `StopOrder` with exchange-side trigger queue. Converts to market order on last-trade crossing. |
 | **Iceberg / reserve orders** | `PriceLevel` already separates visible/hidden queues. Add `display_quantity` to `LimitOrder`; auto-refresh visible slice on fill. |
 | **Exchange-level circuit breakers** | No trading halts or LULD bands. Only agent-level via `RiskConfig`. Shapes tail-risk dynamics. |
 | **Self-trade prevention** | No same-agent matching check. Real exchanges reject or cancel self-trades. |
@@ -94,30 +92,13 @@ Iceberg and stop orders are **exchange-level mechanisms** — implementing them 
 | **Built-in CSV/Parquet providers** | Only `DataFrameProvider` exists. `CsvProvider` and `ParquetProvider` would eliminate external boilerplate. |
 | **Optional AMM fundamental anchor** | Blend `alpha * oracle + (1-alpha) * LOB mid` for sophisticated MM modeling. Default off. |
 
-### 3.4 Observability & Metrics
+### 3.4 Existing Agent Improvements
 
 | Issue | Detail |
 |-------|--------|
-| ~~**No standardized execution-quality metrics**~~ | ✅ `ExecutionMetrics` model: VWAP slippage, implementation shortfall, participation rate, fill rate. Populated automatically for execution-category agents. |
-| ~~**No causal order attribution**~~ | ✅ `TradeAttribution` model: passive/aggressive agent IDs per execution. Gated by `ResultProfile.TRADE_ATTRIBUTION`. |
-| ~~**FILL_PNL aggregation**~~ | ✅ `EquityCurve` model: per-fill NAV time-series with `max_drawdown_cents`. Gated by `ResultProfile.EQUITY_CURVE`. |
-
-### 3.5 Existing Agent Improvements
-
-| Issue | Detail |
-|-------|--------|
-| ~~**NoiseAgent multi-wake mode**~~ | ✅ Implemented. Configurable `num_wakeups` parameter. |
 | **MomentumAgent exit logic** | Configurable trailing stop / profit target / reversal signal. |
-| ~~**AMM end-of-day flatten**~~ | ✅ Implemented. `flatten_before_close` parameter cancels quotes and zeros position before close. |
 | **POV limit-order mode** | Support limit orders with active crossing for price improvement. |
 | **Peak-drawdown enforcement** | Use `_peak_nav` (already tracked) as drawdown reference instead of `starting_cash`. |
-
-### 3.6 Housekeeping
-
-| Issue | Detail |
-|-------|--------|
-| **Register gym agents** | `CoreBackgroundAgent` and `FinancialGymAgent` not in config system. |
-| **Remove MeanRevertingOracleConfig** | Deprecated oracle is still compilable via config. Remove config model to eliminate foot-gun. |
 
 ---
 
@@ -125,53 +106,33 @@ Iceberg and stop orders are **exchange-level mechanisms** — implementing them 
 
 Items are ordered by combined value: **ABIDES as a library** × **agentic stress-testing use case**. Dependencies are noted — some items unlock others.
 
-### P0 — High value for both ABIDES and stress-testing
-
-| # | Item | Type | Status | Rationale |
-|---|------|:----:|:------:|-----------|
-| 1 | **MeanReversionAgent** | New agent | ✅ Done | Cheapest new agent (follows MomentumAgent pattern). Adds contrarian flow — critically important for adversarial scenarios ("what if contrarians fight your momentum strategy?"). No dependencies. |
-| 2 | **NoiseAgent multi-wake mode** | Agent fix | ✅ Done | Single-shot NoiseAgent produces unrealistically sparse background flow. Continuous noise is essential for meaningful microstructure in any scenario. Small change, large impact on simulation quality. |
-| 3 | **Time-in-force (IOC, FOK, DAY)** | Exchange | ✅ Done | Simplest exchange enhancement. IOC is prerequisite for realistic execution agents (TWAP/VWAP). DAY orders eliminate stale-order cleanup hacks. Required for any new execution agent to be credible. |
-| 4 | **Execution-quality metrics in SimulationResult** | Observability | ✅ Done | VWAP slippage, fill rate, participation rate. Without these, an AI agent has no structured way to grade strategy performance. Critical for stress-testing interpretation. Builds on existing `summary_dict()`. |
-
-### P1 — High value for ABIDES; enables next tier of stress scenarios
-
-| # | Item | Type | Status | Rationale |
-|---|------|:----:|:------:|-----------|
-| 5 | **TWAPExecutionAgent** | New agent | ✅ Done | Most basic institutional algo. Follows POV state-machine pattern. Requires IOC for non-resting slices. Adds institutional background flow to scenarios. |
-| 6 | **VWAPExecutionAgent** | New agent | ✅ Done | Industry-standard execution benchmark. Structurally different from POV (price benchmark vs. participation). Build alongside TWAP — shared execution infrastructure. |
-| 7 | **Stop orders (exchange-level)** | Exchange | ✅ Done | Enables flash-crash / cascade scenarios — stop-triggered volume drives volatility clustering. Agent-side polling distorts timing. Unlocks a major class of stress-testing scenarios. |
-| 8 | **AMM end-of-day flatten** | Agent fix | ✅ Done | Affects P&L realism for every simulation with market makers. Small targeted change in `AdaptiveMarketMakerAgent`. |
-| 9 | **Causal order attribution** | Observability | ✅ Done | Tag trades with aggressor/passive agent ID. Lets the AI agent explain *why* prices moved — essential for actionable stress-test feedback. |
-| 10 | **FILL_PNL aggregation in SimulationResult** | Observability | ✅ Done | Surface per-agent equity curves without post-hoc log parsing. Makes `summary_dict()` self-contained. |
-
-### P2 — Significant value; larger effort or narrower use case
+### P0 — High value; larger effort or narrower use case
 
 | # | Item | Type | Rationale |
 |---|------|:----:|-----------|
-| 11 | **Oracle event subscription API** | Architecture | Prerequisite for InformedTraderAgent. Exposes megashocks to agents via kernel messages with configurable delay/noise. Significant architecture work but unlocks adverse-selection scenarios. |
-| 12 | **InformedTraderAgent** | New agent | Reacts to discrete oracle events. Models adverse selection — the key missing microstructure phenomenon. Depends on #11. |
-| 13 | **Iceberg orders (exchange-level)** | Exchange | `PriceLevel` already separates visible/hidden — natural extension. Adds hidden liquidity dynamics. |
-| 14 | **MomentumAgent exit logic** | Agent fix | Trailing stop / profit target. Improves realism of trend-following flow. |
-| 15 | **POV limit-order mode + urgency** | Agent fix | Support limit orders and time-adaptive participation. |
-| 16 | **Peak-drawdown enforcement** | Risk | Use already-tracked `_peak_nav` as drawdown reference. Small change in `TradingAgent`. |
-| 17 | **Per-symbol position in FILL_PNL** | Observability | Add `holdings[symbol]` to FILL_PNL payload. |
-| 18 | **Built-in CSV/Parquet providers** | Data | Convenience for external data injection. `DataFrameProvider` exists as workaround. |
+| 1 | **Oracle event subscription API** | Architecture | Prerequisite for InformedTraderAgent. Exposes megashocks to agents via kernel messages with configurable delay/noise. Significant architecture work but unlocks adverse-selection scenarios. |
+| 2 | **InformedTraderAgent** | New agent | Reacts to discrete oracle events. Models adverse selection — the key missing microstructure phenomenon. Depends on #1. |
+| 3 | **Iceberg orders (exchange-level)** | Exchange | `PriceLevel` already separates visible/hidden — natural extension. Adds hidden liquidity dynamics. |
+| 4 | **MomentumAgent exit logic** | Agent fix | Trailing stop / profit target. Improves realism of trend-following flow. |
+| 5 | **POV limit-order mode + urgency** | Agent fix | Support limit orders and time-adaptive participation. |
+| 6 | **Peak-drawdown enforcement** | Risk | Use already-tracked `_peak_nav` as drawdown reference. Small change in `TradingAgent`. |
+| 7 | **Per-symbol position in FILL_PNL** | Observability | Add `holdings[symbol]` to FILL_PNL payload. |
+| 8 | **Built-in CSV/Parquet providers** | Data | Convenience for external data injection. `DataFrameProvider` exists as workaround. |
 
-### P3 — Differentiation / future
+### P1 — Differentiation / future
 
 | # | Item | Type | Rationale |
 |---|------|:----:|-----------|
-| 19 | **ImplementationShortfallAgent** | New agent | Almgren-Chriss optimal execution. Academic interest; specialized use case. |
-| 20 | **Exchange-level circuit breakers (LULD)** | Exchange | Trading halts on extreme moves. Important for tail-risk but modeled at agent level today. |
-| 21 | **Self-trade prevention** | Exchange | Correctness improvement. Agents work around it today. |
-| 22 | **Correlated multi-symbol oracle** | Oracle | Cholesky-decomposed correlated OU processes. Required for PairsArbitrageAgent and cross-asset stress. |
-| 23 | **PairsArbitrageAgent** | New agent | First multi-symbol agent. Depends on #22. |
-| 24 | **HFTAgent** | New agent | Queue priority exploitation. Niche but differentiating. |
-| 25 | **Optional AMM fundamental anchor** | Agent enhancement | Blend oracle + LOB mid. Default off. Niche. |
-| 26 | **Opening / closing auction** | Exchange | Call-auction matching. Important for realism but significant effort. |
-| 27 | **Register gym agents** | Housekeeping | `CoreBackgroundAgent`, `FinancialGymAgent` not in config system. |
-| 28 | **Remove MeanRevertingOracleConfig** | Housekeeping | Deprecated oracle still compilable. Remove config to eliminate foot-gun. |
+| 9 | **ImplementationShortfallAgent** | New agent | Almgren-Chriss optimal execution. Academic interest; specialized use case. |
+| 10 | **Exchange-level circuit breakers (LULD)** | Exchange | Trading halts on extreme moves. Important for tail-risk but modeled at agent level today. |
+| 11 | **Self-trade prevention** | Exchange | Correctness improvement. Agents work around it today. |
+| 12 | **Correlated multi-symbol oracle** | Oracle | Cholesky-decomposed correlated OU processes. Required for PairsArbitrageAgent and cross-asset stress. |
+| 13 | **PairsArbitrageAgent** | New agent | First multi-symbol agent. Depends on #12. |
+| 14 | **HFTAgent** | New agent | Queue priority exploitation. Niche but differentiating. |
+| 15 | **Optional AMM fundamental anchor** | Agent enhancement | Blend oracle + LOB mid. Default off. Niche. |
+| 16 | **Opening / closing auction** | Exchange | Call-auction matching. Important for realism but significant effort. |
+| 17 | **Register gym agents** | Housekeeping | `CoreBackgroundAgent`, `FinancialGymAgent` not in config system. |
+| 18 | **Remove MeanRevertingOracleConfig** | Housekeeping | Deprecated oracle still compilable. Remove config to eliminate foot-gun. |
 
 ---
 
