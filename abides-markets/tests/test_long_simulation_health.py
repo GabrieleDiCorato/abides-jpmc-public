@@ -193,8 +193,8 @@ class TestLegacyConfigHealth:
             exchange_log_orders=False,
         )
         # Verify the sigma_s fix is applied
-        value_agents = [a for a in config["agents"] if hasattr(a, "sigma_s") and hasattr(a, "kappa")]
-        assert len(value_agents) > 0
+        value_agents = [a for a in config["agents"] if isinstance(a, ValueAgent)]
+        assert len(value_agents) > 0, "No ValueAgent instances found in legacy config"
         assert value_agents[0].sigma_s == pytest.approx(2.5e-9), (
             f"Legacy config should use fund_vol² as sigma_s, got {value_agents[0].sigma_s}"
         )
