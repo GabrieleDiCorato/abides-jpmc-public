@@ -209,7 +209,7 @@ class ValueAgent(TradingAgent):
         self.r_t = (self.sigma_n / (self.sigma_n + sigma_tprime)) * r_tprime
         self.r_t += (sigma_tprime / (self.sigma_n + sigma_tprime)) * obs_t
 
-        self.sigma_t = (self.sigma_n * self.sigma_t) / (self.sigma_n + self.sigma_t)
+        self.sigma_t = (self.sigma_n * sigma_tprime) / (self.sigma_n + sigma_tprime)
 
         # Now having a best estimate of the fundamental at time t, we can make our best estimate
         # of the final fundamental (for time T) as of current time t.  Delta is now the number

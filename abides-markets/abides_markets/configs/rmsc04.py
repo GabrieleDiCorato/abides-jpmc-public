@@ -201,6 +201,7 @@ def build_config(
                 sigma_n=SIGMA_N,
                 r_bar=r_bar,
                 kappa=kappa,
+                sigma_s=fund_vol**2,
                 lambda_a=lambda_a,
                 log_orders=log_orders,
                 order_size_model=ORDER_SIZE_MODEL,

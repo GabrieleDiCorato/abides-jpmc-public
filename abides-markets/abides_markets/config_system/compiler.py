@@ -298,7 +298,11 @@ def _get_oracle_params(
     oc = config.market.oracle
     if isinstance(oc, SparseMeanRevertingOracleConfig):
         kappa = math.log(2) / str_to_ns(oc.mean_reversion_half_life)
-        return oc.r_bar, kappa, oc.sigma_s
+        # For ValueAgent auto-inheritance, convert the oracle's OU diffusion
+        # volatility (fund_vol, per-√ns) into a per-ns shock *variance*
+        # that the discrete Bayesian update in ValueAgent expects.
+        sigma_s = oc.fund_vol**2
+        return oc.r_bar, kappa, sigma_s
     if isinstance(oc, MeanRevertingOracleConfig):
         return oc.r_bar, oc.kappa, oc.sigma_s
     return None, None, None

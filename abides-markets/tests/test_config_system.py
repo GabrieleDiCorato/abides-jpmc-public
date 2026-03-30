@@ -1579,7 +1579,7 @@ class TestValueAgentAutoInheritance:
                 type="sparse_mean_reverting",
                 r_bar=250_000,
                 mean_reversion_half_life="16d",
-                sigma_s=100,
+                fund_vol=1e-4,
             )
             .enable_agent("noise", count=10)
             .enable_agent("value", count=2)  # no explicit r_bar/kappa/sigma_s
@@ -1598,7 +1598,8 @@ class TestValueAgentAutoInheritance:
 
         expected_kappa = math.log(2) / str_to_ns("16d")
         assert va.kappa == pytest.approx(expected_kappa)
-        assert va.sigma_s == 100
+        # sigma_s is auto-derived from oracle fund_vol² (not the oracle's sigma_s)
+        assert va.sigma_s == pytest.approx(1e-8)  # (1e-4)²
         assert va.sigma_n == 2500.0  # 250_000 / 100
 
 

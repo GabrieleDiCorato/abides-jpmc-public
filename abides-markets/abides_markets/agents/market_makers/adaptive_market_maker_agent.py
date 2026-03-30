@@ -441,13 +441,17 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         lowest_bid = highest_bid - ((self.num_ticks - 1) * self.tick_size)
         highest_ask = lowest_ask + ((self.num_ticks - 1) * self.tick_size)
 
+        # Clamp to positive prices — a wide spread or large tick_size can
+        # push lowest_bid below zero, which the exchange rejects.
         bids_to_place = [
             price
             for price in range(lowest_bid, highest_bid + self.tick_size, self.tick_size)
+            if price >= 1
         ]
         asks_to_place = [
             price
             for price in range(lowest_ask, highest_ask + self.tick_size, self.tick_size)
+            if price >= 1
         ]
 
         return bids_to_place, asks_to_place
