@@ -102,8 +102,12 @@ class MeanRevertingOracleConfig(BaseModel):
     kappa: float = Field(
         default=0.05,
         description=(
-            "Mean-reversion speed. Larger values pull the fundamental "
-            "back to r_bar faster."
+            "Per-nanosecond mean-reversion coefficient (dimensionless).  "
+            "Since this oracle steps once per nanosecond, kappa is the "
+            "fraction of the gap between the current fundamental and r_bar "
+            "that closes each nanosecond.  Larger values produce faster "
+            "reversion.  Prefer SparseMeanRevertingOracleConfig (which "
+            "accepts a human-readable half-life duration) for new work."
         ),
     )
     sigma_s: float = Field(

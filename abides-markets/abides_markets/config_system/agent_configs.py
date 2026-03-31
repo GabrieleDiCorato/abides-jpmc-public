@@ -411,7 +411,15 @@ class ValueAgentConfig(BaseAgentConfig):
     depth_spread: int = Field(
         default=2,
         ge=1,
-        description="Depth spread multiplier for passive order price adjustment.",
+        description=(
+            "Maximum depth of passive (non-aggressive) limit orders, expressed "
+            "as a multiplier on the current bid-ask spread.  When the agent "
+            "does not cross the spread, it draws a random offset uniformly from "
+            "[0, depth_spread × spread] and applies it away from the mid, "
+            "posting inside the spread or deeper in the book.  "
+            "Higher values allow orders further from the mid; "
+            "1 = orders always at the near touch."
+        ),
     )
 
     _EXCLUDE_FROM_KWARGS: frozenset[str] = _BASE_EXCLUDE | frozenset(
@@ -1026,7 +1034,8 @@ class VWAPExecutionAgentConfig(BaseAgentConfig):
     start_time_offset: str = Field(
         default="00:05:00",
         description=(
-            "Offset from market open when execution begins.  " "Format: 'HH:MM:SS'."
+            "Offset from market open when execution begins.  "
+            "Format: 'HH:MM:SS'.  '00:05:00' = start 5 min after open."
         ),
         examples=["00:05:00", "00:00:00", "00:30:00"],
         json_schema_extra={"format": "duration"},
@@ -1034,14 +1043,19 @@ class VWAPExecutionAgentConfig(BaseAgentConfig):
     end_time_offset: str = Field(
         default="00:05:00",
         description=(
-            "Offset before market close when execution stops.  " "Format: 'HH:MM:SS'."
+            "Offset before market close when execution stops.  "
+            "Format: 'HH:MM:SS'.  '00:05:00' = stop 5 min before close."
         ),
         examples=["00:05:00", "00:00:00", "00:30:00"],
         json_schema_extra={"format": "duration"},
     )
     freq: str = Field(
         default="1min",
-        description="Wake-up frequency as a duration string.",
+        description=(
+            "Wake-up frequency as a duration string. Controls how often "
+            "the agent checks the volume profile and submits child orders. "
+            "Supported: 'Ns', 'Nmin', 'Nh', 'HH:MM:SS'."
+        ),
         examples=["1min", "30s", "5min"],
         json_schema_extra={"format": "duration"},
     )
