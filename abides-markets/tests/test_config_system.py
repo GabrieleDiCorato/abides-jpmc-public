@@ -491,11 +491,79 @@ class TestTemplates:
         assert "thin_market" in names
         assert "with_momentum" in names
         assert "with_execution" in names
+        assert "stable_day" in names
+        assert "volatile_day" in names
+        assert "low_liquidity" in names
+        assert "trending_day" in names
+        assert "stress_test" in names
 
     def test_liquid_market_template(self):
         config = SimulationBuilder().from_template("liquid_market").seed(42).build()
         assert config.agents["noise"].count == 5000
         assert config.agents["adaptive_market_maker"].count == 4
+
+    def test_stable_day_template(self):
+        config = SimulationBuilder().from_template("stable_day").seed(42).build()
+        assert config.market.end_time == "16:00:00"
+        assert config.agents["noise"].count == 100
+        assert config.agents["value"].count == 25
+        assert config.agents["adaptive_market_maker"].count == 1
+        assert config.agents["momentum"].enabled is False
+
+    def test_volatile_day_template(self):
+        config = SimulationBuilder().from_template("volatile_day").seed(42).build()
+        assert config.market.end_time == "16:00:00"
+        assert config.agents["noise"].count == 100
+        assert config.agents["momentum"].count == 5
+        assert config.agents["adaptive_market_maker"].count == 1
+
+    def test_low_liquidity_template(self):
+        config = SimulationBuilder().from_template("low_liquidity").seed(42).build()
+        assert config.market.end_time == "16:00:00"
+        assert config.agents["noise"].count == 25
+        assert config.agents["value"].count == 10
+        assert config.agents["adaptive_market_maker"].enabled is False
+
+    def test_trending_day_template(self):
+        config = SimulationBuilder().from_template("trending_day").seed(42).build()
+        assert config.market.end_time == "16:00:00"
+        assert config.agents["momentum"].count == 10
+        assert config.agents["value"].count == 20
+
+    def test_stress_test_template(self):
+        config = SimulationBuilder().from_template("stress_test").seed(42).build()
+        assert config.market.end_time == "16:00:00"
+        assert config.agents["noise"].count == 50
+        assert config.agents["adaptive_market_maker"].count == 1
+        assert config.agents["momentum"].count == 5
+
+    def test_scenario_templates_compile(self):
+        """All scenario templates produce valid runtime dicts."""
+        for name in (
+            "stable_day",
+            "volatile_day",
+            "low_liquidity",
+            "trending_day",
+            "stress_test",
+        ):
+            config = SimulationBuilder().from_template(name).seed(42).build()
+            runtime = compile(config)
+            assert "agents" in runtime
+            assert len(runtime["agents"]) > 1  # at least exchange + some agents
+
+    def test_scenario_templates_composable_with_overlays(self):
+        """Scenario templates can be composed with overlay templates."""
+        config = (
+            SimulationBuilder()
+            .from_template("stable_day")
+            .from_template("with_execution")
+            .seed(42)
+            .build()
+        )
+        assert "pov_execution" in config.agents
+        assert config.agents["pov_execution"].enabled is True
+        # Original agents preserved
+        assert config.agents["noise"].count == 100
 
 
 # ---------------------------------------------------------------------------

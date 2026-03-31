@@ -152,6 +152,344 @@ _TEMPLATES: dict[str, dict[str, Any]] = {
             "adaptive_market_maker": {"enabled": False, "count": 0, "params": {}},
         },
     },
+    # -------------------------------------------------------------------
+    # Scenario templates — full-day sessions for algorithm evaluation
+    #
+    # Agent counts are calibrated for 6.5-hour sessions (09:30-16:00).
+    # The rmsc04 template uses ~1100 agents for 30 minutes; scaling
+    # naively to 6.5h would produce millions of messages.  These
+    # templates use fewer agents with longer wake intervals to keep
+    # wallclock time under a few minutes while preserving realistic
+    # microstructure.
+    # -------------------------------------------------------------------
+    "stable_day": {
+        "market": {
+            "ticker": "ABM",
+            "date": "20210205",
+            "start_time": "09:30:00",
+            "end_time": "16:00:00",
+            "oracle": {
+                "type": "sparse_mean_reverting",
+                "r_bar": 100_000,
+                "mean_reversion_half_life": "48d",
+                "sigma_s": 0,
+                "fund_vol": 3e-5,
+                "megashock_mean_interval": None,
+                "megashock_mean": 1000,
+                "megashock_var": 50_000,
+            },
+            "exchange": {
+                "book_logging": True,
+                "book_log_depth": 10,
+                "stream_history_length": 500,
+                "log_orders": False,
+                "pipeline_delay": 0,
+                "computation_delay": 0,
+            },
+        },
+        "agents": {
+            "noise": {
+                "enabled": True,
+                "count": 100,
+                "params": {"multi_wake": True, "wake_up_freq": "120s"},
+            },
+            "value": {
+                "enabled": True,
+                "count": 25,
+                "params": {
+                    "mean_reversion_half_life": "4.8d",
+                    "mean_wakeup_gap": "300s",
+                },
+            },
+            "momentum": {"enabled": False, "count": 0, "params": {}},
+            "adaptive_market_maker": {
+                "enabled": True,
+                "count": 1,
+                "params": {
+                    "pov": 0.025,
+                    "min_order_size": 1,
+                    "window_size": "adaptive",
+                    "num_ticks": 10,
+                    "wake_up_freq": "120s",
+                    "cancel_limit_delay": 50,
+                },
+            },
+        },
+        "infrastructure": {
+            "latency": {"type": "deterministic"},
+            "default_computation_delay": 50,
+        },
+        "simulation": {
+            "seed": "random",
+            "log_level": "INFO",
+            "log_orders": True,
+        },
+    },
+    "volatile_day": {
+        "market": {
+            "ticker": "ABM",
+            "date": "20210205",
+            "start_time": "09:30:00",
+            "end_time": "16:00:00",
+            "oracle": {
+                "type": "sparse_mean_reverting",
+                "r_bar": 100_000,
+                "mean_reversion_half_life": "48d",
+                "sigma_s": 0,
+                "fund_vol": 2e-4,
+                "megashock_mean_interval": "6h",
+                "megashock_mean": 3000,
+                "megashock_var": 200_000,
+            },
+            "exchange": {
+                "book_logging": True,
+                "book_log_depth": 10,
+                "stream_history_length": 500,
+                "log_orders": False,
+                "pipeline_delay": 0,
+                "computation_delay": 0,
+            },
+        },
+        "agents": {
+            "noise": {
+                "enabled": True,
+                "count": 100,
+                "params": {"multi_wake": True, "wake_up_freq": "120s"},
+            },
+            "value": {
+                "enabled": True,
+                "count": 25,
+                "params": {
+                    "mean_reversion_half_life": "4.8d",
+                    "mean_wakeup_gap": "240s",
+                },
+            },
+            "momentum": {
+                "enabled": True,
+                "count": 5,
+                "params": {
+                    "min_size": 1,
+                    "max_size": 10,
+                    "wake_up_freq": "120s",
+                },
+            },
+            "adaptive_market_maker": {
+                "enabled": True,
+                "count": 1,
+                "params": {
+                    "pov": 0.025,
+                    "min_order_size": 1,
+                    "window_size": "adaptive",
+                    "num_ticks": 10,
+                    "wake_up_freq": "120s",
+                    "cancel_limit_delay": 50,
+                },
+            },
+        },
+        "infrastructure": {
+            "latency": {"type": "deterministic"},
+            "default_computation_delay": 50,
+        },
+        "simulation": {
+            "seed": "random",
+            "log_level": "INFO",
+            "log_orders": True,
+        },
+    },
+    "low_liquidity": {
+        "market": {
+            "ticker": "ABM",
+            "date": "20210205",
+            "start_time": "09:30:00",
+            "end_time": "16:00:00",
+            "oracle": {
+                "type": "sparse_mean_reverting",
+                "r_bar": 100_000,
+                "mean_reversion_half_life": "48d",
+                "sigma_s": 0,
+                "fund_vol": 5e-5,
+                "megashock_mean_interval": None,
+                "megashock_mean": 1000,
+                "megashock_var": 50_000,
+            },
+            "exchange": {
+                "book_logging": True,
+                "book_log_depth": 10,
+                "stream_history_length": 500,
+                "log_orders": False,
+                "pipeline_delay": 0,
+                "computation_delay": 0,
+            },
+        },
+        "agents": {
+            "noise": {
+                "enabled": True,
+                "count": 25,
+                "params": {"multi_wake": True, "wake_up_freq": "300s"},
+            },
+            "value": {
+                "enabled": True,
+                "count": 10,
+                "params": {
+                    "mean_reversion_half_life": "4.8d",
+                    "mean_wakeup_gap": "600s",
+                },
+            },
+            "momentum": {"enabled": False, "count": 0, "params": {}},
+            "adaptive_market_maker": {"enabled": False, "count": 0, "params": {}},
+        },
+        "infrastructure": {
+            "latency": {"type": "deterministic"},
+            "default_computation_delay": 50,
+        },
+        "simulation": {
+            "seed": "random",
+            "log_level": "INFO",
+            "log_orders": True,
+        },
+    },
+    "trending_day": {
+        "market": {
+            "ticker": "ABM",
+            "date": "20210205",
+            "start_time": "09:30:00",
+            "end_time": "16:00:00",
+            "oracle": {
+                "type": "sparse_mean_reverting",
+                "r_bar": 100_000,
+                "mean_reversion_half_life": "365d",
+                "sigma_s": 0,
+                "fund_vol": 1e-4,
+                "megashock_mean_interval": None,
+                "megashock_mean": 1000,
+                "megashock_var": 50_000,
+            },
+            "exchange": {
+                "book_logging": True,
+                "book_log_depth": 10,
+                "stream_history_length": 500,
+                "log_orders": False,
+                "pipeline_delay": 0,
+                "computation_delay": 0,
+            },
+        },
+        "agents": {
+            "noise": {
+                "enabled": True,
+                "count": 75,
+                "params": {"multi_wake": True, "wake_up_freq": "120s"},
+            },
+            "value": {
+                "enabled": True,
+                "count": 20,
+                "params": {
+                    "mean_reversion_half_life": "36d",
+                    "mean_wakeup_gap": "300s",
+                },
+            },
+            "momentum": {
+                "enabled": True,
+                "count": 10,
+                "params": {
+                    "min_size": 1,
+                    "max_size": 10,
+                    "wake_up_freq": "120s",
+                },
+            },
+            "adaptive_market_maker": {
+                "enabled": True,
+                "count": 1,
+                "params": {
+                    "pov": 0.025,
+                    "min_order_size": 1,
+                    "window_size": "adaptive",
+                    "num_ticks": 10,
+                    "wake_up_freq": "120s",
+                    "cancel_limit_delay": 50,
+                },
+            },
+        },
+        "infrastructure": {
+            "latency": {"type": "deterministic"},
+            "default_computation_delay": 50,
+        },
+        "simulation": {
+            "seed": "random",
+            "log_level": "INFO",
+            "log_orders": True,
+        },
+    },
+    "stress_test": {
+        "market": {
+            "ticker": "ABM",
+            "date": "20210205",
+            "start_time": "09:30:00",
+            "end_time": "16:00:00",
+            "oracle": {
+                "type": "sparse_mean_reverting",
+                "r_bar": 100_000,
+                "mean_reversion_half_life": "48d",
+                "sigma_s": 0,
+                "fund_vol": 3e-4,
+                "megashock_mean_interval": "2h",
+                "megashock_mean": 5000,
+                "megashock_var": 500_000,
+            },
+            "exchange": {
+                "book_logging": True,
+                "book_log_depth": 10,
+                "stream_history_length": 500,
+                "log_orders": False,
+                "pipeline_delay": 0,
+                "computation_delay": 0,
+            },
+        },
+        "agents": {
+            "noise": {
+                "enabled": True,
+                "count": 50,
+                "params": {"multi_wake": True, "wake_up_freq": "120s"},
+            },
+            "value": {
+                "enabled": True,
+                "count": 15,
+                "params": {
+                    "mean_reversion_half_life": "4.8d",
+                    "mean_wakeup_gap": "240s",
+                },
+            },
+            "momentum": {
+                "enabled": True,
+                "count": 5,
+                "params": {
+                    "min_size": 1,
+                    "max_size": 10,
+                    "wake_up_freq": "60s",
+                },
+            },
+            "adaptive_market_maker": {
+                "enabled": True,
+                "count": 1,
+                "params": {
+                    "pov": 0.015,
+                    "min_order_size": 1,
+                    "window_size": "adaptive",
+                    "num_ticks": 5,
+                    "wake_up_freq": "120s",
+                    "cancel_limit_delay": 50,
+                },
+            },
+        },
+        "infrastructure": {
+            "latency": {"type": "deterministic"},
+            "default_computation_delay": 50,
+        },
+        "simulation": {
+            "seed": "random",
+            "log_level": "INFO",
+            "log_orders": True,
+        },
+    },
 }
 
 # Overlay templates (add agent groups without replacing existing ones)
@@ -215,6 +553,57 @@ _TEMPLATE_METADATA: dict[str, TemplateInfo] = {
         description="Overlay: adds 1 POV Execution agent.",
         agent_types=["pov_execution"],
         is_overlay=True,
+    ),
+    "stable_day": TemplateInfo(
+        name="stable_day",
+        description=(
+            "Low-volatility full-day session (09:30-16:00). "
+            "Calm fundamental (fund_vol=3e-5, no megashocks), "
+            "1 market maker, 100 Noise (120s), 25 Value (300s). "
+            "Use as a control scenario for strategy evaluation."
+        ),
+        agent_types=["noise", "value", "adaptive_market_maker"],
+    ),
+    "volatile_day": TemplateInfo(
+        name="volatile_day",
+        description=(
+            "High-volatility full-day session (09:30-16:00). "
+            "fund_vol=2e-4 with ~1 megashock per session (interval=6h, "
+            "mean 3000 cents). 100 Noise, 25 Value, 5 Momentum, "
+            "1 Market Maker. Tests strategy resilience under vol spikes."
+        ),
+        agent_types=["noise", "value", "momentum", "adaptive_market_maker"],
+    ),
+    "low_liquidity": TemplateInfo(
+        name="low_liquidity",
+        description=(
+            "Illiquid full-day session (09:30-16:00). "
+            "25 slow Noise (300s), 10 slow Value (600s), no market "
+            "makers. Wide spreads and significant slippage. "
+            "Tests execution quality under thin conditions."
+        ),
+        agent_types=["noise", "value"],
+    ),
+    "trending_day": TemplateInfo(
+        name="trending_day",
+        description=(
+            "Trend-prone full-day session (09:30-16:00). "
+            "Weak mean-reversion (oracle half-life 365d), fund_vol=1e-4, "
+            "10 Momentum agents that amplify directional moves. "
+            "75 Noise, 20 Value, 1 Market Maker."
+        ),
+        agent_types=["noise", "value", "momentum", "adaptive_market_maker"],
+    ),
+    "stress_test": TemplateInfo(
+        name="stress_test",
+        description=(
+            "Extreme conditions full-day session (09:30-16:00). "
+            "Very high fund_vol=3e-4, ~3 large megashocks per session "
+            "(interval=2h, mean 5000 cents), thin liquidity (50 Noise, "
+            "15 Value, 5 Momentum, 1 Market Maker with reduced POV). "
+            "Worst-case scenario for strategy robustness testing."
+        ),
+        agent_types=["noise", "value", "momentum", "adaptive_market_maker"],
     ),
 }
 
