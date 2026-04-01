@@ -443,6 +443,8 @@ class AgentData(BaseModel):
     agent_id: int
     agent_type: str
     agent_name: str
+    agent_category: str
+    """Registry category: ``"background"``, ``"strategy"``, ``"execution"``, ``"market_maker"``."""
 
     final_holdings: dict[str, int]
     """Holdings at simulation end: ``{"CASH": <cents>, "<TICKER>": <shares>, ...}``."""
@@ -520,6 +522,14 @@ class SimulationResult(BaseModel):
         return json.loads(df.to_json(orient="records"))
 
     # ------------------------------------------------------------------ public API
+
+    def get_agents_by_category(self, category: str) -> list[AgentData]:
+        """Return agents whose ``agent_category`` matches *category*.
+
+        >>> result.get_agents_by_category("strategy")
+        [AgentData(agent_id=3, ...)]
+        """
+        return [a for a in self.agents if a.agent_category == category]
 
     def summary(self) -> str:
         """Return a concise human/LLM-readable narrative of the simulation result.
@@ -691,6 +701,7 @@ class SimulationResult(BaseModel):
             {
                 "agent_id": a.agent_id,
                 "agent_type": a.agent_type,
+                "agent_category": a.agent_category,
                 "pnl_cents": a.pnl_cents,
                 "pnl_pct": a.pnl_pct,
                 "mark_to_market_cents": a.mark_to_market_cents,

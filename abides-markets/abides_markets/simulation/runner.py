@@ -220,8 +220,7 @@ def _extract_result(
     exchange: ExchangeAgent = agents_list[0]  # ExchangeAgent is always id=0
     if not isinstance(exchange, ExchangeAgent):
         raise RuntimeError(
-            "Expected agents[0] to be ExchangeAgent but got "
-            f"{type(exchange).__name__}"
+            f"Expected agents[0] to be ExchangeAgent but got {type(exchange).__name__}"
         )
 
     trading_agents: list[TradingAgent] = [
@@ -451,6 +450,7 @@ def _extract_agent_data(
         agent_id=agent.id,
         agent_type=agent.type or type(agent).__name__,
         agent_name=agent.name or f"agent_{agent.id}",
+        agent_category=getattr(agent, "category", ""),
         execution_metrics=exec_metrics,
         equity_curve=equity_curve,
     )

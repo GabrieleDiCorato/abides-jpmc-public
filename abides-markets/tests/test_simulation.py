@@ -249,6 +249,7 @@ def _make_agent_data():
         agent_id=1,
         agent_type="NoiseAgent",
         agent_name="noise_agent_1",
+        agent_category="background",
         final_holdings={"CASH": 100_000_000, "ABM": 10},
         starting_cash_cents=100_000_000,
         mark_to_market_cents=100_100_000,
@@ -284,6 +285,51 @@ def _make_simulation_result(include_logs: bool = False) -> SimulationResult:
         logs=logs,
         profile=profile,
     )
+
+
+class TestGetAgentsByCategory:
+    def test_single_match(self):
+        result = _make_simulation_result()
+        # Default helper creates a "background" agent
+        assert len(result.get_agents_by_category("background")) == 1
+        assert result.get_agents_by_category("background")[0].agent_id == 1
+
+    def test_no_match(self):
+        result = _make_simulation_result()
+        assert result.get_agents_by_category("strategy") == []
+
+    def test_multiple_categories(self):
+        bg = AgentData(
+            agent_id=1,
+            agent_type="NoiseAgent",
+            agent_name="noise_1",
+            agent_category="background",
+            final_holdings={"CASH": 100_000_000},
+            starting_cash_cents=100_000_000,
+            mark_to_market_cents=100_000_000,
+            pnl_cents=0,
+            pnl_pct=0.0,
+        )
+        strat = AgentData(
+            agent_id=2,
+            agent_type="MeanReversionAgent",
+            agent_name="mr_1",
+            agent_category="strategy",
+            final_holdings={"CASH": 100_000_000},
+            starting_cash_cents=100_000_000,
+            mark_to_market_cents=100_100_000,
+            pnl_cents=100_000,
+            pnl_pct=0.1,
+        )
+        result = SimulationResult(
+            metadata=_make_metadata(),
+            markets={"ABM": _make_market_summary()},
+            agents=[bg, strat],
+            profile=ResultProfile.SUMMARY,
+        )
+        assert len(result.get_agents_by_category("strategy")) == 1
+        assert result.get_agents_by_category("strategy")[0].agent_id == 2
+        assert len(result.get_agents_by_category("background")) == 1
 
 
 class TestSimulationResultImmutability:

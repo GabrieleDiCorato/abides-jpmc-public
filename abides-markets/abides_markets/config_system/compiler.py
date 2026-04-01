@@ -152,6 +152,7 @@ def compile(
             opening_prices=exchange_opening_prices,
         )
     )
+    agents[0].category = "infrastructure"
     agent_count += 1
 
     # Instantiate each enabled agent group via the registry.
@@ -180,6 +181,8 @@ def compile(
             raise RuntimeError(
                 f"Error creating agent group '{agent_type_name}': {exc}"
             ) from exc
+        for a in new_agents:
+            a.category = entry.category
         agents.extend(new_agents)
 
         # Record per-agent computation delay overrides
