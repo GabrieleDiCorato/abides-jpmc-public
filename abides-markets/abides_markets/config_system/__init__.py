@@ -45,6 +45,7 @@ import abides_markets.config_system.builtin_registrations  # noqa: F401
 from abides_markets.config_system.agent_configs import BaseAgentConfig
 from abides_markets.config_system.builder import SimulationBuilder
 from abides_markets.config_system.compiler import compile
+from abides_markets.config_system.compiler import derive_seed as derive_seed
 from abides_markets.config_system.models import (
     AgentGroupConfig,
     ExchangeConfig,

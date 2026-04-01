@@ -29,7 +29,7 @@ from abides_markets.config_system.registry import registry
 from abides_markets.utils import generate_latency_model
 
 
-def _derive_seed(master_seed: int, component: str, index: int = 0) -> int:
+def derive_seed(master_seed: int, component: str, index: int = 0) -> int:
     """Derive a deterministic seed from a master seed and component identity.
 
     Uses SHA-256 to map ``(master_seed, component, index)`` to an unsigned
@@ -39,6 +39,10 @@ def _derive_seed(master_seed: int, component: str, index: int = 0) -> int:
     """
     h = hashlib.sha256(f"{master_seed}:{component}:{index}".encode()).digest()
     return int.from_bytes(h[:4], "big")
+
+
+# Backward-compatible alias for internal callers
+_derive_seed = derive_seed
 
 
 def compile(

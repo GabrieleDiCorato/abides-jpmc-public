@@ -25,9 +25,11 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+from collections.abc import Callable
 from typing import Any
 from uuid import uuid4
 
+import numpy as np
 import pandas as pd
 
 from abides_core.abides import run as abides_run
@@ -35,7 +37,9 @@ from abides_core.utils import parse_logs_df
 from abides_markets.agents.exchange_agent import ExchangeAgent
 from abides_markets.agents.trading_agent import TradingAgent
 from abides_markets.config_system import compile as compile_config
+from abides_markets.config_system.compiler import derive_seed
 from abides_markets.config_system.models import SimulationConfig
+from abides_markets.utils import config_add_agents
 
 from .extractors import ResultExtractor
 from .metrics import (
@@ -74,6 +78,7 @@ def run_simulation(
     profile: ResultProfile = ResultProfile.SUMMARY,
     log_dir: str | None = None,
     extractors: list[ResultExtractor] | None = None,
+    runtime_agents: list[TradingAgent] | None = None,
 ) -> SimulationResult:
     """Run a single simulation and return a typed, immutable result.
 
@@ -99,6 +104,17 @@ def run_simulation(
         Optional list of :class:`~abides_markets.simulation.ResultExtractor`
         plugins.  Each extractor receives the raw ``end_state`` dict and
         contributes a value to ``SimulationResult.extensions``.
+    runtime_agents:
+        Optional list of pre-built :class:`TradingAgent` instances to inject
+        into the simulation after compilation.  These agents are appended
+        to the compiled agent list with a properly regenerated latency model.
+        Use this for agents that cannot be expressed as declarative
+        ``AgentGroupConfig`` entries (e.g. agents wrapping non-serializable
+        runtime state).  Each agent's ``category`` attribute is preserved
+        if already set; agents without a category get ``"runtime"``.
+        **Note:** runtime agents bypass the config-system seed derivation
+        and risk-guard pipeline — the caller is responsible for configuring
+        them.
 
     Returns
     -------
@@ -107,6 +123,20 @@ def run_simulation(
         retained after this function returns.
     """
     runtime = compile_config(config)
+
+    # -- Inject runtime agents (post-compile) --
+    if runtime_agents:
+        next_id = len(runtime["agents"])
+        latency_rng = np.random.RandomState(
+            seed=derive_seed(runtime["seed"], "runtime_agents")
+        )
+        config_add_agents(runtime, runtime_agents, latency_rng)
+        for i, agent in enumerate(runtime_agents):
+            if agent.id is None or agent.id < 0:
+                agent.id = next_id + i
+            if not getattr(agent, "category", ""):
+                agent.category = "runtime"
+
     effective_log_dir = log_dir if log_dir is not None else uuid4().hex
 
     end_state = abides_run(
@@ -125,6 +155,7 @@ def run_batch(
     n_workers: int | None = None,
     extractors: list[ResultExtractor] | None = None,
     log_dir_prefix: str | None = None,
+    worker_initializer: Callable[[], None] | None = None,
 ) -> list[SimulationResult]:
     """Run multiple simulations in parallel and return results in input order.
 
@@ -149,6 +180,12 @@ def run_batch(
         Optional prefix for worker log directories.
         Worker *i* writes to ``{prefix}_{i}``; a UUID is appended when
         ``None`` to guarantee uniqueness.
+    worker_initializer:
+        Optional callable invoked once per worker process before any
+        simulation runs.  Typically used to register custom agent types
+        (via ``@register_agent``) that must be available during
+        ``compile_config()`` in spawned processes.  Must be **picklable**
+        (top-level function, not a lambda or closure).
 
     Returns
     -------
@@ -169,7 +206,10 @@ def run_batch(
     ]
 
     ctx = multiprocessing.get_context("spawn")
-    with ctx.Pool(processes=effective_workers) as pool:
+    with ctx.Pool(
+        processes=effective_workers,
+        initializer=worker_initializer,
+    ) as pool:
         results = pool.starmap(_worker, args)
 
     return results
