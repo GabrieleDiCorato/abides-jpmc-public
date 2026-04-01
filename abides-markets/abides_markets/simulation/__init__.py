@@ -61,6 +61,7 @@ from .metrics import (
     compute_market_ott_ratio,
     compute_mean_spread,
     compute_metrics,
+    compute_order_fill_rate,
     compute_resilience,
     compute_sharpe_ratio,
     compute_trade_attribution,
@@ -115,6 +116,7 @@ __all__ = [
     "compute_market_ott_ratio",
     "compute_vpin",
     "compute_resilience",
+    "compute_order_fill_rate",
     # Result models
     "SimulationResult",
     "SimulationMetadata",

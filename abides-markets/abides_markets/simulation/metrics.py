@@ -820,6 +820,41 @@ def compute_execution_metrics(
     )
 
 
+def compute_order_fill_rate(
+    n_executed: int,
+    n_submitted: int,
+) -> float | None:
+    """Order-level fill rate: fraction of submitted orders that were executed.
+
+    This metric answers *"what percentage of my orders got filled?"* and
+    differs from :func:`compute_execution_metrics`'s ``fill_rate_pct`` which
+    measures *"what percentage of my target shares were filled?"*
+    (quantity-based).
+
+    +--------------------------+----------------------------------------------+
+    | Metric                   | Definition                                   |
+    +==========================+==============================================+
+    | ``fill_rate_pct``        | ``filled_qty / target_qty × 100``            |
+    | (execution-agent metric) | Percentage of *target shares* filled.        |
+    +--------------------------+----------------------------------------------+
+    | ``order_fill_rate``      | ``N_executed / N_submitted × 100``           |
+    | (this function)          | Percentage of *submitted orders* executed.   |
+    +--------------------------+----------------------------------------------+
+
+    Parameters
+    ----------
+    n_executed:
+        Number of orders that received at least one fill.
+    n_submitted:
+        Total number of orders submitted by the agent.
+
+    Returns ``None`` if *n_submitted* is zero.  Value range: 0–100.
+    """
+    if n_submitted <= 0:
+        return None
+    return n_executed / n_submitted * 100.0
+
+
 def compute_equity_curve(
     fill_events: Sequence[tuple[int, int, int]],
 ) -> EquityCurve | None:

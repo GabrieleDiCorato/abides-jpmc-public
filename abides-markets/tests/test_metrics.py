@@ -24,6 +24,7 @@ from abides_markets.simulation.metrics import (
     compute_market_ott_ratio,
     compute_mean_spread,
     compute_metrics,
+    compute_order_fill_rate,
     compute_resilience,
     compute_sharpe_ratio,
     compute_trade_attribution,
@@ -818,3 +819,39 @@ class TestComputeResilience:
         # (depends on window size), but the pattern is designed to trigger it
         if result is not None:
             assert result > 0
+
+
+# ===================================================================
+# compute_order_fill_rate
+# ===================================================================
+
+
+class TestComputeOrderFillRate:
+    def test_no_submissions(self):
+        assert compute_order_fill_rate(0, 0) is None
+
+    def test_all_filled(self):
+        assert compute_order_fill_rate(100, 100) == pytest.approx(100.0)
+
+    def test_partial(self):
+        assert compute_order_fill_rate(30, 50) == pytest.approx(60.0)
+
+    def test_none_filled(self):
+        assert compute_order_fill_rate(0, 50) == pytest.approx(0.0)
+
+    def test_semantic_difference_from_quantity_fill_rate(self):
+        """Demonstrate the two fill rate definitions are independent.
+
+        An agent might submit 10 orders, 5 get filled (order_fill_rate = 50%),
+        but the 5 filled orders might fill 900 of a 1000-share target
+        (quantity fill_rate_pct = 90%).
+        """
+        order_rate = compute_order_fill_rate(5, 10)
+        assert order_rate == pytest.approx(50.0)
+
+        em = compute_execution_metrics(
+            fills=[(10_000, 180)] * 5,
+            target_quantity=1000,
+            filled_quantity=900,
+        )
+        assert em.fill_rate_pct == pytest.approx(90.0)
