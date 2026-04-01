@@ -11,13 +11,17 @@ import pytest
 
 from abides_markets.simulation.metrics import (
     compute_agent_pnl,
+    compute_avg_liquidity,
     compute_effective_spread,
     compute_equity_curve,
     compute_execution_metrics,
+    compute_inventory_std,
     compute_l1_close,
     compute_l1_series,
     compute_l2_series,
     compute_liquidity_metrics,
+    compute_lob_imbalance,
+    compute_market_ott_ratio,
     compute_mean_spread,
     compute_metrics,
     compute_sharpe_ratio,
@@ -621,3 +625,115 @@ class TestComputeSharpeRatio:
         sharpe = compute_sharpe_ratio(curve)
         assert sharpe is not None
         assert sharpe > 0
+
+
+# ===================================================================
+# compute_avg_liquidity
+# ===================================================================
+
+
+class TestComputeAvgLiquidity:
+    def test_empty(self):
+        assert compute_avg_liquidity(_make_empty_l1()) == (None, None)
+
+    def test_no_two_sided(self):
+        l1 = _make_l1([(100, 9900, 10, None, None)])
+        assert compute_avg_liquidity(l1) == (None, None)
+
+    def test_single_row(self):
+        l1 = _make_l1([(100, 9900, 10, 10100, 5)])
+        assert compute_avg_liquidity(l1) == (10.0, 5.0)
+
+    def test_multiple_rows(self):
+        l1 = _make_l1([
+            (100, 9900, 10, 10100, 20),
+            (200, 9950, 30, 10050, 40),
+            (300, None, None, 10000, 10),  # skipped
+        ])
+        bid, ask = compute_avg_liquidity(l1)
+        assert bid == pytest.approx(20.0)
+        assert ask == pytest.approx(30.0)
+
+
+# ===================================================================
+# compute_lob_imbalance
+# ===================================================================
+
+
+class TestComputeLobImbalance:
+    def test_empty(self):
+        assert compute_lob_imbalance(_make_empty_l1()) == (None, None)
+
+    def test_no_valid_rows(self):
+        l1 = _make_l1([(100, None, None, 10100, 5)])
+        assert compute_lob_imbalance(l1) == (None, None)
+
+    def test_balanced_book(self):
+        l1 = _make_l1([(100, 9900, 50, 10100, 50)])
+        mean, std = compute_lob_imbalance(l1)
+        assert mean == pytest.approx(0.0)
+        assert std == 0.0  # single observation
+
+    def test_bid_heavy(self):
+        l1 = _make_l1([
+            (100, 9900, 80, 10100, 20),  # I = (80-20)/(80+20) = 0.6
+            (200, 9950, 60, 10050, 40),  # I = (60-40)/(60+40) = 0.2
+        ])
+        mean, std = compute_lob_imbalance(l1)
+        assert mean == pytest.approx(0.4)
+        assert std is not None
+        assert std > 0
+
+    def test_zero_both_sides_skipped(self):
+        l1 = _make_l1([(100, 9900, 0, 10100, 0)])
+        # denom=0 → skipped
+        assert compute_lob_imbalance(l1) == (None, None)
+
+
+# ===================================================================
+# compute_inventory_std
+# ===================================================================
+
+
+class TestComputeInventoryStd:
+    def test_too_few(self):
+        assert compute_inventory_std([]) is None
+        assert compute_inventory_std([("BUY", 10)]) is None
+
+    def test_constant_inventory(self):
+        fills = [("BUY", 10), ("SELL", 10)]  # inventory: 10, 0
+        std = compute_inventory_std(fills)
+        assert std is not None
+        assert std > 0
+
+    def test_increasing(self):
+        fills = [("BUY", 10), ("BUY", 10), ("BUY", 10)]
+        # inventory: 10, 20, 30 → std of [10,20,30]
+        std = compute_inventory_std(fills)
+        assert std == pytest.approx(10.0)
+
+    def test_mixed(self):
+        fills = [("BUY", 100), ("SELL", 50), ("BUY", 30), ("SELL", 80)]
+        # inventory: 100, 50, 80, 0
+        std = compute_inventory_std(fills)
+        assert std is not None
+        assert std > 0
+
+
+# ===================================================================
+# compute_market_ott_ratio
+# ===================================================================
+
+
+class TestComputeMarketOttRatio:
+    def test_no_fills(self):
+        assert compute_market_ott_ratio(100, 0) is None
+
+    def test_one_to_one(self):
+        assert compute_market_ott_ratio(100, 100) == pytest.approx(1.0)
+
+    def test_four_to_one(self):
+        assert compute_market_ott_ratio(400, 100) == pytest.approx(4.0)
+
+    def test_fractional(self):
+        assert compute_market_ott_ratio(150, 100) == pytest.approx(1.5)

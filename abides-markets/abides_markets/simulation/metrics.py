@@ -265,6 +265,113 @@ def compute_sharpe_ratio(curve: EquityCurve | None) -> float | None:
     return (mean_r / std_r) * float(np.sqrt(_NS_PER_YEAR / median_dt))
 
 
+# ---------------------------------------------------------------------------
+# Microstructure metrics (Tier 2)
+# ---------------------------------------------------------------------------
+
+
+def compute_avg_liquidity(
+    l1: L1Snapshots,
+) -> tuple[float | None, float | None]:
+    """Average resting quantity at best bid and ask from two-sided L1 snapshots.
+
+    Returns ``(avg_bid_qty, avg_ask_qty)``.  Each component is ``None`` when
+    no two-sided rows exist.
+    """
+    if len(l1.times_ns) == 0:
+        return None, None
+
+    bid_total = 0.0
+    ask_total = 0.0
+    count = 0
+    for i in range(len(l1.times_ns)):
+        bq = l1.bid_quantities[i]
+        aq = l1.ask_quantities[i]
+        if bq is not None and aq is not None:
+            bid_total += float(bq)
+            ask_total += float(aq)
+            count += 1
+
+    if count == 0:
+        return None, None
+    return bid_total / count, ask_total / count
+
+
+def compute_lob_imbalance(
+    l1: L1Snapshots,
+) -> tuple[float | None, float | None]:
+    """LOB imbalance mean and std from L1 snapshots (Cont, Kukanov & Stoikov 2014).
+
+    .. math::
+
+       I_t = \\frac{Q^{\\text{bid}}_t - Q^{\\text{ask}}_t}
+                    {Q^{\\text{bid}}_t + Q^{\\text{ask}}_t} \\in [-1, 1]
+
+    Considers only rows where both ``bid_qty`` and ``ask_qty`` are non-zero.
+    Returns ``(mean, std)``; both ``None`` if no valid rows exist.
+    """
+    if len(l1.times_ns) == 0:
+        return None, None
+
+    values: list[float] = []
+    for i in range(len(l1.times_ns)):
+        bq = l1.bid_quantities[i]
+        aq = l1.ask_quantities[i]
+        if bq is not None and aq is not None:
+            bq_f = float(bq)
+            aq_f = float(aq)
+            denom = bq_f + aq_f
+            if denom > 0:
+                values.append((bq_f - aq_f) / denom)
+
+    if not values:
+        return None, None
+
+    arr = np.array(values)
+    return float(np.mean(arr)), float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
+
+
+def compute_inventory_std(
+    fills: Sequence[tuple[str, int]],
+) -> float | None:
+    """Standard deviation of intraday inventory reconstructed from fills.
+
+    Parameters
+    ----------
+    fills:
+        Sequence of ``(side, quantity)`` tuples where *side* is ``"BUY"`` or
+        ``"SELL"``.  A buy increases inventory; a sell decreases it.
+
+    Returns ``None`` if fewer than 2 fills.
+    """
+    if len(fills) < 2:
+        return None
+
+    inventory = 0
+    positions: list[int] = []
+    for side, qty in fills:
+        if side == "BUY":
+            inventory += qty
+        else:
+            inventory -= qty
+        positions.append(inventory)
+
+    return float(np.std(positions, ddof=1))
+
+
+def compute_market_ott_ratio(
+    n_submissions: int,
+    n_fills: int,
+) -> float | None:
+    """Market-wide order-to-trade ratio (MiFID II RTS 9).
+
+    Returns ``n_submissions / n_fills``, or ``None`` if *n_fills* is zero.
+    """
+    if n_fills <= 0:
+        return None
+    return n_submissions / n_fills
+
+
 def compute_l1_close(book_log2: list[dict[str, Any]]) -> L1Close:
     """Extract :class:`L1Close` from the last entry in *book_log2*.
 

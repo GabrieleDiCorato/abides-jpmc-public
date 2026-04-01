@@ -48,13 +48,17 @@ DataFrame schemas (Pandera)::
 from .extractors import BaseResultExtractor, FunctionExtractor, ResultExtractor
 from .metrics import (
     compute_agent_pnl,
+    compute_avg_liquidity,
     compute_effective_spread,
     compute_equity_curve,
     compute_execution_metrics,
+    compute_inventory_std,
     compute_l1_close,
     compute_l1_series,
     compute_l2_series,
     compute_liquidity_metrics,
+    compute_lob_imbalance,
+    compute_market_ott_ratio,
     compute_mean_spread,
     compute_metrics,
     compute_sharpe_ratio,
@@ -103,6 +107,10 @@ __all__ = [
     "compute_effective_spread",
     "compute_volatility",
     "compute_sharpe_ratio",
+    "compute_avg_liquidity",
+    "compute_lob_imbalance",
+    "compute_inventory_std",
+    "compute_market_ott_ratio",
     # Result models
     "SimulationResult",
     "SimulationMetadata",
