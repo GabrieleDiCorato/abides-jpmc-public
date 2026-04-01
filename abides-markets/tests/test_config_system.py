@@ -497,6 +497,37 @@ class TestTemplates:
         assert "trending_day" in names
         assert "stress_test" in names
 
+        # Every template exposes scenario_description and regime_tags
+        for t in templates:
+            assert (
+                "scenario_description" in t
+            ), f"{t['name']} missing scenario_description"
+            assert "regime_tags" in t, f"{t['name']} missing regime_tags"
+            assert isinstance(t["scenario_description"], str)
+            assert isinstance(t["regime_tags"], list)
+            assert (
+                len(t["scenario_description"]) > 0
+            ), f"{t['name']} has empty scenario_description"
+            assert len(t["regime_tags"]) > 0, f"{t['name']} has empty regime_tags"
+            assert all(isinstance(tag, str) for tag in t["regime_tags"])
+
+    def test_template_regime_tags_searchable(self):
+        """Templates can be filtered by regime_tags for programmatic selection."""
+        templates = list_templates()
+
+        liquid = [t["name"] for t in templates if "liquid" in t["regime_tags"]]
+        assert "liquid_market" in liquid
+
+        full_day = [t["name"] for t in templates if "full_day" in t["regime_tags"]]
+        assert "stable_day" in full_day
+        assert "volatile_day" in full_day
+        assert "stress_test" in full_day
+        # Non-full-day templates excluded
+        assert "rmsc04" not in full_day
+
+        overlays = [t["name"] for t in templates if "overlay" in t["regime_tags"]]
+        assert set(overlays) == {"with_momentum", "with_execution"}
+
     def test_liquid_market_template(self):
         config = SimulationBuilder().from_template("liquid_market").seed(42).build()
         assert config.agents["noise"].count == 5000
@@ -2099,3 +2130,218 @@ class TestSerializationRoundTrip:
         assert "properties" in schema or "$defs" in schema
         # Should be JSON-serializable
         json.dumps(schema)
+
+
+# ---------------------------------------------------------------------------
+# Raw physical parameter acceptance (kappa, lambda_a, megashock_lambda_a)
+# ---------------------------------------------------------------------------
+
+
+class TestOracleRawParameters:
+    """SparseMeanRevertingOracleConfig should accept raw physical parameters."""
+
+    def test_kappa_accepted_alone(self):
+        """Setting kappa alone (without explicit half-life) should work."""
+        oc = SparseMeanRevertingOracleConfig(kappa=1.67e-13)
+        assert oc.kappa == 1.67e-13
+
+    def test_megashock_lambda_a_accepted_alone(self):
+        """Setting megashock_lambda_a alone should work."""
+        oc = SparseMeanRevertingOracleConfig(megashock_lambda_a=2.78e-15)
+        assert oc.megashock_lambda_a == 2.78e-15
+
+    def test_kappa_with_default_half_life_ok(self):
+        """kappa + default mean_reversion_half_life (not explicitly set) is fine."""
+        oc = SparseMeanRevertingOracleConfig(kappa=1.67e-13)
+        # Default half-life is still "48d" but wasn't *explicitly* set
+        assert oc.mean_reversion_half_life == "48d"
+        assert oc.kappa == 1.67e-13
+
+    def test_megashock_lambda_a_with_default_interval_ok(self):
+        """megashock_lambda_a + default megashock_mean_interval is fine."""
+        oc = SparseMeanRevertingOracleConfig(megashock_lambda_a=2.78e-15)
+        assert oc.megashock_mean_interval == "100000h"
+        assert oc.megashock_lambda_a == 2.78e-15
+
+    def test_kappa_and_explicit_half_life_rejected(self):
+        """Cannot set both kappa and mean_reversion_half_life."""
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            SparseMeanRevertingOracleConfig(
+                kappa=1.67e-13, mean_reversion_half_life="30d"
+            )
+
+    def test_megashock_lambda_a_and_explicit_interval_rejected(self):
+        """Cannot set both megashock_lambda_a and megashock_mean_interval."""
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            SparseMeanRevertingOracleConfig(
+                megashock_lambda_a=2.78e-15, megashock_mean_interval="50000h"
+            )
+
+    def test_kappa_propagates_through_compiler(self):
+        """Oracle kappa should reach the oracle object via compile()."""
+        import math
+
+        from abides_core.utils import str_to_ns
+
+        kappa_val = math.log(2) / str_to_ns("16d")
+        config = (
+            SimulationBuilder()
+            .market(ticker="ABM", date="20210205")
+            .oracle(type="sparse_mean_reverting", kappa=kappa_val, fund_vol=1e-4)
+            .enable_agent("noise", count=5)
+            .seed(42)
+            .build()
+        )
+        runtime = compile(config)
+        oracle = runtime["custom_properties"]["oracle"]
+        assert oracle is not None
+        # Verify the config stored the kappa we provided
+        assert config.market.oracle.kappa == pytest.approx(kappa_val)
+
+    def test_megashock_lambda_a_propagates_through_compiler(self):
+        """Oracle megashock_lambda_a should reach the oracle object via compile()."""
+        lambda_val = 1e-15
+        config = (
+            SimulationBuilder()
+            .market(ticker="ABM", date="20210205")
+            .oracle(
+                type="sparse_mean_reverting",
+                megashock_lambda_a=lambda_val,
+                fund_vol=1e-4,
+            )
+            .enable_agent("noise", count=5)
+            .seed(42)
+            .build()
+        )
+        assert config.market.oracle.megashock_lambda_a == lambda_val
+
+    def test_oracle_auto_inheritance_uses_raw_kappa(self):
+        """ValueAgent auto-inheritance should work when oracle uses raw kappa."""
+        kappa_val = 5e-16
+        config = (
+            SimulationBuilder()
+            .market(ticker="ABM", date="20210205")
+            .oracle(
+                type="sparse_mean_reverting",
+                kappa=kappa_val,
+                r_bar=200_000,
+                fund_vol=1e-4,
+            )
+            .enable_agent("noise", count=5)
+            .enable_agent("value", count=1)  # auto-inherit kappa from oracle
+            .seed(42)
+            .build()
+        )
+        runtime = compile(config)
+        value_agents = [a for a in runtime["agents"] if a.type == "ValueAgent"]
+        assert len(value_agents) == 1
+        assert value_agents[0].kappa == pytest.approx(kappa_val)
+
+
+class TestValueAgentRawParameters:
+    """ValueAgentConfig should accept raw physical parameters."""
+
+    def _make_context(self):
+        from abides_markets.config_system.agent_configs import AgentCreationContext
+
+        return AgentCreationContext(
+            ticker="ABM",
+            mkt_open=34_200_000_000_000,
+            mkt_close=36_000_000_000_000,
+            log_orders=False,
+            oracle_r_bar=200_000,
+            oracle_kappa=3e-16,
+            oracle_sigma_s=500,
+            date_ns=0,
+        )
+
+    def test_kappa_accepted_alone(self):
+        """Setting kappa directly should bypass half-life conversion."""
+        from abides_markets.config_system.agent_configs import ValueAgentConfig
+
+        config = ValueAgentConfig(kappa=5e-16)
+        context = self._make_context()
+        rng = np.random.RandomState(42)
+        agents = config.create_agents(
+            count=1, id_start=1, master_rng=rng, context=context
+        )
+        assert agents[0].kappa == 5e-16
+
+    def test_lambda_a_accepted_alone(self):
+        """Setting lambda_a directly should bypass mean_wakeup_gap conversion."""
+        from abides_markets.config_system.agent_configs import ValueAgentConfig
+
+        config = ValueAgentConfig(lambda_a=1e-11)
+        context = self._make_context()
+        rng = np.random.RandomState(42)
+        agents = config.create_agents(
+            count=1, id_start=1, master_rng=rng, context=context
+        )
+        assert agents[0].lambda_a == 1e-11
+
+    def test_kappa_with_default_half_life_ok(self):
+        """kappa + default mean_reversion_half_life (not explicitly set) is fine."""
+        from abides_markets.config_system.agent_configs import ValueAgentConfig
+
+        config = ValueAgentConfig(kappa=5e-16)
+        assert config.kappa == 5e-16
+        assert config.mean_reversion_half_life is None  # default for ValueAgent is None
+
+    def test_lambda_a_with_default_wakeup_gap_ok(self):
+        """lambda_a + default mean_wakeup_gap (not explicitly set) is fine."""
+        from abides_markets.config_system.agent_configs import ValueAgentConfig
+
+        config = ValueAgentConfig(lambda_a=1e-11)
+        assert config.lambda_a == 1e-11
+        assert config.mean_wakeup_gap == "175s"  # default still present
+
+    def test_kappa_and_explicit_half_life_rejected(self):
+        """Cannot set both kappa and mean_reversion_half_life."""
+        from abides_markets.config_system.agent_configs import ValueAgentConfig
+
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            ValueAgentConfig(kappa=5e-16, mean_reversion_half_life="48d")
+
+    def test_lambda_a_and_explicit_wakeup_gap_rejected(self):
+        """Cannot set both lambda_a and mean_wakeup_gap."""
+        from abides_markets.config_system.agent_configs import ValueAgentConfig
+
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            ValueAgentConfig(lambda_a=1e-11, mean_wakeup_gap="175s")
+
+    def test_oracle_auto_inherit_still_works(self):
+        """When both kappa and mean_reversion_half_life are None, oracle inheritance works."""
+        from abides_markets.config_system.agent_configs import ValueAgentConfig
+
+        config = ValueAgentConfig()  # all None — should inherit
+        context = self._make_context()
+        rng = np.random.RandomState(42)
+        agents = config.create_agents(
+            count=1, id_start=1, master_rng=rng, context=context
+        )
+        assert agents[0].kappa == 3e-16  # from oracle context
+
+    def test_full_integration_raw_params(self):
+        """Build + compile with raw kappa/lambda_a on both oracle and value agent."""
+        kappa_val = 5e-16
+        lambda_val = 1e-11
+        config = (
+            SimulationBuilder()
+            .market(ticker="ABM", date="20210205")
+            .oracle(
+                type="sparse_mean_reverting",
+                kappa=kappa_val,
+                r_bar=200_000,
+                fund_vol=1e-4,
+            )
+            .enable_agent("noise", count=5)
+            .enable_agent("value", count=2, kappa=kappa_val, lambda_a=lambda_val)
+            .seed(42)
+            .build()
+        )
+        runtime = compile(config)
+        value_agents = [a for a in runtime["agents"] if a.type == "ValueAgent"]
+        assert len(value_agents) == 2
+        for va in value_agents:
+            assert va.kappa == pytest.approx(kappa_val)
+            assert va.lambda_a == pytest.approx(lambda_val)

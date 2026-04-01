@@ -8,7 +8,7 @@ simulation scenario or adds an agent overlay.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -20,6 +20,8 @@ class TemplateInfo:
     description: str
     agent_types: list[str]
     is_overlay: bool = False
+    scenario_description: str = ""
+    regime_tags: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -531,28 +533,52 @@ _TEMPLATE_METADATA: dict[str, TemplateInfo] = {
             "12 Momentum Agents, 1000 Noise Agents."
         ),
         agent_types=["noise", "value", "momentum", "adaptive_market_maker"],
+        scenario_description=(
+            "Reference configuration with balanced order flow, "
+            "moderate liquidity, and calm fundamental dynamics."
+        ),
+        regime_tags=["reference", "balanced", "moderate_liquidity", "low_vol"],
     ),
     "liquid_market": TemplateInfo(
         name="liquid_market",
         description="High-liquidity market: 5000 Noise, 200 Value, 25 Momentum, 4 Market Makers.",
         agent_types=["noise", "value", "momentum", "adaptive_market_maker"],
+        scenario_description=(
+            "Deep liquidity with many participants and tight spreads "
+            "across all agent types."
+        ),
+        regime_tags=["liquid", "deep_book", "tight_spread", "balanced"],
     ),
     "thin_market": TemplateInfo(
         name="thin_market",
         description="Low-liquidity market: 100 Noise, 20 Value, no market makers or momentum.",
         agent_types=["noise", "value"],
+        scenario_description=(
+            "Sparse participation with no market makers, leading to "
+            "wide spreads and sporadic fills."
+        ),
+        regime_tags=["thin", "illiquid", "wide_spread", "no_mm"],
     ),
     "with_momentum": TemplateInfo(
         name="with_momentum",
         description="Overlay: adds 12 Momentum agents.",
         agent_types=["momentum"],
         is_overlay=True,
+        scenario_description=(
+            "Overlay adding momentum-following agents to amplify " "directional moves."
+        ),
+        regime_tags=["overlay", "momentum", "trend"],
     ),
     "with_execution": TemplateInfo(
         name="with_execution",
         description="Overlay: adds 1 POV Execution agent.",
         agent_types=["pov_execution"],
         is_overlay=True,
+        scenario_description=(
+            "Overlay adding a single POV execution agent for "
+            "volume-participation studies."
+        ),
+        regime_tags=["overlay", "execution", "pov"],
     ),
     "stable_day": TemplateInfo(
         name="stable_day",
@@ -563,6 +589,11 @@ _TEMPLATE_METADATA: dict[str, TemplateInfo] = {
             "Use as a control scenario for strategy evaluation."
         ),
         agent_types=["noise", "value", "adaptive_market_maker"],
+        scenario_description=(
+            "Normal liquidity conditions with low fundamental "
+            "volatility and no megashocks."
+        ),
+        regime_tags=["stable", "low_vol", "calm", "full_day"],
     ),
     "volatile_day": TemplateInfo(
         name="volatile_day",
@@ -573,6 +604,11 @@ _TEMPLATE_METADATA: dict[str, TemplateInfo] = {
             "1 Market Maker. Tests strategy resilience under vol spikes."
         ),
         agent_types=["noise", "value", "momentum", "adaptive_market_maker"],
+        scenario_description=(
+            "Elevated fundamental volatility with periodic megashocks "
+            "testing strategy resilience."
+        ),
+        regime_tags=["volatile", "high_vol", "megashocks", "full_day"],
     ),
     "low_liquidity": TemplateInfo(
         name="low_liquidity",
@@ -583,6 +619,11 @@ _TEMPLATE_METADATA: dict[str, TemplateInfo] = {
             "Tests execution quality under thin conditions."
         ),
         agent_types=["noise", "value"],
+        scenario_description=(
+            "Illiquid market with slow, sparse agents and no market "
+            "makers, producing wide spreads and significant slippage."
+        ),
+        regime_tags=["illiquid", "thin", "wide_spread", "no_mm", "full_day"],
     ),
     "trending_day": TemplateInfo(
         name="trending_day",
@@ -593,6 +634,11 @@ _TEMPLATE_METADATA: dict[str, TemplateInfo] = {
             "75 Noise, 20 Value, 1 Market Maker."
         ),
         agent_types=["noise", "value", "momentum", "adaptive_market_maker"],
+        scenario_description=(
+            "Weak mean-reversion allows momentum to dominate, "
+            "producing sustained directional moves."
+        ),
+        regime_tags=["trending", "momentum", "weak_reversion", "full_day"],
     ),
     "stress_test": TemplateInfo(
         name="stress_test",
@@ -604,6 +650,11 @@ _TEMPLATE_METADATA: dict[str, TemplateInfo] = {
             "Worst-case scenario for strategy robustness testing."
         ),
         agent_types=["noise", "value", "momentum", "adaptive_market_maker"],
+        scenario_description=(
+            "Extreme conditions with very high volatility, frequent "
+            "large megashocks, and thin liquidity."
+        ),
+        regime_tags=["stress", "extreme_vol", "megashocks", "thin", "full_day"],
     ),
 }
 
@@ -621,6 +672,8 @@ def list_templates() -> list[dict[str, Any]]:
             "description": info.description,
             "agent_types": info.agent_types,
             "is_overlay": info.is_overlay,
+            "scenario_description": info.scenario_description,
+            "regime_tags": list(info.regime_tags),
         }
         for info in _TEMPLATE_METADATA.values()
     ]
