@@ -28,7 +28,6 @@ import os
 from typing import Any
 from uuid import uuid4
 
-import numpy as np
 import pandas as pd
 
 from abides_core.abides import run as abides_run
@@ -39,6 +38,16 @@ from abides_markets.config_system import compile as compile_config
 from abides_markets.config_system.models import SimulationConfig
 
 from .extractors import ResultExtractor
+from .metrics import (
+    compute_agent_pnl,
+    compute_equity_curve,
+    compute_execution_metrics,
+    compute_l1_close,
+    compute_l1_series,
+    compute_l2_series,
+    compute_liquidity_metrics,
+    compute_trade_attribution,
+)
 from .profiles import ResultProfile
 from .result import (
     AgentData,
@@ -321,21 +330,7 @@ def _extract_result(
 
 def _extract_l1_close(book_log2: list[dict]) -> L1Close:
     """Return an L1Close from the last entry in book_log2, or empty if no log."""
-    if not book_log2:
-        return L1Close(time_ns=0, bid_price_cents=None, ask_price_cents=None)
-
-    last = book_log2[-1]
-    time_ns = int(last["QuoteTime"])
-
-    bids = last["bids"]
-    asks = last["asks"]
-
-    bid_price = int(bids[0][0]) if len(bids) > 0 else None
-    ask_price = int(asks[0][0]) if len(asks) > 0 else None
-
-    return L1Close(
-        time_ns=time_ns, bid_price_cents=bid_price, ask_price_cents=ask_price
-    )
+    return compute_l1_close(book_log2)
 
 
 def _extract_liquidity(
@@ -361,51 +356,30 @@ def _extract_liquidity(
     if last_trade is None and order_book.last_trade:
         last_trade = int(order_book.last_trade)
 
-    # Compute VWAP from order book history (EXEC entries)
-    vwap_cents: int | None = None
+    # Build VWAP trade tuples from order book history (EXEC entries)
+    vwap_trades: list[tuple[int, int]] = []
     if hasattr(order_book, "history"):
-        total_value = 0
-        total_qty = 0
         for entry in order_book.history:
             if entry.get("type") == "EXEC" and entry.get("price") is not None:
-                price = int(entry["price"])
-                qty = int(entry["quantity"])
-                total_value += price * qty
-                total_qty += qty
-        if total_qty > 0:
-            vwap_cents = total_value // total_qty
+                vwap_trades.append((int(entry["price"]), int(entry["quantity"])))
 
-    return LiquidityMetrics(
+    return compute_liquidity_metrics(
+        vwap_trades,
         pct_time_no_bid=pct_no_bid,
         pct_time_no_ask=pct_no_ask,
         total_exchanged_volume=total_vol,
         last_trade_cents=last_trade,
-        vwap_cents=vwap_cents,
     )
 
 
 def _extract_trades(order_book: Any) -> list[TradeAttribution]:
     """Build a list of :class:`TradeAttribution` from EXEC entries in order book history."""
-    trades: list[TradeAttribution] = []
     if not hasattr(order_book, "history"):
-        return trades
-    for entry in order_book.history:
-        if entry.get("type") != "EXEC":
-            continue
-        price = entry.get("price")
-        if price is None:
-            continue
-        trades.append(
-            TradeAttribution(
-                time_ns=int(entry["time"]),
-                passive_agent_id=int(entry["agent_id"]),
-                aggressive_agent_id=int(entry["oppos_agent_id"]),
-                side=str(entry["side"]),
-                price_cents=int(price),
-                quantity=int(entry["quantity"]),
-            )
-        )
-    return trades
+        return []
+    exec_entries = [
+        entry for entry in order_book.history if entry.get("type") == "EXEC"
+    ]
+    return compute_trade_attribution(exec_entries)
 
 
 def _extract_equity_curve(agent: TradingAgent) -> EquityCurve | None:
@@ -416,10 +390,7 @@ def _extract_equity_curve(agent: TradingAgent) -> EquityCurve | None:
     if not hasattr(agent, "log") or not agent.log:
         return None
 
-    times: list[int] = []
-    navs: list[int] = []
-    peaks: list[int] = []
-
+    fill_events: list[tuple[int, int, int]] = []
     for entry in agent.log:
         # entry = (timestamp_ns, event_type, event_data)
         if len(entry) < 3 or entry[1] != "FILL_PNL":
@@ -431,83 +402,19 @@ def _extract_equity_curve(agent: TradingAgent) -> EquityCurve | None:
         peak = data.get("peak_nav")
         if nav is None or peak is None:
             continue
-        times.append(int(entry[0]))
-        navs.append(int(nav))
-        peaks.append(int(peak))
+        fill_events.append((int(entry[0]), int(nav), int(peak)))
 
-    if not times:
-        return None
-
-    return EquityCurve(times_ns=times, nav_cents=navs, peak_nav_cents=peaks)
+    return compute_equity_curve(fill_events)
 
 
 def _extract_l1_series(book_log2: list[dict]) -> L1Snapshots:
     """Build L1Snapshots from book_log2."""
-    if not book_log2:
-        empty = np.array([], dtype=np.int64)
-        empty_obj = np.array([], dtype=object)
-        return L1Snapshots(
-            times_ns=empty,
-            bid_prices=empty_obj,
-            bid_quantities=empty_obj,
-            ask_prices=empty_obj,
-            ask_quantities=empty_obj,
-        )
-
-    times, bid_prices, bid_quantities, ask_prices, ask_quantities = [], [], [], [], []
-
-    for entry in book_log2:
-        times.append(int(entry["QuoteTime"]))
-        bids = entry["bids"]
-        asks = entry["asks"]
-
-        if len(bids) > 0:
-            bid_prices.append(int(bids[0][0]))
-            bid_quantities.append(int(bids[0][1]))
-        else:
-            bid_prices.append(None)
-            bid_quantities.append(None)
-
-        if len(asks) > 0:
-            ask_prices.append(int(asks[0][0]))
-            ask_quantities.append(int(asks[0][1]))
-        else:
-            ask_prices.append(None)
-            ask_quantities.append(None)
-
-    return L1Snapshots(
-        times_ns=np.array(times, dtype=np.int64),
-        bid_prices=np.array(bid_prices, dtype=object),
-        bid_quantities=np.array(bid_quantities, dtype=object),
-        ask_prices=np.array(ask_prices, dtype=object),
-        ask_quantities=np.array(ask_quantities, dtype=object),
-    )
+    return compute_l1_series(book_log2)
 
 
 def _extract_l2_series(book_log2: list[dict]) -> L2Snapshots:
-    """Build L2Snapshots directly from book_log2.
-
-    Reads the *already-sparse* ``bids`` and ``asks`` arrays from each snapshot
-    (populated by ``get_l2_bid_data()`` / ``get_l2_ask_data()`` which filter
-    out empty price levels).  No zero-padding is applied.
-    """
-    if not book_log2:
-        return L2Snapshots(times_ns=np.array([], dtype=np.int64), bids=[], asks=[])
-
-    times = []
-    bids_list: list[list[tuple[int, int]]] = []
-    asks_list: list[list[tuple[int, int]]] = []
-
-    for entry in book_log2:
-        times.append(int(entry["QuoteTime"]))
-        bids_list.append([(int(p), int(q)) for p, q in entry["bids"]])
-        asks_list.append([(int(p), int(q)) for p, q in entry["asks"]])
-
-    return L2Snapshots(
-        times_ns=np.array(times, dtype=np.int64),
-        bids=bids_list,
-        asks=asks_list,
-    )
+    """Build L2Snapshots directly from book_log2."""
+    return compute_l2_series(book_log2)
 
 
 def _extract_agent_data(
@@ -523,32 +430,27 @@ def _extract_agent_data(
     can raise ``KeyError`` if the agent never observed a trade).
     """
     holdings = dict(agent.holdings)
-    cash = holdings.get("CASH", 0)
 
-    mtm = cash + agent.basket_size * agent.nav_diff
-    for symbol, shares in holdings.items():
+    # Build a merged price map: prefer exchange last-trade, fall back to agent's
+    merged_prices: dict[str, int | None] = {}
+    for symbol in holdings:
         if symbol == "CASH":
             continue
         price = exchange_last_trades.get(symbol)
         if price is None:
             price = agent.last_trade.get(symbol, 0)
-        mtm += price * shares
-
-    starting = agent.starting_cash
-    pnl = mtm - starting
-    pnl_pct = (pnl / starting * 100.0) if starting != 0 else 0.0
+        merged_prices[symbol] = price
 
     exec_metrics = _extract_execution_metrics(agent, symbol_liquidity)
 
-    return AgentData(
+    return compute_agent_pnl(
+        holdings=holdings,
+        starting_cash_cents=agent.starting_cash,
+        last_trade_prices=merged_prices,
+        basket_value_cents=agent.basket_size * agent.nav_diff,
         agent_id=agent.id,
         agent_type=agent.type or type(agent).__name__,
         agent_name=agent.name or f"agent_{agent.id}",
-        final_holdings=holdings,
-        starting_cash_cents=starting,
-        mark_to_market_cents=mtm,
-        pnl_cents=pnl,
-        pnl_pct=pnl_pct,
         execution_metrics=exec_metrics,
         equity_curve=equity_curve,
     )
@@ -586,24 +488,15 @@ def _extract_execution_metrics(
     if execution_history is None or target_qty is None or filled_qty is None:
         return None
 
-    fill_rate = filled_qty / target_qty * 100.0 if target_qty > 0 else 0.0
-
-    # Average fill price from execution history
-    avg_fill: int | None = None
-    if execution_history:
-        total_value = 0
-        total_qty = 0
-        for fill in execution_history:
-            price = fill.get("fill_price")
-            qty = fill.get("quantity", 0)
-            if price is not None and qty > 0:
-                total_value += int(price) * int(qty)
-                total_qty += int(qty)
-        if total_qty > 0:
-            avg_fill = total_value // total_qty
+    # Build fill tuples from execution history
+    fills: list[tuple[int, int]] = []
+    for fill in execution_history:
+        price = fill.get("fill_price")
+        qty = fill.get("quantity", 0)
+        if price is not None and qty > 0:
+            fills.append((int(price), int(qty)))
 
     # Arrival price: mid-price from the agent's known_bids/known_asks at first order
-    # (POVExecutionAgent stores last_bid/last_ask; use first fill entry's context)
     arrival: int | None = None
     last_bid = getattr(agent, "last_bid", None)
     last_ask = getattr(agent, "last_ask", None)
@@ -611,7 +504,6 @@ def _extract_execution_metrics(
         arrival = (int(last_bid) + int(last_ask)) // 2
 
     # Session VWAP and total volume from liquidity metrics
-    # Execution agents trade a single symbol
     symbol: str | None = getattr(agent, "symbol", None)
     session_vwap: int | None = None
     total_volume: int = 0
@@ -620,27 +512,11 @@ def _extract_execution_metrics(
         session_vwap = liq.vwap_cents
         total_volume = liq.total_exchanged_volume
 
-    # Derived metrics
-    vwap_slippage: int | None = None
-    if avg_fill is not None and session_vwap is not None and session_vwap > 0:
-        vwap_slippage = (avg_fill - session_vwap) * 10_000 // session_vwap
-
-    participation: float | None = None
-    if filled_qty > 0 and total_volume > 0:
-        participation = filled_qty / total_volume * 100.0
-
-    impl_shortfall: int | None = None
-    if avg_fill is not None and arrival is not None and arrival > 0:
-        impl_shortfall = (avg_fill - arrival) * 10_000 // arrival
-
-    return ExecutionMetrics(
+    return compute_execution_metrics(
+        fills=fills,
         target_quantity=target_qty,
         filled_quantity=filled_qty,
-        fill_rate_pct=fill_rate,
-        avg_fill_price_cents=avg_fill,
-        vwap_cents=session_vwap,
-        vwap_slippage_bps=vwap_slippage,
-        participation_rate_pct=participation,
+        session_vwap_cents=session_vwap,
+        total_volume=total_volume,
         arrival_price_cents=arrival,
-        implementation_shortfall_bps=impl_shortfall,
     )

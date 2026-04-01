@@ -46,6 +46,18 @@ DataFrame schemas (Pandera)::
 """
 
 from .extractors import BaseResultExtractor, FunctionExtractor, ResultExtractor
+from .metrics import (
+    compute_agent_pnl,
+    compute_equity_curve,
+    compute_execution_metrics,
+    compute_l1_close,
+    compute_l1_series,
+    compute_l2_series,
+    compute_liquidity_metrics,
+    compute_metrics,
+    compute_trade_attribution,
+    compute_vwap,
+)
 from .profiles import ResultProfile
 from .result import (
     AgentData,
@@ -72,6 +84,17 @@ __all__ = [
     # Runner
     "run_simulation",
     "run_batch",
+    # Standalone metric computation
+    "compute_metrics",
+    "compute_vwap",
+    "compute_liquidity_metrics",
+    "compute_l1_close",
+    "compute_l1_series",
+    "compute_l2_series",
+    "compute_trade_attribution",
+    "compute_agent_pnl",
+    "compute_execution_metrics",
+    "compute_equity_curve",
     # Result models
     "SimulationResult",
     "SimulationMetadata",
