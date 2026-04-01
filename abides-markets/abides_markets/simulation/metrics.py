@@ -419,8 +419,10 @@ def compute_vpin(
             mid_times.append(int(l1.times_ns[i]))
             mid_prices.append((float(bid) + float(ask)) / 2.0)
 
-    mid_times_arr = np.array(mid_times, dtype=np.int64) if mid_times else np.array(
-        [], dtype=np.int64
+    mid_times_arr = (
+        np.array(mid_times, dtype=np.int64)
+        if mid_times
+        else np.array([], dtype=np.int64)
     )
 
     # Lee-Ready classification.
@@ -460,9 +462,9 @@ def compute_vpin(
     if bucket_vol <= 0:
         return None
 
-    bucket_buy = 0
-    bucket_sell = 0
-    bucket_filled = 0
+    bucket_buy: float = 0.0
+    bucket_sell: float = 0.0
+    bucket_filled: float = 0.0
     oi_values: list[float] = []
 
     for signed_qty, abs_qty in classified:
@@ -480,9 +482,9 @@ def compute_vpin(
                 bv = bucket_buy + bucket_sell
                 if bv > 0:
                     oi_values.append(abs(bucket_buy - bucket_sell) / bv)
-                bucket_buy = 0
-                bucket_sell = 0
-                bucket_filled = 0
+                bucket_buy = 0.0
+                bucket_sell = 0.0
+                bucket_filled = 0.0
 
     if not oi_values:
         return None
@@ -587,7 +589,9 @@ def compute_l1_close(book_log2: list[dict[str, Any]]) -> L1Close:
     asks = last["asks"]
     bid_price = int(bids[0][0]) if len(bids) > 0 else None
     ask_price = int(asks[0][0]) if len(asks) > 0 else None
-    return L1Close(time_ns=time_ns, bid_price_cents=bid_price, ask_price_cents=ask_price)
+    return L1Close(
+        time_ns=time_ns, bid_price_cents=bid_price, ask_price_cents=ask_price
+    )
 
 
 def compute_l1_series(book_log2: list[dict[str, Any]]) -> L1Snapshots:
@@ -780,7 +784,9 @@ def compute_execution_metrics(
     arrival_price_cents:
         Market mid-price at first order, in integer cents.
     """
-    fill_rate = filled_quantity / target_quantity * 100.0 if target_quantity > 0 else 0.0
+    fill_rate = (
+        filled_quantity / target_quantity * 100.0 if target_quantity > 0 else 0.0
+    )
 
     # Average fill price
     avg_fill: int | None = None
@@ -796,7 +802,11 @@ def compute_execution_metrics(
 
     # Derived metrics
     vwap_slippage: int | None = None
-    if avg_fill is not None and session_vwap_cents is not None and session_vwap_cents > 0:
+    if (
+        avg_fill is not None
+        and session_vwap_cents is not None
+        and session_vwap_cents > 0
+    ):
         vwap_slippage = (avg_fill - session_vwap_cents) * 10_000 // session_vwap_cents
 
     participation: float | None = None
@@ -804,8 +814,14 @@ def compute_execution_metrics(
         participation = filled_quantity / total_volume * 100.0
 
     impl_shortfall: int | None = None
-    if avg_fill is not None and arrival_price_cents is not None and arrival_price_cents > 0:
-        impl_shortfall = (avg_fill - arrival_price_cents) * 10_000 // arrival_price_cents
+    if (
+        avg_fill is not None
+        and arrival_price_cents is not None
+        and arrival_price_cents > 0
+    ):
+        impl_shortfall = (
+            (avg_fill - arrival_price_cents) * 10_000 // arrival_price_cents
+        )
 
     return ExecutionMetrics(
         target_quantity=target_quantity,
@@ -942,7 +958,9 @@ def compute_metrics(
         [e for e in exec_entries if e.get("price") is not None]
     )
     vwap_trades: list[tuple[int, int]] = [
-        (int(e["price"]), int(e["quantity"])) for e in exec_entries if e.get("price") is not None
+        (int(e["price"]), int(e["quantity"]))
+        for e in exec_entries
+        if e.get("price") is not None
     ]
     vwap_cents = compute_vwap(vwap_trades)
 

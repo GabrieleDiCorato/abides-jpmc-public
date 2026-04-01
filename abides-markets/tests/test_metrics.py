@@ -512,11 +512,13 @@ class TestComputeMeanSpread:
         assert compute_mean_spread(l1) == pytest.approx(200.0)
 
     def test_multiple_rows(self):
-        l1 = _make_l1([
-            (100, 9900, 10, 10100, 5),  # spread = 200
-            (200, 9950, 20, 10050, 15),  # spread = 100
-            (300, None, None, 10000, 10),  # one-sided, skipped
-        ])
+        l1 = _make_l1(
+            [
+                (100, 9900, 10, 10100, 5),  # spread = 200
+                (200, 9950, 20, 10050, 15),  # spread = 100
+                (300, None, None, 10000, 10),  # one-sided, skipped
+            ]
+        )
         assert compute_mean_spread(l1) == pytest.approx(150.0)
 
 
@@ -550,10 +552,12 @@ class TestComputeEffectiveSpread:
         assert compute_effective_spread(fills, l1) == pytest.approx(100.0)
 
     def test_multiple_fills(self):
-        l1 = _make_l1([
-            (100, 9900, 10, 10100, 5),  # mid = 10000
-            (200, 9950, 20, 10050, 15),  # mid = 10000
-        ])
+        l1 = _make_l1(
+            [
+                (100, 9900, 10, 10100, 5),  # mid = 10000
+                (200, 9950, 20, 10050, 15),  # mid = 10000
+            ]
+        )
         # fill1 at 10025 vs mid 10000 → 2*25=50
         # fill2 at 9975 vs mid 10000 → 2*25=50
         fills = [(10_025, 50, 150), (9_975, 50, 250)]
@@ -648,11 +652,13 @@ class TestComputeAvgLiquidity:
         assert compute_avg_liquidity(l1) == (10.0, 5.0)
 
     def test_multiple_rows(self):
-        l1 = _make_l1([
-            (100, 9900, 10, 10100, 20),
-            (200, 9950, 30, 10050, 40),
-            (300, None, None, 10000, 10),  # skipped
-        ])
+        l1 = _make_l1(
+            [
+                (100, 9900, 10, 10100, 20),
+                (200, 9950, 30, 10050, 40),
+                (300, None, None, 10000, 10),  # skipped
+            ]
+        )
         bid, ask = compute_avg_liquidity(l1)
         assert bid == pytest.approx(20.0)
         assert ask == pytest.approx(30.0)
@@ -678,10 +684,12 @@ class TestComputeLobImbalance:
         assert std == 0.0  # single observation
 
     def test_bid_heavy(self):
-        l1 = _make_l1([
-            (100, 9900, 80, 10100, 20),  # I = (80-20)/(80+20) = 0.6
-            (200, 9950, 60, 10050, 40),  # I = (60-40)/(60+40) = 0.2
-        ])
+        l1 = _make_l1(
+            [
+                (100, 9900, 80, 10100, 20),  # I = (80-20)/(80+20) = 0.6
+                (200, 9950, 60, 10050, 40),  # I = (60-40)/(60+40) = 0.2
+            ]
+        )
         mean, std = compute_lob_imbalance(l1)
         assert mean == pytest.approx(0.4)
         assert std is not None
