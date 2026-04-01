@@ -1,3 +1,33 @@
+2026-04 Release v2.5.4
+==================
+
+New Features
+------------
+
+* **Runtime agent injection** — ``run_simulation()`` now accepts a
+  ``runtime_agents`` parameter for post-compile agent injection with auto-ID
+  assignment, category tagging, and latency model regeneration.
+
+* **Worker initializer** — ``run_batch()`` now accepts a
+  ``worker_initializer`` callback, passed through to the multiprocessing
+  ``Pool`` initializer for custom agent registration in spawned workers.
+
+* **Public ``derive_seed``** — promoted the private ``_derive_seed`` helper
+  to the public ``derive_seed`` API in ``compiler.py`` and re-exported it
+  from ``config_system``.  The private alias is preserved for backward
+  compatibility.
+
+Bug Fixes
+---------
+
+* Fixed mypy error — added ``category: str`` attribute to
+  ``FinancialAgent.__init__`` so the dynamic assignment in ``compile()``
+  is type-safe.
+
+* Resolved isort/ruff import cycle in ``test_runner_v26.py``.
+
+---
+
 2026-04 Release v2.5.3
 ==================
 
