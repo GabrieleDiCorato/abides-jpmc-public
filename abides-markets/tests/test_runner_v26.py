@@ -1,4 +1,5 @@
-"""Tests for v2.6 runner features: runtime_agents, worker_initializer, derive_seed."""
+"""Tests for v2.6 runner features: runtime_agents, worker_initializer, derive_seed,
+oracle_instance."""
 
 from __future__ import annotations
 
@@ -8,11 +9,13 @@ import tempfile
 import numpy as np
 import pytest
 
+from abides_core import NanosecondTime
 from abides_core.utils import str_to_ns
 from abides_markets.agents.noise_agent import NoiseAgent
 from abides_markets.config_system import SimulationBuilder
 from abides_markets.config_system import compile as compile_config
 from abides_markets.config_system.compiler import _derive_seed, derive_seed
+from abides_markets.oracles.oracle import Oracle
 from abides_markets.simulation import ResultProfile, SimulationResult, run_simulation
 from abides_markets.utils import config_add_agents
 
@@ -262,3 +265,117 @@ class TestWorkerInitializer:
         # At least one flag file should exist (one per worker process)
         flag_files = [f for f in os.listdir(_INIT_FLAG_DIR) if f.endswith(".flag")]
         assert len(flag_files) >= 1
+
+
+# ---------------------------------------------------------------------------
+# oracle_instance on run_simulation()
+# ---------------------------------------------------------------------------
+
+_FIXED_PRICE = 50_000  # $500.00 in cents
+
+
+class _StubOracle(Oracle):
+    """Minimal oracle that returns a fixed price for testing."""
+
+    def __init__(self, price: int = _FIXED_PRICE) -> None:
+        self.f_log: dict = {}
+        self._price = price
+
+    def get_daily_open_price(
+        self,
+        symbol: str,
+        mkt_open: NanosecondTime,
+        cents: bool = True,
+    ) -> int:
+        return self._price
+
+    def observe_price(
+        self,
+        symbol: str,
+        current_time: NanosecondTime,
+        random_state: np.random.RandomState,
+        sigma_n: int = 1000,
+    ) -> int:
+        return self._price
+
+
+@pytest.fixture(scope="module")
+def external_oracle_config():
+    """Config using ExternalDataOracleConfig marker (no built-in oracle).
+
+    Value agents are disabled because ExternalDataOracleConfig carries no
+    oracle params (r_bar, kappa, sigma_s) for auto-inheritance.
+    """
+    return (
+        SimulationBuilder()
+        .from_template("rmsc04")
+        .oracle(type="external_data")
+        .market(end_time="09:32:00")
+        .disable_agent("value")
+        .seed(42)
+        .build()
+    )
+
+
+class TestOracleInstance:
+    """Tests for the oracle_instance parameter on run_simulation()."""
+
+    def test_external_oracle_runs(self, external_oracle_config):
+        """run_simulation with oracle_instance completes successfully."""
+        oracle = _StubOracle()
+        result = run_simulation(
+            external_oracle_config,
+            profile=ResultProfile.SUMMARY,
+            oracle_instance=oracle,
+        )
+        assert isinstance(result, SimulationResult)
+        assert result.metadata.seed == 42
+
+    def test_external_oracle_without_instance_raises(self, external_oracle_config):
+        """ExternalDataOracleConfig without oracle_instance raises."""
+        with pytest.raises(ValueError, match="marker type"):
+            run_simulation(
+                external_oracle_config,
+                profile=ResultProfile.SUMMARY,
+            )
+
+    def test_oracle_price_visible(self, external_oracle_config):
+        """Exchange uses the injected oracle's opening price."""
+        oracle = _StubOracle(price=77_777)
+        result = run_simulation(
+            external_oracle_config,
+            profile=ResultProfile.SUMMARY,
+            oracle_instance=oracle,
+        )
+        # The exchange should have used the oracle's opening price.
+        # L1 close bid/ask should be in the neighbourhood of 77_777.
+        for mkt in result.markets.values():
+            bid = mkt.l1_close.bid_price_cents
+            ask = mkt.l1_close.ask_price_cents
+            if bid is not None and ask is not None:
+                mid = (bid + ask) / 2
+                assert (
+                    abs(mid - 77_777) < 10_000
+                ), f"mid {mid} too far from oracle price 77_777"
+
+    def test_none_oracle_instance_uses_config(self, short_config):
+        """oracle_instance=None (default) builds oracle from config."""
+        result = run_simulation(
+            short_config,
+            profile=ResultProfile.SUMMARY,
+            oracle_instance=None,
+        )
+        assert isinstance(result, SimulationResult)
+
+    def test_oracle_instance_with_runtime_agents(self, external_oracle_config):
+        """oracle_instance and runtime_agents work together."""
+        oracle = _StubOracle()
+        agent = _make_noise_agent("OracleRT")
+        result = run_simulation(
+            external_oracle_config,
+            profile=ResultProfile.SUMMARY,
+            oracle_instance=oracle,
+            runtime_agents=[agent],
+        )
+        runtime_agents = [a for a in result.agents if a.agent_category == "runtime"]
+        assert len(runtime_agents) >= 1

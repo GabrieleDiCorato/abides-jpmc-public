@@ -79,6 +79,7 @@ def run_simulation(
     log_dir: str | None = None,
     extractors: list[ResultExtractor] | None = None,
     runtime_agents: list[TradingAgent] | None = None,
+    oracle_instance: Any | None = None,
 ) -> SimulationResult:
     """Run a single simulation and return a typed, immutable result.
 
@@ -115,6 +116,12 @@ def run_simulation(
         **Note:** runtime agents bypass the config-system seed derivation
         and risk-guard pipeline — the caller is responsible for configuring
         them.
+    oracle_instance:
+        Optional pre-built oracle object to use instead of building one from
+        the config's ``market.oracle`` section.  Required when the config
+        uses :class:`~abides_markets.config_system.ExternalDataOracleConfig`
+        (a marker type that cannot be compiled directly).  Forwarded to
+        :func:`~abides_markets.config_system.compile`.
 
     Returns
     -------
@@ -122,7 +129,7 @@ def run_simulation(
         Frozen, thread-safe value object.  No live agent references are
         retained after this function returns.
     """
-    runtime = compile_config(config)
+    runtime = compile_config(config, oracle_instance=oracle_instance)
 
     # -- Inject runtime agents (post-compile) --
     if runtime_agents:
