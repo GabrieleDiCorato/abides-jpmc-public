@@ -41,6 +41,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["abides-core/abides_core", "abides-markets/abides_markets", "abides-gym/abides_gym"]
 
+[tool.black]
+target-version = ["py311"]
+
 [tool.pytest.ini_options]
 testpaths = ["abides-core/tests", "abides-markets/tests"]
 python_files = "test_*.py"
