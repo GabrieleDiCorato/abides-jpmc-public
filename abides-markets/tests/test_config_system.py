@@ -641,7 +641,7 @@ class TestTemplateRuntime:
     """
 
     @pytest.fixture(scope="class")
-    def _run_results(self):
+    def template_run_results(self):
         """Run all runnable templates once and cache results for the class."""
         from abides_markets.simulation import ResultProfile, run_simulation
 
@@ -680,9 +680,9 @@ class TestTemplateRuntime:
             "stress_test",
         ],
     )
-    def test_template_runs_to_completion(self, template_name, _run_results):
+    def test_template_runs_to_completion(self, template_name, template_run_results):
         """Every template must run to completion without errors."""
-        result = _run_results[template_name]
+        result = template_run_results[template_name]
         assert result is not None
         assert result.metadata.seed == 42
 
@@ -699,9 +699,9 @@ class TestTemplateRuntime:
             "stress_test",
         ],
     )
-    def test_template_produces_trades(self, template_name, _run_results):
+    def test_template_produces_trades(self, template_name, template_run_results):
         """Every template must produce at least some trades."""
-        result = _run_results[template_name]
+        result = template_run_results[template_name]
         liq = result.markets["ABM"].liquidity
         assert liq.total_exchanged_volume > 0, (
             f"{template_name}: no trades occurred"
@@ -718,9 +718,9 @@ class TestTemplateRuntime:
             "stress_test",
         ],
     )
-    def test_template_balanced_book(self, template_name, _run_results):
+    def test_template_balanced_book(self, template_name, template_run_results):
         """Templates with market makers should maintain a two-sided book."""
-        result = _run_results[template_name]
+        result = template_run_results[template_name]
         liq = result.markets["ABM"].liquidity
         assert liq.pct_time_no_bid < 50, (
             f"{template_name}: bid empty {liq.pct_time_no_bid:.1f}%"
@@ -729,17 +729,17 @@ class TestTemplateRuntime:
             f"{template_name}: ask empty {liq.pct_time_no_ask:.1f}%"
         )
 
-    def test_low_liquidity_has_wide_gaps(self, _run_results):
+    def test_low_liquidity_has_wide_gaps(self, template_run_results):
         """low_liquidity should have noticeably wider gaps than liquid_market."""
-        liq_low = _run_results["low_liquidity"].markets["ABM"].liquidity
-        liq_liquid = _run_results["liquid_market"].markets["ABM"].liquidity
+        liq_low = template_run_results["low_liquidity"].markets["ABM"].liquidity
+        liq_liquid = template_run_results["liquid_market"].markets["ABM"].liquidity
         # Low liquidity should have more time without bids than liquid market
         assert liq_low.pct_time_no_bid > liq_liquid.pct_time_no_bid
 
-    def test_liquid_market_more_active(self, _run_results):
+    def test_liquid_market_more_active(self, template_run_results):
         """liquid_market should generate more trade volume than thin_market."""
-        vol_liquid = _run_results["liquid_market"].markets["ABM"].liquidity.total_exchanged_volume
-        vol_thin = _run_results["thin_market"].markets["ABM"].liquidity.total_exchanged_volume
+        vol_liquid = template_run_results["liquid_market"].markets["ABM"].liquidity.total_exchanged_volume
+        vol_thin = template_run_results["thin_market"].markets["ABM"].liquidity.total_exchanged_volume
         assert vol_liquid > vol_thin
 
 
