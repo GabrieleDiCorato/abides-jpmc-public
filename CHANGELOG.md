@@ -1,3 +1,30 @@
+2026-04 Release v2.5.6
+==================
+
+New Features
+------------
+
+* **Oracle instance forwarding** — ``run_simulation()`` now accepts an
+  ``oracle_instance`` parameter, forwarded to ``compile()``.
+  ``ExternalDataOracle`` users can call ``run_simulation()`` directly instead
+  of dropping to the lower-level ``build_and_compile()`` + ``abides_run()``
+  path.
+
+Bug Fixes
+---------
+
+* **ValueAgent ZeroDivisionError for small kappa** — ``update_estimates()``
+  now uses ``log1p``/``expm1`` arithmetic to avoid division by zero when the
+  mean-reversion half-life is very long (e.g. 365 days).
+
+* **Template fixes** — ``liquid_market`` and ``thin_market`` templates now
+  work correctly for dashboard use; added runtime validation tests.
+
+* **CI black formatting** — pinned ``target-version = ["py312"]`` in the CI
+  workflow so local and remote black produce identical output.
+
+---
+
 2026-04 Release v2.5.4
 ==================
 
