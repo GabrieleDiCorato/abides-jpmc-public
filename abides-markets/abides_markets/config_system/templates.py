@@ -109,6 +109,10 @@ _TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "liquid_market": {
         "market": {
+            "ticker": "ABM",
+            "date": "20210205",
+            "start_time": "09:30:00",
+            "end_time": "16:00:00",
             "oracle": {
                 "type": "sparse_mean_reverting",
                 "r_bar": 100_000,
@@ -119,40 +123,111 @@ _TEMPLATES: dict[str, dict[str, Any]] = {
                 "megashock_mean": 1000,
                 "megashock_var": 50_000,
             },
-        },
-        "agents": {
-            "noise": {
-                "enabled": True,
-                "count": 5000,
-                "params": {"multi_wake": True, "wake_up_freq": "30s"},
-            },
-            "value": {"enabled": True, "count": 200, "params": {}},
-            "momentum": {"enabled": True, "count": 25, "params": {}},
-            "adaptive_market_maker": {"enabled": True, "count": 4, "params": {}},
-        },
-    },
-    "thin_market": {
-        "market": {
-            "oracle": {
-                "type": "sparse_mean_reverting",
-                "r_bar": 100_000,
-                "mean_reversion_half_life": "48d",
-                "sigma_s": 0,
-                "fund_vol": 5e-5,
-                "megashock_mean_interval": "100000h",
-                "megashock_mean": 1000,
-                "megashock_var": 50_000,
+            "exchange": {
+                "book_logging": True,
+                "book_log_depth": 10,
+                "stream_history_length": 500,
+                "log_orders": False,
+                "pipeline_delay": 0,
+                "computation_delay": 0,
             },
         },
         "agents": {
             "noise": {
                 "enabled": True,
                 "count": 100,
-                "params": {"multi_wake": True, "wake_up_freq": "30s"},
+                "params": {"multi_wake": True, "wake_up_freq": "120s"},
             },
-            "value": {"enabled": True, "count": 20, "params": {}},
+            "value": {
+                "enabled": True,
+                "count": 30,
+                "params": {
+                    "mean_reversion_half_life": "4.8d",
+                    "mean_wakeup_gap": "240s",
+                },
+            },
+            "momentum": {
+                "enabled": True,
+                "count": 8,
+                "params": {
+                    "min_size": 1,
+                    "max_size": 10,
+                    "wake_up_freq": "120s",
+                },
+            },
+            "adaptive_market_maker": {
+                "enabled": True,
+                "count": 1,
+                "params": {
+                    "pov": 0.025,
+                    "min_order_size": 1,
+                    "window_size": "adaptive",
+                    "num_ticks": 10,
+                    "wake_up_freq": "120s",
+                    "cancel_limit_delay": 50,
+                },
+            },
+        },
+        "infrastructure": {
+            "latency": {"type": "deterministic"},
+            "default_computation_delay": 50,
+        },
+        "simulation": {
+            "seed": "random",
+            "log_level": "INFO",
+            "log_orders": True,
+        },
+    },
+    "thin_market": {
+        "market": {
+            "ticker": "ABM",
+            "date": "20210205",
+            "start_time": "09:30:00",
+            "end_time": "16:00:00",
+            "oracle": {
+                "type": "sparse_mean_reverting",
+                "r_bar": 100_000,
+                "mean_reversion_half_life": "48d",
+                "sigma_s": 0,
+                "fund_vol": 5e-5,
+                "megashock_mean_interval": "100000h",
+                "megashock_mean": 1000,
+                "megashock_var": 50_000,
+            },
+            "exchange": {
+                "book_logging": True,
+                "book_log_depth": 10,
+                "stream_history_length": 500,
+                "log_orders": False,
+                "pipeline_delay": 0,
+                "computation_delay": 0,
+            },
+        },
+        "agents": {
+            "noise": {
+                "enabled": True,
+                "count": 50,
+                "params": {"multi_wake": True, "wake_up_freq": "300s"},
+            },
+            "value": {
+                "enabled": True,
+                "count": 10,
+                "params": {
+                    "mean_reversion_half_life": "4.8d",
+                    "mean_wakeup_gap": "600s",
+                },
+            },
             "momentum": {"enabled": False, "count": 0, "params": {}},
             "adaptive_market_maker": {"enabled": False, "count": 0, "params": {}},
+        },
+        "infrastructure": {
+            "latency": {"type": "deterministic"},
+            "default_computation_delay": 50,
+        },
+        "simulation": {
+            "seed": "random",
+            "log_level": "INFO",
+            "log_orders": True,
         },
     },
     # -------------------------------------------------------------------
@@ -543,24 +618,33 @@ _TEMPLATE_METADATA: dict[str, TemplateInfo] = {
     ),
     "liquid_market": TemplateInfo(
         name="liquid_market",
-        description="High-liquidity market: 5000 Noise, 200 Value, 25 Momentum, 4 Market Makers.",
+        description=(
+            "High-liquidity full-day session (09:30-16:00). "
+            "100 Noise (120s), 30 Value (240s), 8 Momentum (120s), "
+            "1 Market Maker. Deep book with tight spreads from "
+            "diverse agent participation."
+        ),
         agent_types=["noise", "value", "momentum", "adaptive_market_maker"],
         scenario_description=(
             "Deep liquidity with many participants and tight spreads "
             "across all agent types."
         ),
-        regime_tags=["liquid", "deep_book", "tight_spread", "balanced"],
+        regime_tags=["liquid", "deep_book", "tight_spread", "balanced", "full_day"],
         default_risk_guards={},
     ),
     "thin_market": TemplateInfo(
         name="thin_market",
-        description="Low-liquidity market: 100 Noise, 20 Value, no market makers or momentum.",
+        description=(
+            "Low-liquidity full-day session (09:30-16:00). "
+            "50 slow Noise (300s), 10 slow Value (600s), no market "
+            "makers or momentum. Wide spreads and sporadic fills."
+        ),
         agent_types=["noise", "value"],
         scenario_description=(
             "Sparse participation with no market makers, leading to "
             "wide spreads and sporadic fills."
         ),
-        regime_tags=["thin", "illiquid", "wide_spread", "no_mm"],
+        regime_tags=["thin", "illiquid", "wide_spread", "no_mm", "full_day"],
         default_risk_guards={},
     ),
     "with_momentum": TemplateInfo(

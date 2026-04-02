@@ -34,7 +34,7 @@ jobs:
         run: uv sync --dev
 
       - name: Check formatting (black)
-        run: uv run black --check .
+        run: uv run black --check --target-version py312 .
 
       - name: Check import order (isort)
         run: uv run isort --check --profile black .

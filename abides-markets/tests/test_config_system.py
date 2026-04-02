@@ -526,6 +526,8 @@ class TestTemplates:
         assert "stable_day" in full_day
         assert "volatile_day" in full_day
         assert "stress_test" in full_day
+        assert "liquid_market" in full_day
+        assert "thin_market" in full_day
         # Non-full-day templates excluded
         assert "rmsc04" not in full_day
 
@@ -553,8 +555,11 @@ class TestTemplates:
 
     def test_liquid_market_template(self):
         config = SimulationBuilder().from_template("liquid_market").seed(42).build()
-        assert config.agents["noise"].count == 5000
-        assert config.agents["adaptive_market_maker"].count == 4
+        assert config.market.end_time == "16:00:00"
+        assert config.agents["noise"].count == 100
+        assert config.agents["value"].count == 30
+        assert config.agents["momentum"].count == 8
+        assert config.agents["adaptive_market_maker"].count == 1
 
     def test_stable_day_template(self):
         config = SimulationBuilder().from_template("stable_day").seed(42).build()
@@ -594,6 +599,8 @@ class TestTemplates:
     def test_scenario_templates_compile(self):
         """All scenario templates produce valid runtime dicts."""
         for name in (
+            "liquid_market",
+            "thin_market",
             "stable_day",
             "volatile_day",
             "low_liquidity",
@@ -618,6 +625,128 @@ class TestTemplates:
         assert config.agents["pov_execution"].enabled is True
         # Original agents preserved
         assert config.agents["noise"].count == 100
+
+
+# ---------------------------------------------------------------------------
+# Template runtime validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestTemplateRuntime:
+    """Verify that all templates run to completion and produce healthy markets.
+
+    These tests actually execute the simulation (not just compile) to catch
+    runtime failures, agent interaction bugs, and market health regressions.
+    Uses a 30-minute window for speed; full-duration health is tested separately.
+    """
+
+    @pytest.fixture(scope="class")
+    def template_run_results(self):
+        """Run all runnable templates once and cache results for the class."""
+        from abides_markets.simulation import ResultProfile, run_simulation
+
+        templates = [
+            "rmsc04",
+            "liquid_market",
+            "thin_market",
+            "stable_day",
+            "volatile_day",
+            "low_liquidity",
+            "trending_day",
+            "stress_test",
+        ]
+        results = {}
+        for name in templates:
+            config = (
+                SimulationBuilder()
+                .from_template(name)
+                .market(end_time="10:00:00")  # 30-min window for speed
+                .seed(42)
+                .build()
+            )
+            results[name] = run_simulation(config, profile=ResultProfile.SUMMARY)
+        return results
+
+    @pytest.mark.parametrize(
+        "template_name",
+        [
+            "rmsc04",
+            "liquid_market",
+            "thin_market",
+            "stable_day",
+            "volatile_day",
+            "low_liquidity",
+            "trending_day",
+            "stress_test",
+        ],
+    )
+    def test_template_runs_to_completion(self, template_name, template_run_results):
+        """Every template must run to completion without errors."""
+        result = template_run_results[template_name]
+        assert result is not None
+        assert result.metadata.seed == 42
+
+    @pytest.mark.parametrize(
+        "template_name",
+        [
+            "rmsc04",
+            "liquid_market",
+            "thin_market",
+            "stable_day",
+            "volatile_day",
+            "low_liquidity",
+            "trending_day",
+            "stress_test",
+        ],
+    )
+    def test_template_produces_trades(self, template_name, template_run_results):
+        """Every template must produce at least some trades."""
+        result = template_run_results[template_name]
+        liq = result.markets["ABM"].liquidity
+        assert liq.total_exchanged_volume > 0, f"{template_name}: no trades occurred"
+
+    @pytest.mark.parametrize(
+        "template_name",
+        [
+            "rmsc04",
+            "liquid_market",
+            "stable_day",
+            "volatile_day",
+            "trending_day",
+            "stress_test",
+        ],
+    )
+    def test_template_balanced_book(self, template_name, template_run_results):
+        """Templates with market makers should maintain a two-sided book."""
+        result = template_run_results[template_name]
+        liq = result.markets["ABM"].liquidity
+        assert (
+            liq.pct_time_no_bid < 50
+        ), f"{template_name}: bid empty {liq.pct_time_no_bid:.1f}%"
+        assert (
+            liq.pct_time_no_ask < 50
+        ), f"{template_name}: ask empty {liq.pct_time_no_ask:.1f}%"
+
+    def test_low_liquidity_has_wide_gaps(self, template_run_results):
+        """low_liquidity should have noticeably wider gaps than liquid_market."""
+        liq_low = template_run_results["low_liquidity"].markets["ABM"].liquidity
+        liq_liquid = template_run_results["liquid_market"].markets["ABM"].liquidity
+        # Low liquidity should have more time without bids than liquid market
+        assert liq_low.pct_time_no_bid > liq_liquid.pct_time_no_bid
+
+    def test_liquid_market_more_active(self, template_run_results):
+        """liquid_market should generate more trade volume than thin_market."""
+        vol_liquid = (
+            template_run_results["liquid_market"]
+            .markets["ABM"]
+            .liquidity.total_exchanged_volume
+        )
+        vol_thin = (
+            template_run_results["thin_market"]
+            .markets["ABM"]
+            .liquidity.total_exchanged_volume
+        )
+        assert vol_liquid > vol_thin
 
 
 # ---------------------------------------------------------------------------
@@ -1076,7 +1205,11 @@ class TestBuilderAdvanced:
 
     def test_thin_market_no_mm(self):
         config = SimulationBuilder().from_template("thin_market").seed(42).build()
+        assert config.market.end_time == "16:00:00"
+        assert config.agents["noise"].count == 50
+        assert config.agents["value"].count == 10
         assert config.agents["adaptive_market_maker"].enabled is False
+        assert config.agents["momentum"].enabled is False
 
 
 # ---------------------------------------------------------------------------
