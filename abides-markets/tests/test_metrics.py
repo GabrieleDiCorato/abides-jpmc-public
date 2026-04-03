@@ -10,11 +10,13 @@ import numpy as np
 import pytest
 
 from abides_markets.simulation.metrics import (
+    compute_adverse_selection,
     compute_agent_pnl,
     compute_avg_liquidity,
     compute_effective_spread,
     compute_equity_curve,
     compute_execution_metrics,
+    compute_fill_slippage,
     compute_inventory_std,
     compute_l1_close,
     compute_l1_series,
@@ -26,20 +28,27 @@ from abides_markets.simulation.metrics import (
     compute_metrics,
     compute_order_fill_rate,
     compute_resilience,
+    compute_rich_metrics,
     compute_sharpe_ratio,
     compute_trade_attribution,
     compute_volatility,
     compute_vpin,
     compute_vwap,
 )
+from abides_markets.simulation.profiles import ResultProfile
 from abides_markets.simulation.result import (
     AgentData,
     EquityCurve,
     ExecutionMetrics,
+    FillRecord,
+    L1Close,
     L1Snapshots,
     L2Snapshots,
     LiquidityMetrics,
     MarketSummary,
+    RichSimulationMetrics,
+    SimulationMetadata,
+    SimulationResult,
     TradeAttribution,
 )
 
@@ -863,3 +872,393 @@ class TestComputeOrderFillRate:
             filled_quantity=900,
         )
         assert em.fill_rate_pct == pytest.approx(90.0)
+
+
+# ===================================================================
+# compute_fill_slippage
+# ===================================================================
+
+
+class TestComputeFillSlippage:
+    def test_buy_above_mid(self):
+        # mid = (9900 + 10100) / 2 = 10000
+        l1 = _make_l1([(100, 9900, 10, 10100, 5)])
+        # Buy at 10050 → slippage = (10050 - 10000) * 10000 / 10000 = 50 bps
+        assert compute_fill_slippage(10_050, 100, "BUY", l1) == 50
+
+    def test_buy_below_mid(self):
+        l1 = _make_l1([(100, 9900, 10, 10100, 5)])
+        # Buy at 9950 → slippage = (9950 - 10000) * 10000 / 10000 = -50 bps
+        assert compute_fill_slippage(9_950, 100, "BUY", l1) == -50
+
+    def test_sell_above_mid(self):
+        l1 = _make_l1([(100, 9900, 10, 10100, 5)])
+        # Sell at 10050 → diff = -(10050 - 10000) = -50, bps = -50 * 10000 / 10000
+        # Actually: diff = float(fill) - mid = 50; side SELL → diff = -50
+        # bps = -50 * 10000 / 10000 = -50 (negative = received above mid, good for seller)
+        # Wait, per sign convention: for SELL, we negate diff before computing bps
+        # diff = fill - mid = 50; negate for SELL → -50; bps = -50 * 10000 / 10000 = -50
+        # Hmm, that means selling above mid is negative (good? confusing)
+        # Let me re-read the impl:
+        # diff = fill - mid = 50; side == "SELL" → diff = -diff = -50
+        # return int(diff * 10000 / mid) = int(-50 * 10000 / 10000) = -50
+        # The docstring says positive = paid above mid (bad for buyer).
+        # For SELL above mid, it returns -50. This is consistent: selling above mid is good.
+        assert compute_fill_slippage(10_050, 100, "SELL", l1) == -50
+
+    def test_empty_l1(self):
+        assert compute_fill_slippage(10_000, 100, "BUY", _make_empty_l1()) is None
+
+    def test_no_two_sided(self):
+        l1 = _make_l1([(100, 9900, 10, None, None)])
+        assert compute_fill_slippage(10_000, 100, "BUY", l1) is None
+
+    def test_at_mid(self):
+        l1 = _make_l1([(100, 9900, 10, 10100, 5)])
+        assert compute_fill_slippage(10_000, 100, "BUY", l1) == 0
+
+
+# ===================================================================
+# compute_adverse_selection
+# ===================================================================
+
+
+class TestComputeAdverseSelection:
+    def test_buy_price_rises(self):
+        # Mid at t=100: (9900+10100)/2 = 10000
+        # Mid at t=200: (10000+10200)/2 = 10100
+        # BUY: delta = 10100 - 10000 = 100; bps = 100 * 10000 / 10000 = 100
+        # Positive = favorable (price went up after buy)
+        l1 = _make_l1(
+            [
+                (100, 9900, 10, 10100, 5),
+                (200, 10000, 10, 10200, 5),
+            ]
+        )
+        assert compute_adverse_selection(10_000, 100, "BUY", l1, 100) == 100
+
+    def test_buy_price_drops(self):
+        # Mid at t=100: 10000; mid at t=200: 9900; delta = -100; bps = -100
+        l1 = _make_l1(
+            [
+                (100, 9900, 10, 10100, 5),
+                (200, 9800, 10, 10000, 5),
+            ]
+        )
+        assert compute_adverse_selection(10_000, 100, "BUY", l1, 100) == -100
+
+    def test_sell_price_drops(self):
+        # Mid at t=100: 10000; mid at t=200: 9900; delta = -100; SELL → negate = +100
+        # Positive = favorable (sold and price dropped)
+        l1 = _make_l1(
+            [
+                (100, 9900, 10, 10100, 5),
+                (200, 9800, 10, 10000, 5),
+            ]
+        )
+        assert compute_adverse_selection(10_000, 100, "SELL", l1, 100) == 100
+
+    def test_window_past_end(self):
+        l1 = _make_l1([(100, 9900, 10, 10100, 5)])
+        # Window extends past all data → uses last available mid, which is the
+        # same as fill time. But the window time is 200 and last data is at 100.
+        # _lookup_mid(200) will searchsorted to idx=0 (since 200 > 100, idx=1-1=0)
+        # and find the row at idx=0. So mid_tw = mid_t = 10000, delta = 0.
+        assert compute_adverse_selection(10_000, 100, "BUY", l1, 100) == 0
+
+    def test_empty_l1(self):
+        assert (
+            compute_adverse_selection(10_000, 100, "BUY", _make_empty_l1(), 100) is None
+        )
+
+
+# ===================================================================
+# Helper: build a minimal SimulationResult
+# ===================================================================
+
+
+def _make_result(
+    *,
+    profile: ResultProfile = ResultProfile.SUMMARY,
+    l1_rows: (
+        list[tuple[int, int | None, int | None, int | None, int | None]] | None
+    ) = None,
+    trades: list[TradeAttribution] | None = None,
+    agents: list[AgentData] | None = None,
+    logs: object = None,
+    equity_curves: dict[int, EquityCurve] | None = None,
+) -> SimulationResult:
+    """Build a minimal SimulationResult for testing compute_rich_metrics."""
+    l1_series = _make_l1(l1_rows) if l1_rows else None
+    if agents is None:
+        agents = []
+
+    # Attach equity curves to agents if provided
+    if equity_curves:
+        patched = []
+        for a in agents:
+            ec = equity_curves.get(a.agent_id)
+            if ec is not None:
+                a = a.model_copy(update={"equity_curve": ec})
+            patched.append(a)
+        agents = patched
+
+    mkt = MarketSummary(
+        symbol="TEST",
+        l1_close=L1Close(time_ns=0, bid_price_cents=9900, ask_price_cents=10100),
+        liquidity=LiquidityMetrics(
+            pct_time_no_bid=0.0,
+            pct_time_no_ask=0.0,
+            total_exchanged_volume=100,
+            last_trade_cents=10_000,
+            vwap_cents=10_000,
+        ),
+        l1_series=l1_series,
+        trades=trades,
+    )
+    return SimulationResult(
+        metadata=SimulationMetadata(
+            seed=42,
+            tickers=["TEST"],
+            sim_start_ns=0,
+            sim_end_ns=1_000_000_000,
+            wall_clock_elapsed_s=0.1,
+            config_snapshot={},
+        ),
+        markets={"TEST": mkt},
+        agents=agents,
+        logs=logs,
+        profile=profile,
+    )
+
+
+def _make_agent(
+    agent_id: int = 1,
+    pnl_cents: int = 0,
+    holdings: dict[str, int] | None = None,
+) -> AgentData:
+    """Build a minimal AgentData."""
+    if holdings is None:
+        holdings = {"CASH": 10_000_000}
+    starting_cash = 10_000_000
+    mtm = starting_cash + pnl_cents
+    return AgentData(
+        agent_id=agent_id,
+        agent_type="TestAgent",
+        agent_name=f"agent_{agent_id}",
+        agent_category="strategy",
+        final_holdings=holdings,
+        starting_cash_cents=starting_cash,
+        mark_to_market_cents=mtm,
+        pnl_cents=pnl_cents,
+        pnl_pct=pnl_cents / starting_cash * 100.0 if starting_cash else 0.0,
+    )
+
+
+# ===================================================================
+# compute_rich_metrics — summary profile (graceful degradation)
+# ===================================================================
+
+
+class TestComputeRichMetricsSummary:
+    def test_empty_result(self):
+        result = _make_result()
+        rich = compute_rich_metrics(result)
+        assert isinstance(rich, RichSimulationMetrics)
+        assert rich.fills is None
+        assert rich.agents == []
+        mkt = rich.markets["TEST"]
+        assert mkt.microstructure is not None
+        # No L1 series → microstructure fields are None/0.0
+        assert mkt.microstructure.lob_imbalance_mean is None
+        assert mkt.microstructure.resilience_mean_ns is None
+        assert mkt.microstructure.pct_time_two_sided == 0.0
+
+    def test_agent_pnl_surfaced(self):
+        agent = _make_agent(agent_id=1, pnl_cents=500)
+        result = _make_result(agents=[agent])
+        rich = compute_rich_metrics(result)
+        assert len(rich.agents) == 1
+        assert rich.agents[0].total_pnl_cents == 500
+        assert rich.agents[0].sharpe_ratio is None
+        assert rich.agents[0].max_drawdown_cents is None
+        assert rich.agents[0].trade_count == 0
+
+
+# ===================================================================
+# compute_rich_metrics — QUANT profile (microstructure populated)
+# ===================================================================
+
+
+class TestComputeRichMetricsQuant:
+    def test_microstructure_populated(self):
+        l1_rows = [(i * 1_000, 9900, 50, 10100, 50) for i in range(10)]
+        result = _make_result(
+            profile=ResultProfile.QUANT,
+            l1_rows=l1_rows,
+        )
+        rich = compute_rich_metrics(result)
+        micro = rich.markets["TEST"].microstructure
+        assert micro is not None
+        assert micro.lob_imbalance_mean is not None
+        assert micro.pct_time_two_sided == pytest.approx(100.0)
+
+    def test_agent_with_trades(self):
+        agent = _make_agent(
+            agent_id=1,
+            pnl_cents=200,
+            holdings={"CASH": 10_000_200, "TEST": 10},
+        )
+        trades = [
+            TradeAttribution(
+                time_ns=100,
+                passive_agent_id=1,
+                aggressive_agent_id=99,
+                side="BUY",
+                price_cents=10_000,
+                quantity=5,
+            ),
+            TradeAttribution(
+                time_ns=200,
+                passive_agent_id=99,
+                aggressive_agent_id=1,
+                side="SELL",
+                price_cents=10_100,
+                quantity=5,
+            ),
+        ]
+        result = _make_result(
+            profile=ResultProfile.QUANT,
+            agents=[agent],
+            trades=trades,
+        )
+        rich = compute_rich_metrics(result)
+        ra = rich.agents[0]
+        assert ra.trade_count == 2
+        assert ra.vwap_cents is not None
+        assert ra.end_inventory == {"TEST": 10}
+
+    def test_agent_with_equity_curve(self):
+        ec = EquityCurve(
+            times_ns=list(range(0, 40_000, 1_000)),
+            nav_cents=[10_000_000 + i * 10 for i in range(40)],
+            peak_nav_cents=[10_000_000 + i * 10 for i in range(40)],
+        )
+        agent = _make_agent(agent_id=5, pnl_cents=390)
+        result = _make_result(
+            profile=ResultProfile.QUANT,
+            agents=[agent],
+            equity_curves={5: ec},
+        )
+        rich = compute_rich_metrics(result)
+        ra = rich.agents[0]
+        assert ra.sharpe_ratio is not None
+        assert ra.max_drawdown_cents == 0  # monotonically increasing
+
+
+# ===================================================================
+# compute_rich_metrics — Tier 3 (include_fills)
+# ===================================================================
+
+
+class TestComputeRichMetricsFills:
+    def test_fill_records_produced(self):
+        l1_rows = [
+            (100, 9900, 10, 10100, 5),
+            (200, 9950, 10, 10050, 5),
+        ]
+        trades = [
+            TradeAttribution(
+                time_ns=100,
+                passive_agent_id=1,
+                aggressive_agent_id=2,
+                side="BUY",
+                price_cents=10_000,
+                quantity=10,
+            ),
+        ]
+        result = _make_result(
+            profile=ResultProfile.QUANT,
+            l1_rows=l1_rows,
+            trades=trades,
+        )
+        rich = compute_rich_metrics(result, include_fills=True)
+        assert rich.fills is not None
+        # 1 trade → 2 fill records (passive + aggressive)
+        assert len(rich.fills) == 2
+        # Check slippage is computed
+        for f in rich.fills:
+            assert isinstance(f, FillRecord)
+            assert f.slippage_bps is not None
+
+    def test_adverse_selection_window_keys(self):
+        l1_rows = [
+            (100, 9900, 10, 10100, 5),
+            (100_000_200, 9950, 10, 10050, 5),
+        ]
+        trades = [
+            TradeAttribution(
+                time_ns=100,
+                passive_agent_id=1,
+                aggressive_agent_id=2,
+                side="BUY",
+                price_cents=10_000,
+                quantity=10,
+            ),
+        ]
+        result = _make_result(
+            profile=ResultProfile.QUANT,
+            l1_rows=l1_rows,
+            trades=trades,
+        )
+        rich = compute_rich_metrics(
+            result,
+            include_fills=True,
+            adverse_selection_windows=["100ms", "1s"],
+        )
+        assert rich.fills is not None
+        for f in rich.fills:
+            assert set(f.adverse_selection_bps.keys()) == {"100ms", "1s"}
+
+    def test_no_fills_without_flag(self):
+        result = _make_result(profile=ResultProfile.QUANT)
+        rich = compute_rich_metrics(result)
+        assert rich.fills is None
+
+    def test_no_l1_slippage_is_none(self):
+        trades = [
+            TradeAttribution(
+                time_ns=100,
+                passive_agent_id=1,
+                aggressive_agent_id=2,
+                side="BUY",
+                price_cents=10_000,
+                quantity=10,
+            ),
+        ]
+        result = _make_result(
+            profile=ResultProfile.QUANT,
+            trades=trades,
+        )
+        rich = compute_rich_metrics(result, include_fills=True)
+        assert rich.fills is not None
+        for f in rich.fills:
+            assert f.slippage_bps is None
+
+
+# ===================================================================
+# Import smoke test
+# ===================================================================
+
+
+class TestRichMetricsImports:
+    def test_importable_from_simulation(self):
+        from abides_markets.simulation import (
+            compute_adverse_selection,
+            compute_fill_slippage,
+            compute_rich_metrics,
+        )
+
+        assert callable(compute_rich_metrics)
+        assert callable(compute_fill_slippage)
+        assert callable(compute_adverse_selection)

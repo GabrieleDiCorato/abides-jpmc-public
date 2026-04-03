@@ -47,11 +47,13 @@ DataFrame schemas (Pandera)::
 
 from .extractors import BaseResultExtractor, FunctionExtractor, ResultExtractor
 from .metrics import (
+    compute_adverse_selection,
     compute_agent_pnl,
     compute_avg_liquidity,
     compute_effective_spread,
     compute_equity_curve,
     compute_execution_metrics,
+    compute_fill_slippage,
     compute_inventory_std,
     compute_l1_close,
     compute_l1_series,
@@ -63,6 +65,7 @@ from .metrics import (
     compute_metrics,
     compute_order_fill_rate,
     compute_resilience,
+    compute_rich_metrics,
     compute_sharpe_ratio,
     compute_trade_attribution,
     compute_volatility,
@@ -74,11 +77,15 @@ from .result import (
     AgentData,
     EquityCurve,
     ExecutionMetrics,
+    FillRecord,
     L1Close,
     L1Snapshots,
     L2Snapshots,
     LiquidityMetrics,
     MarketSummary,
+    MicrostructureMetrics,
+    RichAgentMetrics,
+    RichSimulationMetrics,
     SimulationMetadata,
     SimulationResult,
     TradeAttribution,
@@ -97,6 +104,7 @@ __all__ = [
     "run_batch",
     # Standalone metric computation
     "compute_metrics",
+    "compute_rich_metrics",
     "compute_vwap",
     "compute_liquidity_metrics",
     "compute_l1_close",
@@ -117,6 +125,8 @@ __all__ = [
     "compute_vpin",
     "compute_resilience",
     "compute_order_fill_rate",
+    "compute_fill_slippage",
+    "compute_adverse_selection",
     # Result models
     "SimulationResult",
     "SimulationMetadata",
@@ -129,6 +139,10 @@ __all__ = [
     "ExecutionMetrics",
     "EquityCurve",
     "TradeAttribution",
+    "MicrostructureMetrics",
+    "RichAgentMetrics",
+    "FillRecord",
+    "RichSimulationMetrics",
     # Profile
     "ResultProfile",
     # Extractors

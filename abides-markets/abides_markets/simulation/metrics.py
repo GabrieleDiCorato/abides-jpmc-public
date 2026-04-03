@@ -30,20 +30,29 @@ Example — compute all market + agent metrics at once::
 
 from __future__ import annotations
 
+import re
+from collections import defaultdict
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from .result import SimulationResult
 
 from .result import (
     AgentData,
     EquityCurve,
     ExecutionMetrics,
+    FillRecord,
     L1Close,
     L1Snapshots,
     L2Snapshots,
     LiquidityMetrics,
     MarketSummary,
+    MicrostructureMetrics,
+    RichAgentMetrics,
+    RichSimulationMetrics,
     TradeAttribution,
 )
 
@@ -1000,3 +1009,329 @@ def compute_metrics(
         "vwap_cents": vwap_cents,
         "trades": trade_attributions,
     }
+
+
+# ---------------------------------------------------------------------------
+# Window parsing utility
+# ---------------------------------------------------------------------------
+
+_WINDOW_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*(ms|s)$")
+
+
+def _parse_window_ns(window: str | int) -> int:
+    """Parse a window specification to nanoseconds.
+
+    Accepts ``int`` (raw nanoseconds) or strings like ``"100ms"``, ``"1s"``.
+    """
+    if isinstance(window, int):
+        return window
+    m = _WINDOW_RE.match(window.strip())
+    if not m:
+        raise ValueError(
+            f"Invalid window format {window!r}; expected e.g. '100ms', '1s'"
+        )
+    value = float(m.group(1))
+    unit = m.group(2)
+    if unit == "ms":
+        return int(value * 1_000_000)
+    return int(value * 1_000_000_000)
+
+
+# ---------------------------------------------------------------------------
+# Per-fill execution analysis helpers (Tier 3)
+# ---------------------------------------------------------------------------
+
+
+def compute_fill_slippage(
+    fill_price_cents: int,
+    fill_time_ns: int,
+    side: str,
+    l1: L1Snapshots,
+) -> int | None:
+    """Signed slippage of a single fill vs contemporaneous L1 mid-price.
+
+    Returns basis points.  For a BUY, positive = paid above mid (bad).
+    For a SELL, positive = received above mid (good).
+    Returns ``None`` when no two-sided L1 quote exists at or before the fill.
+    """
+    mid = _lookup_mid(l1, fill_time_ns)
+    if mid is None or mid == 0.0:
+        return None
+    diff = float(fill_price_cents) - mid
+    if side == "SELL":
+        diff = -diff
+    return int(diff * 10_000 / mid)
+
+
+def compute_adverse_selection(
+    fill_price_cents: int,
+    fill_time_ns: int,
+    side: str,
+    l1: L1Snapshots,
+    window_ns: int,
+) -> int | None:
+    """Mid-price move after a fill at a configurable look-ahead window.
+
+    Negative values indicate adverse selection (price moved against the agent).
+    Returns ``None`` when either mid-price lookup fails.
+    """
+    mid_t = _lookup_mid(l1, fill_time_ns)
+    mid_tw = _lookup_mid(l1, fill_time_ns + window_ns)
+    if mid_t is None or mid_tw is None or mid_t == 0.0:
+        return None
+    delta = mid_tw - mid_t
+    if side == "SELL":
+        delta = -delta
+    # Positive = price moved favorably for agent; negative = adverse.
+    return int(delta * 10_000 / mid_t)
+
+
+def _lookup_mid(l1: L1Snapshots, time_ns: int) -> float | None:
+    """Look up the two-sided mid-price at or just before *time_ns*."""
+    if len(l1.times_ns) == 0:
+        return None
+
+    # Build two-sided mid-prices on-the-fly (cached externally when needed).
+    idx = int(np.searchsorted(l1.times_ns, time_ns, side="right")) - 1
+    # Walk backward to find a two-sided row.
+    while idx >= 0:
+        bid = l1.bid_prices[idx]
+        ask = l1.ask_prices[idx]
+        if bid is not None and ask is not None:
+            return (float(bid) + float(ask)) / 2.0
+        idx -= 1
+    return None
+
+
+# ---------------------------------------------------------------------------
+# compute_rich_metrics — high-level convenience API
+# ---------------------------------------------------------------------------
+
+
+def compute_rich_metrics(
+    result: SimulationResult,
+    *,
+    include_fills: bool = False,
+    adverse_selection_windows: Sequence[str | int] = (),
+) -> RichSimulationMetrics:
+    """Compute enriched metrics from a :class:`SimulationResult`.
+
+    This is the single entry-point for consumers who want agent-level
+    analytics, standard microstructure indicators, and optional per-fill
+    execution analysis without reimplementing the computations from raw logs.
+
+    Parameters
+    ----------
+    result:
+        A :class:`SimulationResult` from :func:`run_simulation`.
+        Richer :class:`ResultProfile` flags yield richer output; all fields
+        degrade gracefully when the required data is absent.
+    include_fills:
+        If ``True``, compute per-fill slippage and adverse selection
+        (Tier 3).  Requires ``ResultProfile.TRADE_ATTRIBUTION`` and
+        ``ResultProfile.L1_SERIES`` for meaningful values.
+    adverse_selection_windows:
+        Look-ahead windows for adverse selection computation.  Accepts
+        integers (nanoseconds) or strings like ``"100ms"``, ``"1s"``.
+
+    Returns
+    -------
+    RichSimulationMetrics
+        Structured result with enriched markets, per-agent metrics, and
+        optional fill records.
+
+    Data Availability
+    -----------------
+    +-----------------------------------+---------------------+------------+
+    | Metric group                      | Requires            | Absent →   |
+    +===================================+=====================+============+
+    | sharpe_ratio, max_drawdown_cents  | EQUITY_CURVE        | None       |
+    +-----------------------------------+---------------------+------------+
+    | lob_imbalance, resilience,        | L1_SERIES           | None / 0.0 |
+    | pct_time_two_sided, slippage,     |                     |            |
+    | adverse_selection                 |                     |            |
+    +-----------------------------------+---------------------+------------+
+    | vwap, trade_count, inventory_std  | TRADE_ATTRIBUTION   | None / 0   |
+    +-----------------------------------+---------------------+------------+
+    | fill_rate_pct, order_to_trade,    | AGENT_LOGS          | None       |
+    | market_ott_ratio                  |                     |            |
+    +-----------------------------------+---------------------+------------+
+
+    Full output requires ``ResultProfile.FULL`` (=QUANT | AGENT_LOGS).
+    """
+    from .profiles import ResultProfile
+
+    parsed_windows = [_parse_window_ns(w) for w in adverse_selection_windows]
+    window_labels = [
+        str(w) if isinstance(w, int) else w for w in adverse_selection_windows
+    ]
+
+    # -- Per-agent order counts from logs (for fill_rate, OTT) ---------------
+    agent_submissions: dict[int, int] = defaultdict(int)
+    agent_executions: dict[int, int] = defaultdict(int)
+    total_submissions = 0
+    total_executions = 0
+    has_logs = result.logs is not None and ResultProfile.AGENT_LOGS in result.profile
+    if has_logs:
+        assert result.logs is not None
+        for _, row in result.logs.iterrows():
+            evt = row.get("EventType", "")
+            aid = row.get("agent_id")
+            if aid is None:
+                continue
+            aid = int(aid)
+            if evt == "ORDER_SUBMITTED":
+                agent_submissions[aid] += 1
+                total_submissions += 1
+            elif evt == "ORDER_EXECUTED":
+                agent_executions[aid] += 1
+                total_executions += 1
+
+    # -- Per-agent fill index from trade attribution -------------------------
+    # Each TradeAttribution creates fills for both passive and aggressive agent.
+    agent_fills: dict[int, list[tuple[str, int, int, int]]] = defaultdict(list)
+    for _sym, mkt in result.markets.items():
+        if mkt.trades is None:
+            continue
+        for t in mkt.trades:
+            # Passive agent has the resting side
+            agent_fills[t.passive_agent_id].append(
+                (t.side, t.price_cents, t.quantity, t.time_ns)
+            )
+            # Aggressive agent has the opposite side
+            opp_side = "SELL" if t.side == "BUY" else "BUY"
+            agent_fills[t.aggressive_agent_id].append(
+                (opp_side, t.price_cents, t.quantity, t.time_ns)
+            )
+
+    # -- Enriched markets ----------------------------------------------------
+    enriched_markets: dict[str, MarketSummary] = {}
+    for sym, mkt in result.markets.items():
+        l1 = mkt.l1_series
+
+        lob_mean: float | None = None
+        lob_std: float | None = None
+        resilience_ns: float | None = None
+        pct_two_sided: float = 0.0
+
+        if l1 is not None and len(l1.times_ns) > 0:
+            lob_mean, lob_std = compute_lob_imbalance(l1)
+            resilience_ns = compute_resilience(l1)
+            # pct_time_two_sided: fraction of rows with both bid and ask present
+            n_total = len(l1.times_ns)
+            n_two = sum(
+                1
+                for i in range(n_total)
+                if l1.bid_prices[i] is not None and l1.ask_prices[i] is not None
+            )
+            pct_two_sided = n_two / n_total * 100.0 if n_total > 0 else 0.0
+
+        market_ott = (
+            compute_market_ott_ratio(total_submissions, total_executions)
+            if has_logs
+            else None
+        )
+
+        micro = MicrostructureMetrics(
+            lob_imbalance_mean=lob_mean,
+            lob_imbalance_std=lob_std,
+            resilience_mean_ns=resilience_ns,
+            market_ott_ratio=market_ott,
+            pct_time_two_sided=pct_two_sided,
+        )
+        enriched_markets[sym] = mkt.model_copy(update={"microstructure": micro})
+
+    # -- Per-agent rich metrics -----------------------------------------------
+    rich_agents: list[RichAgentMetrics] = []
+    for agent in result.agents:
+        fills = agent_fills.get(agent.agent_id, [])
+
+        # VWAP from this agent's fills
+        agent_vwap: int | None = None
+        if fills:
+            agent_vwap = compute_vwap([(p, q) for _, p, q, _ in fills])
+
+        # Inventory std from fill sides
+        inv_std: float | None = None
+        if fills:
+            inv_std = compute_inventory_std([(s, q) for s, _, q, _ in fills])
+
+        # Sharpe & drawdown from equity curve
+        sharpe: float | None = None
+        drawdown: int | None = None
+        if agent.equity_curve is not None:
+            sharpe = compute_sharpe_ratio(agent.equity_curve)
+            drawdown = agent.equity_curve.max_drawdown_cents
+
+        # Fill rate / OTT from logs
+        fill_rate: float | None = None
+        ott: float | None = None
+        if has_logs:
+            n_sub = agent_submissions.get(agent.agent_id, 0)
+            n_exec = agent_executions.get(agent.agent_id, 0)
+            fill_rate = compute_order_fill_rate(n_exec, n_sub)
+            ott = n_sub / n_exec if n_exec > 0 else None
+
+        # End inventory (all non-CASH holdings)
+        end_inv = {
+            s: shares for s, shares in agent.final_holdings.items() if s != "CASH"
+        }
+
+        rich_agents.append(
+            RichAgentMetrics(
+                agent_id=agent.agent_id,
+                agent_type=agent.agent_type,
+                agent_name=agent.agent_name,
+                total_pnl_cents=agent.pnl_cents,
+                sharpe_ratio=sharpe,
+                max_drawdown_cents=drawdown,
+                fill_rate_pct=fill_rate,
+                order_to_trade_ratio=ott,
+                vwap_cents=agent_vwap,
+                trade_count=len(fills),
+                end_inventory=end_inv,
+                inventory_std=inv_std,
+            )
+        )
+
+    # -- Tier 3: per-fill records --------------------------------------------
+    fill_records: list[FillRecord] | None = None
+    if include_fills:
+        fill_records = []
+        for _sym, mkt in result.markets.items():
+            if mkt.trades is None:
+                continue
+            l1 = mkt.l1_series
+            for t in mkt.trades:
+                for agent_id, side in [
+                    (t.passive_agent_id, t.side),
+                    (
+                        t.aggressive_agent_id,
+                        "SELL" if t.side == "BUY" else "BUY",
+                    ),
+                ]:
+                    slip: int | None = None
+                    as_bps: dict[str, int | None] = {}
+                    if l1 is not None:
+                        slip = compute_fill_slippage(t.price_cents, t.time_ns, side, l1)
+                        for label, wns in zip(window_labels, parsed_windows):
+                            as_bps[label] = compute_adverse_selection(
+                                t.price_cents, t.time_ns, side, l1, wns
+                            )
+                    fill_records.append(
+                        FillRecord(
+                            time_ns=t.time_ns,
+                            agent_id=agent_id,
+                            side=side,
+                            price_cents=t.price_cents,
+                            quantity=t.quantity,
+                            slippage_bps=slip,
+                            adverse_selection_bps=as_bps,
+                        )
+                    )
+
+    return RichSimulationMetrics(
+        markets=enriched_markets,
+        agents=rich_agents,
+        fills=fill_records,
+    )

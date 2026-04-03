@@ -135,6 +135,36 @@ class LiquidityMetrics(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# MicrostructureMetrics — Tier 2 academic/regulatory indicators
+# ---------------------------------------------------------------------------
+
+
+class MicrostructureMetrics(BaseModel):
+    """Standard microstructure indicators for one symbol.
+
+    All fields degrade gracefully to ``None`` / ``0.0`` when the
+    required data (e.g. ``L1_SERIES``, ``AGENT_LOGS``) was not extracted.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    lob_imbalance_mean: float | None = None
+    """Mean L1 order-book imbalance: ``(Q_bid - Q_ask) / (Q_bid + Q_ask)``."""
+
+    lob_imbalance_std: float | None = None
+    """Standard deviation of L1 order-book imbalance."""
+
+    resilience_mean_ns: float | None = None
+    """Mean spread recovery time after shock (nanoseconds)."""
+
+    market_ott_ratio: float | None = None
+    """Market-wide order-to-trade ratio (MiFID II RTS 9)."""
+
+    pct_time_two_sided: float = 0.0
+    """Fraction of L1 observations with both bid and ask present (0–100)."""
+
+
+# ---------------------------------------------------------------------------
 # TradeAttribution — per-execution causal record
 # ---------------------------------------------------------------------------
 
@@ -349,6 +379,9 @@ class MarketSummary(BaseModel):
     trades: list[TradeAttribution] | None = None
     """Per-execution causal attribution; ``None`` unless ``ResultProfile.TRADE_ATTRIBUTION`` was set."""
 
+    microstructure: MicrostructureMetrics | None = None
+    """Tier 2 microstructure indicators; populated by :func:`compute_rich_metrics`."""
+
 
 # ---------------------------------------------------------------------------
 # ExecutionMetrics — optional quality metrics for execution-category agents
@@ -466,6 +499,119 @@ class AgentData(BaseModel):
 
     equity_curve: EquityCurve | None = None
     """Per-fill equity curve from FILL_PNL events; ``None`` unless ``ResultProfile.EQUITY_CURVE`` was set."""
+
+
+# ---------------------------------------------------------------------------
+# RichAgentMetrics — enriched per-agent analytics
+# ---------------------------------------------------------------------------
+
+
+class RichAgentMetrics(BaseModel):
+    """Enriched per-agent statistics from :func:`compute_rich_metrics`.
+
+    All optional fields degrade to ``None`` / ``0`` when the required
+    extraction profile flags are absent.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    agent_id: int
+    agent_type: str
+    agent_name: str
+
+    total_pnl_cents: int
+    """Mark-to-market PnL in cents (same as ``AgentData.pnl_cents``)."""
+
+    sharpe_ratio: float | None = None
+    """Annualised Sharpe ratio from equity curve (requires ``EQUITY_CURVE``)."""
+
+    max_drawdown_cents: int | None = None
+    """Peak-to-trough drawdown in cents (requires ``EQUITY_CURVE``)."""
+
+    fill_rate_pct: float | None = None
+    """Percentage of submitted orders that received a fill (requires ``AGENT_LOGS``)."""
+
+    order_to_trade_ratio: float | None = None
+    """Submissions / fills (requires ``AGENT_LOGS``)."""
+
+    vwap_cents: int | None = None
+    """Per-agent volume-weighted average fill price (requires ``TRADE_ATTRIBUTION``)."""
+
+    trade_count: int = 0
+    """Number of fills (from ``TRADE_ATTRIBUTION``; 0 if absent)."""
+
+    end_inventory: dict[str, int] = {}
+    """Final position per symbol (shares), excluding ``CASH``."""
+
+    inventory_std: float | None = None
+    """Intraday inventory volatility (requires ``TRADE_ATTRIBUTION``)."""
+
+
+# ---------------------------------------------------------------------------
+# FillRecord — Tier 3 per-fill execution analysis
+# ---------------------------------------------------------------------------
+
+
+class FillRecord(BaseModel):
+    """Per-fill execution quality record from :func:`compute_rich_metrics`.
+
+    Only produced when ``include_fills=True`` is passed.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    time_ns: int
+    """Fill timestamp (nanoseconds, Unix epoch)."""
+
+    agent_id: int
+    """Agent involved in this fill."""
+
+    side: str
+    """``"BUY"`` or ``"SELL"`` from this agent's perspective."""
+
+    price_cents: int
+    """Fill price in integer cents."""
+
+    quantity: int
+    """Number of shares filled."""
+
+    slippage_bps: int | None = None
+    """Signed slippage vs contemporaneous L1 mid-price (basis points).
+
+    Positive = paid above mid (bad for buyer) / received above mid (good for seller).
+    ``None`` when no two-sided L1 quote exists near the fill.
+    """
+
+    adverse_selection_bps: dict[str, int | None] = {}
+    """Mid-price move against/toward fill at configurable look-ahead windows.
+
+    Keys are window labels (e.g. ``"100ms"``, ``"1s"``).  Negative values indicate
+    adverse selection (price moved against the agent).
+    """
+
+
+# ---------------------------------------------------------------------------
+# RichSimulationMetrics — return type of compute_rich_metrics()
+# ---------------------------------------------------------------------------
+
+
+class RichSimulationMetrics(BaseModel):
+    """Structured return type of :func:`compute_rich_metrics`.
+
+    Bundles enriched market-level microstructure, per-agent analytics,
+    and optional per-fill execution analysis.
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    markets: dict[str, MarketSummary]
+    """Per-symbol market data with ``microstructure`` populated."""
+
+    agents: list[RichAgentMetrics]
+    """Per-agent enriched analytics."""
+
+    fills: list[FillRecord] | None = None
+    """Per-fill execution records (Tier 3); ``None`` unless ``include_fills=True``."""
 
 
 # ---------------------------------------------------------------------------
