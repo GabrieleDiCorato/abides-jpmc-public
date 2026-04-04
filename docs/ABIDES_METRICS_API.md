@@ -55,11 +55,11 @@ gracefully when the required data is absent — no exceptions are raised.
 | `lob_imbalance_*`, `resilience_mean_ns`, `pct_time_two_sided` | `QUANT` (includes `L1_SERIES`) | `None` / `0.0` |
 | `vwap_cents`, `trade_count`, `inventory_std` | `QUANT` (includes `TRADE_ATTRIBUTION`) | `None` / `0` |
 | `slippage_bps`, `adverse_selection_bps` | `QUANT` + `include_fills=True` | `None` |
-| `fill_rate_pct`, `order_to_trade_ratio`, `market_ott_ratio` | `FULL` (includes `AGENT_LOGS`) | `None` |
+| `fill_rate_pct`, `order_to_trade_ratio`, `market_ott_ratio`, `order_lifecycles` | `FULL` (includes `AGENT_LOGS`) | `None` / `[]` |
 
 **Recommendation:** Use `ResultProfile.QUANT` for analysis workloads.
-Add `ResultProfile.AGENT_LOGS` (i.e. `ResultProfile.FULL`) only when
-order-level fill-rate and OTT metrics are needed.
+Add `ResultProfile.AGENT_LOGS` (i.e. `ResultProfile.FULL`) when
+order-level fill-rate, OTT metrics, or per-order lifecycle tracking are needed.
 
 ---
 
@@ -290,9 +290,9 @@ Per-symbol container. The `microstructure` field is populated by
 
 | Field | Type | Description |
 |:---|:---|:---|
-| `times_ns` | `list[int]` | Timestamp per fill. |
-| `nav_cents` | `list[int]` | NAV after each fill (cents). |
-| `peak_nav_cents` | `list[int]` | High-water mark per fill (cents). |
+| `times_ns` | `list[int]` | Timestamp per observation. One entry per fill in fill-only mode; one entry per two-sided L1 tick when `l1` is provided to `compute_equity_curve()`. |
+| `nav_cents` | `list[int]` | NAV at each observation (cents). In L1-sampled mode, the most recent fill NAV is carried forward. |
+| `peak_nav_cents` | `list[int]` | High-water mark at each observation (cents). |
 | `max_drawdown_cents` | `int` | Property: max peak-to-trough (cents). |
 
 ---
@@ -343,6 +343,7 @@ from abides_markets.simulation import (
     RichSimulationMetrics,
     RichAgentMetrics,
     MicrostructureMetrics,
+    OrderLifecycle,
     FillRecord,
 
     # Standalone compute functions

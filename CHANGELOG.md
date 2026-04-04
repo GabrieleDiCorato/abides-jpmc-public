@@ -1,3 +1,26 @@
+2026-04 Release v2.5.8
+==================
+
+New Features
+------------
+
+* **Per-order lifecycle tracking** — ``RichAgentMetrics.order_lifecycles``
+  provides an ``OrderLifecycle`` record for every submitted order, reconstructed
+  from ``ORDER_SUBMITTED``, ``ORDER_EXECUTED``, and ``ORDER_CANCELLED`` log
+  events.  Each record exposes ``status`` (filled / partially_filled /
+  cancelled / resting), ``filled_qty``, ``submitted_qty``, ``resting_time_ns``,
+  and per-fill ``(time_ns, price_cents, qty)`` tuples.  Requires
+  ``ResultProfile.AGENT_LOGS``.
+
+* **L1-sampled dense equity curve** — ``compute_equity_curve()`` now accepts
+  an optional ``l1: L1Snapshots`` parameter.  When provided, the returned
+  ``EquityCurve`` has one observation per two-sided L1 tick (carry-forward
+  interpolation from the most recent fill), instead of one observation per
+  fill only.  This yields a denser NAV time-series for Sharpe and drawdown
+  computation.
+
+---
+
 2026-04 Release v2.5.7
 ==================
 
