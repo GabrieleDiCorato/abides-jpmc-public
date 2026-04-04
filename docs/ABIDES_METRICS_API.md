@@ -201,7 +201,7 @@ They do not require a running simulation.
 |:---|:---|:---|:---|
 | `compute_agent_pnl` | `(holdings, starting_cash_cents, last_trade_prices, ...)` | `AgentData` | Mark-to-market PnL from plain holdings dict. |
 | `compute_execution_metrics` | `(fills, target_quantity, filled_quantity, ...)` | `ExecutionMetrics` | VWAP slippage, participation rate, implementation shortfall. |
-| `compute_equity_curve` | `(fill_events: Sequence[tuple[int, int, int]])` | `EquityCurve \| None` | NAV time-series from `(time_ns, nav_cents, peak_nav_cents)` tuples. |
+| `compute_equity_curve` | `(fill_events: Sequence[tuple[int, int, int]], *, l1: L1Snapshots \| None = None)` | `EquityCurve \| None` | NAV time-series from `(time_ns, nav_cents, peak_nav_cents)` tuples. When `l1` is provided, one observation per two-sided L1 tick (carry-forward). |
 | `compute_sharpe_ratio` | `(curve: EquityCurve \| None)` | `float \| None` | Annualised Sharpe from equity curve. |
 | `compute_inventory_std` | `(fills: Sequence[tuple[str, int]])` | `float \| None` | Inventory volatility from `(side, quantity)` pairs. |
 | `compute_order_fill_rate` | `(n_executed, n_submitted)` | `float \| None` | Order-level fill rate (0–100). |
