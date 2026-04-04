@@ -882,6 +882,8 @@ def compute_order_fill_rate(
 
 def compute_equity_curve(
     fill_events: Sequence[tuple[int, int, int]],
+    *,
+    l1: L1Snapshots | None = None,
 ) -> EquityCurve | None:
     """Build an :class:`EquityCurve` from fill event tuples.
 
@@ -889,15 +891,64 @@ def compute_equity_curve(
     ----------
     fill_events:
         Sequence of ``(time_ns, nav_cents, peak_nav_cents)`` tuples.
+    l1:
+        Optional :class:`~abides_markets.simulation.result.L1Snapshots`.
+        When provided, the returned curve has one NAV observation for every
+        **two-sided** L1 tick (both bid and ask prices present).  The NAV
+        at each such tick is the most-recent fill's NAV carried forward
+        (step-function interpolation).  L1 ticks that precede the first
+        fill are excluded because no portfolio observation exists yet.
+        When ``None`` (default) the fill-only behavior is preserved.
 
     Returns ``None`` if *fill_events* is empty.
     """
     if not fill_events:
         return None
-    times = [int(t) for t, _, _ in fill_events]
-    navs = [int(n) for _, n, _ in fill_events]
-    peaks = [int(p) for _, _, p in fill_events]
-    return EquityCurve(times_ns=times, nav_cents=navs, peak_nav_cents=peaks)
+
+    fill_times = np.array([int(t) for t, _, _ in fill_events], dtype=np.int64)
+    fill_navs = [int(n) for _, n, _ in fill_events]
+    fill_peaks = [int(p) for _, _, p in fill_events]
+
+    if l1 is None or len(l1.times_ns) == 0:
+        return EquityCurve(
+            times_ns=fill_times.tolist(),
+            nav_cents=fill_navs,
+            peak_nav_cents=fill_peaks,
+        )
+
+    # Build dense curve: one observation per two-sided L1 tick that has a
+    # preceding fill.
+    dense_times: list[int] = []
+    dense_navs: list[int] = []
+    dense_peaks: list[int] = []
+
+    for i in range(len(l1.times_ns)):
+        bid = l1.bid_prices[i]
+        ask = l1.ask_prices[i]
+        if bid is None or ask is None:
+            continue
+        t = int(l1.times_ns[i])
+        # Find index of the last fill at or before this L1 tick.
+        idx = int(np.searchsorted(fill_times, t, side="right")) - 1
+        if idx < 0:
+            continue  # L1 tick precedes all fills — no portfolio observation yet
+        dense_times.append(t)
+        dense_navs.append(fill_navs[idx])
+        dense_peaks.append(fill_peaks[idx])
+
+    if not dense_times:
+        # No two-sided L1 ticks within the fill range — fall back to fill-only.
+        return EquityCurve(
+            times_ns=fill_times.tolist(),
+            nav_cents=fill_navs,
+            peak_nav_cents=fill_peaks,
+        )
+
+    return EquityCurve(
+        times_ns=dense_times,
+        nav_cents=dense_navs,
+        peak_nav_cents=dense_peaks,
+    )
 
 
 # ---------------------------------------------------------------------------

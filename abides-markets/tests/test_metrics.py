@@ -402,6 +402,109 @@ class TestComputeEquityCurve:
         assert curve is not None
         assert curve.max_drawdown_cents == 0
 
+    # ------------------------------------------------------------------
+    # L1-dense mode
+    # ------------------------------------------------------------------
+
+    def test_l1_none_preserves_fill_only(self):
+        """Passing l1=None must not change behavior."""
+        events = [(100, 10_000, 10_000), (300, 9_800, 10_000)]
+        curve_no_l1 = compute_equity_curve(events)
+        curve_l1_none = compute_equity_curve(events, l1=None)
+        assert curve_no_l1 == curve_l1_none
+
+    def test_l1_one_entry_per_two_sided_tick(self):
+        """Dense curve has exactly one entry per two-sided L1 observation."""
+        events = [(100, 10_000, 10_000), (400, 9_500, 10_000)]
+        l1 = _make_l1(
+            [
+                (50, 9_900, 10, 10_100, 5),  # before first fill → excluded
+                (100, 9_900, 10, 10_100, 5),  # at fill 1
+                (200, 9_850, 10, 10_050, 5),  # between fills
+                (300, None, None, 10_000, 5),  # one-sided → excluded
+                (400, 9_800, 10, 10_000, 5),  # at fill 2
+                (500, 9_800, 10, 10_000, 5),  # after last fill
+            ]
+        )
+        curve = compute_equity_curve(events, l1=l1)
+        assert curve is not None
+        # t=50 excluded (before first fill), t=300 excluded (one-sided)
+        assert curve.times_ns == [100, 200, 400, 500]
+        # t=100 → fill 1 (nav=10_000); t=200 → carry fwd fill 1;
+        # t=400 → fill 2 (nav=9_500); t=500 → carry fwd fill 2
+        assert curve.nav_cents == [10_000, 10_000, 9_500, 9_500]
+        assert curve.peak_nav_cents == [10_000, 10_000, 10_000, 10_000]
+
+    def test_l1_nav_carries_forward(self):
+        """Between fills NAV is the last fill's nav_cents (step function)."""
+        events = [(100, 10_000, 10_000), (400, 9_500, 10_000)]
+        l1 = _make_l1(
+            [
+                (100, 9_900, 10, 10_100, 5),
+                (200, 9_850, 10, 10_050, 5),
+                (300, 9_820, 10, 10_020, 5),
+                (400, 9_800, 10, 10_000, 5),
+                (500, 9_800, 10, 10_000, 5),
+            ]
+        )
+        curve = compute_equity_curve(events, l1=l1)
+        assert curve is not None
+        # ticks 200 and 300 (between fills) carry forward fill-1 nav=10_000
+        assert curve.nav_cents == [10_000, 10_000, 10_000, 9_500, 9_500]
+        assert curve.peak_nav_cents == [10_000, 10_000, 10_000, 10_000, 10_000]
+
+    def test_l1_all_ticks_before_first_fill_fallback(self):
+        """All L1 ticks precede first fill → fall back to fill-only curve."""
+        events = [(500, 10_000, 10_000)]
+        l1 = _make_l1(
+            [
+                (100, 9_900, 10, 10_100, 5),
+                (200, 9_900, 10, 10_100, 5),
+            ]
+        )
+        curve = compute_equity_curve(events, l1=l1)
+        expected = compute_equity_curve(events)
+        assert curve == expected
+
+    def test_l1_empty_falls_back_to_fill_only(self):
+        """Empty L1 snapshot → fall back to fill-only curve."""
+        events = [(100, 10_000, 10_000), (200, 9_900, 10_000)]
+        curve = compute_equity_curve(events, l1=_make_empty_l1())
+        expected = compute_equity_curve(events)
+        assert curve == expected
+
+    def test_l1_no_two_sided_ticks_fallback(self):
+        """L1 with no two-sided ticks → fall back to fill-only curve."""
+        events = [(100, 10_000, 10_000)]
+        l1 = _make_l1(
+            [
+                (100, 9_900, 10, None, None),
+                (200, None, None, 10_100, 5),
+            ]
+        )
+        curve = compute_equity_curve(events, l1=l1)
+        expected = compute_equity_curve(events)
+        assert curve == expected
+
+    def test_l1_max_drawdown_dense(self):
+        """max_drawdown_cents is computed over the dense curve."""
+        events = [(100, 10_000, 10_000), (500, 9_000, 10_000)]
+        l1 = _make_l1(
+            [
+                (100, 9_900, 10, 10_100, 5),
+                (200, 9_850, 10, 10_050, 5),
+                (300, 9_820, 10, 10_020, 5),
+                (400, 9_800, 10, 10_000, 5),
+                (500, 9_750, 10, 9_950, 5),
+            ]
+        )
+        curve = compute_equity_curve(events, l1=l1)
+        assert curve is not None
+        # nav at ticks 100-400 = 10_000 (carry forward fill 1), tick 500 = 9_000
+        assert curve.nav_cents == [10_000, 10_000, 10_000, 10_000, 9_000]
+        assert curve.peak_nav_cents == [10_000, 10_000, 10_000, 10_000, 10_000]
+        assert curve.max_drawdown_cents == 1_000  # 10_000 - 9_000
+
 
 # ===================================================================
 # compute_metrics (top-level orchestrator)
