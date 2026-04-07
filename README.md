@@ -217,11 +217,48 @@ for i in range(5):
 
 ## Default Available Markets Configurations
 
-ABIDES currently has the following available background Market Simulation Configuration:
+ABIDES ships with the following composable simulation templates. Base templates
+provide a full simulation configuration; overlay templates add agent groups on
+top of an existing base.
 
-* RMSC03: 1 Exchange Agent, 1 POV Market Maker Agent, 100 Value Agents, 25 Momentum Agents, 5000 Noise Agents
+### Base templates
 
-* RMSC04: 1 Exchange Agent, 2 Market Maker Agents, 102 Value Agents, 12 Momentum Agents, 1000  Noise Agents
+| Template | Agents | Description |
+|----------|--------|-------------|
+| `rmsc04` | 1000 Noise, 102 Value, 12 Momentum, 2 MM | Reference config with balanced order flow, moderate liquidity, and calm fundamental dynamics. |
+| `liquid_market` | 100 Noise, 30 Value, 8 Momentum, 1 MM | High-liquidity full-day session (09:30–16:00). Deep book with tight spreads. |
+| `thin_market` | 50 Noise, 10 Value, no MM | Low-liquidity full-day session (09:30–16:00). Wide spreads and sporadic fills. |
+| `stable_day` | 100 Noise, 25 Value, 1 MM | Low-volatility full-day session. Calm fundamental, no megashocks. Control scenario. |
+| `volatile_day` | 100 Noise, 25 Value, 5 Momentum, 1 MM | High-volatility full-day session with periodic megashocks. Tests strategy resilience. |
+| `low_liquidity` | 25 Noise, 10 Value, no MM | Illiquid full-day session. Wide spreads and significant slippage. |
+| `trending_day` | 75 Noise, 20 Value, 10 Momentum, 1 MM | Trend-prone full-day session. Weak mean-reversion lets momentum dominate. |
+| `stress_test` | 50 Noise, 15 Value, 5 Momentum, 1 MM | Extreme conditions: very high volatility, frequent large megashocks, thin liquidity. |
+
+### Overlay templates
+
+| Template | Adds | Description |
+|----------|------|-------------|
+| `with_momentum` | 12 Momentum agents | Amplifies directional moves on top of any base template. |
+| `with_execution` | 1 POV Execution agent | Adds a volume-participation execution agent for execution-quality studies. |
+
+Templates are used via the declarative config system:
+
+```python
+from abides_markets.config_system import SimulationBuilder
+from abides_markets.simulation import run_simulation
+
+# Single base template
+config = SimulationBuilder().from_template("rmsc04").seed(0).build()
+
+# Compose base + overlay
+config = (SimulationBuilder()
+    .from_template("volatile_day")
+    .from_template("with_execution")
+    .seed(0)
+    .build())
+
+result = run_simulation(config)
+```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
