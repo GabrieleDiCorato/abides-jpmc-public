@@ -130,8 +130,13 @@ overlay templates add agent groups without replacing existing ones.
 | Template | Type | Description |
 |----------|------|-------------|
 | `rmsc04` | base | Reference config: 1000 Noise, 102 Value, 12 Momentum, 2 MM |
-| `liquid_market` | base | High liquidity: 5000 Noise, 200 Value, 25 Momentum, 4 MM |
-| `thin_market` | base | Low liquidity: 100 Noise, 20 Value, no MM |
+| `liquid_market` | base | High liquidity: 100 Noise, 30 Value, 8 Momentum, 1 MM |
+| `thin_market` | base | Low liquidity: 50 Noise, 10 Value, no MM |
+| `stable_day` | base | Low-vol, calm fundamental, no megashocks: 100 Noise, 25 Value, 1 MM |
+| `volatile_day` | base | High-vol with megashocks: 100 Noise, 25 Value, 5 Momentum, 1 MM |
+| `low_liquidity` | base | Illiquid, no MM: 25 Noise, 10 Value |
+| `trending_day` | base | Weak mean-reversion, momentum-driven: 75 Noise, 20 Value, 10 Momentum, 1 MM |
+| `stress_test` | base | Extreme vol + megashocks + thin: 50 Noise, 15 Value, 5 Momentum, 1 MM |
 | `with_momentum` | overlay | Adds 12 Momentum agents |
 | `with_execution` | overlay | Adds 1 POV Execution agent |
 
