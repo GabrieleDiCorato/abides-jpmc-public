@@ -1,7 +1,4 @@
-# ABIDES-Hasufel — Institutional-Grade Market Microstructure Simulation for Strategy Research
-
-**Author:** Gabriele Di Corato | **Programme:** Master in AI & Data Management for Business
-**Version:** 2.5.8 | **Language:** Python 3.11+ | **Tests:** 1 140 | **Commits:** 259
+# ABIDES-Hasufel — Research-Grade Market Microstructure Simulation for Strategy Research
 
 ---
 
