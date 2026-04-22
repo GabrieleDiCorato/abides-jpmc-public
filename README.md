@@ -24,8 +24,9 @@
   <li>
     <a href="#usage-regular">Usage (regular)</a>
     <ul>
-      <li><a href="#using-a-python-script">Using a Python Script</a></li>
-      <li><a href="#using-the-abides-command">Using the `abides` Command</a></li>
+      <li><a href="#using-the-declarative-config-system-recommended">Using the Declarative Config System (recommended)</a></li>
+      <li><a href="#using-procedural-build_config-legacy">Using procedural build_config (legacy)</a></li>
+      <li><a href="#using-the-abides-command">Using the `abides` Command (legacy)</a></li>
     </ul>
   </li>
   <li><a href="#usage-gym">Usage (Gym)</a></li>
@@ -102,7 +103,7 @@ or by using the following BibTeX:
 
     **Note:** The latest stable version is contained within the `main` branch.
 
-2. **Option A: Quick Install with UV (Recommended)**
+2. **Option A: Install with UV (Recommended)**
 
     ```bash
     # Install UV if you haven't already
@@ -112,16 +113,10 @@ or by using the following BibTeX:
     uv sync --no-dev
 
     # For development (includes dev dependencies, tests, docs)
-    uv sync
+    uv sync --dev
     ```
 
-3. **Option B: Using the install script**
-
-    ```bash
-    sh install.sh
-    ```
-
-4. **Option C: Traditional pip install**
+3. **Option B: Traditional pip install**
 
     ```bash
     pip install -e .
@@ -183,6 +178,9 @@ end_state = abides.run(config_state)
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ### Using the abides Command:
+
+> **Legacy:** This interface loads a `build_config()` function directly from a Python config
+> file. It is not the recommended path. Prefer `SimulationBuilder` + `run_simulation()`.
 
 The config can be loaded and the simulation run using the `abides`
 command in the terminal (from directory root):

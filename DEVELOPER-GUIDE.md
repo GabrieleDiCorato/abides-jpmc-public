@@ -1,4 +1,3 @@
-
 # Developer Guide
 
 
@@ -8,15 +7,11 @@ Development is done on GitHub at [https://github.com/GabrieleDiCorato/abides-has
 
 ### Git Processes
 
-- Development is done on the ``dev`` branch. At certain intervals this code will be merged
-  into the ``main`` branch..
-- Some small commits can be applied directly to the dev branch. Examples include:
-    - Spelling/wording corrections.
-    - Small formatting changes.
-    - Requirement version bumping.
-- Any larger commit that has an effect on code should be developed on a separate branch
+- Development is done on the `dev` branch. At certain intervals this code will be merged
+  into the `main` branch.
+- Any commit that affects code should be developed on a separate branch
   and merged with a pull request.
-- Pull requests should have at least one reviewer. This can be assigned on Github.
+- Pull requests should have at least one reviewer. This can be assigned on GitHub.
 
 
 ### Dev Branch Merge Requirements
@@ -26,18 +21,14 @@ Development is done on GitHub at [https://github.com/GabrieleDiCorato/abides-has
       and classes.
     - New classes should be accompanied with a new Sphinx documentation page.
 
-- Unit tests must pass.
+- The full test suite (`pytest`) must pass with no regressions.
 
-- Code must be formatted according the the [black](https://github.com/psf/black)
-formatter tool style guidelines.
-
-- Outputs should match:
-    - The RMSC03 and RMSC04 tests should produce identical results to the previous commit
-      unless explicity stated with the reason for the divergence.
+- Code must be formatted according to the [black](https://github.com/psf/black)
+  formatter tool style guidelines.
 
 ### Prod Branch Merge Requirements
 
-- Commits to the ``prod`` branch should only be merges from the dev ``branch``.
+- Commits to the `prod` branch should only be merges from the `dev` branch.
 - An exception to this is hotfixes.
 - Any breaking changes (of API or outputs) compared to the previous commit should be
   clearly documented and communicated to the team.
@@ -53,12 +44,12 @@ formatting tool.
 - [isort](https://pypi.org/project/isort/) is suggested for organising imports.
 
 - [pre-commit](https://pre-commit.com/) can be used for automatically applying these changes
-when commiting.
+  when committing.
 
 ## Setting up pre-commit hooks
 
-Git hooks are a tasks that can be run after a commit is created by the user but before it is
-confirmed and entered into the git history.
+Git hooks are tasks that run after a commit is created but before it is confirmed and entered
+into the git history.
 
 These tasks can potentially stop a commit from being confirmed.
 
@@ -68,8 +59,16 @@ The configuration can be found in the `.pre-commit-config.yaml` file in the repo
 
 Currently the following hooks are enabled:
 
-- `pytest-check`: checks all unit tests pass before allowing the commit.
-- `no-commit-to-branch`: prevents any commits directly to the master branch.
+- `black`: auto-formats Python code on every commit.
+- `isort`: sorts and groups imports (using the `black` profile).
+- `ruff`: lints Python code and applies safe auto-fixes.
+- `mypy`: runs static type checking.
+- `pytest-check`: runs the full unit test suite and blocks the commit on failure.
+- `nb-clean`: strips outputs and transient metadata from `.ipynb` files before
+  committing, keeping notebook diffs readable and repositories small. Do not
+  commit notebook outputs manually — let this hook handle it.
+- Standard file checks: trailing whitespace, end-of-file newline, YAML validity,
+  large file detection, and merge-conflict markers.
 
 
 ### Commands
@@ -102,7 +101,7 @@ $ pre-commit run --all-files
 ### Unit Tests
 
 ABIDES uses the pytest framework for unit tests. All tests are contained within
-directories named `test` within the respective sub-project directories.
+`tests/` directories within the respective sub-project directories.
 
 ### Regression Testing (Macro-testing)
 In order to test the code, it is possible to use [test_current_vs_past_commit](version_testing/test_current_vs_pastcommit.py)
@@ -123,7 +122,7 @@ The following steps are happening:
 - Code should be documented when written.
 - Classes and functions should have [Google Style](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html)
   doc strings.
-- Non-code documentation should be placed in ``doc`` directory in RST format.
+- Non-code documentation should be placed in the `docs/` directory in RST format.
 
 ### Writing Documentation Strings
 

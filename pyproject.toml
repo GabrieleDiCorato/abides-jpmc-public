@@ -69,10 +69,6 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = ["abides_core", "abides_markets", "abides_gym"]
 
-[tool.isort]
-profile = "black"
-known_first_party = ["abides_core", "abides_markets", "abides_gym"]
-
 [tool.ruff.lint.per-file-ignores]
 "abides-core/tests/*" = ["S101"]
 "abides-markets/tests/*" = ["S101"]
@@ -92,7 +88,6 @@ fail_under = 0
 dev = [
     "black>=24.10.0",
     "ipykernel>=7.1.0",
-    "isort>=5.13.0",
     "mypy>=1.13.0",
     "nb-clean>=4.0.1",
     "pre-commit>=4.5.1",
