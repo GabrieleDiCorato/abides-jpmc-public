@@ -1,6 +1,6 @@
 # ABIDES-Hasufel — Improvement Priority List
 
-**Updated**: 2026-04-06
+**Updated**: 2026-04-22
 **Baseline**: v2.5.8 — 1 140 tests, 9 agent types, rich metrics pipeline, composition-invariant RNG.
 
 > **Purpose:** Prioritised list of unimplemented improvements.
@@ -120,14 +120,14 @@ Stop orders, iceberg orders, and circuit breakers belong in the **matching engin
 
 **Type:** Data infrastructure | **Effort:** Small
 
-**Problem:** `ExternalDataOracle` supports a `BatchDataProvider` protocol and ships a `DataFrameProvider`, but users who want to load data from files must write their own loader boilerplate.
+**Problem:** `ExternalDataOracle` supports a `BatchDataProvider` protocol and ships a `DataFrameProvider`. A minimal `CsvProvider(path)` already exists in `oracles/data_providers.py` as a skeleton, but it has no column-name parameters and no validation. `ParquetProvider` is absent entirely.
 
 **Motivation:** Convenience for researchers who have historical data in CSV or Parquet format and want to replay it through the simulator.
 
 **Implementation hints:**
-- Add `CsvProvider(path, symbol_col, time_col, price_col)` and `ParquetProvider(path, ...)` in `oracles/data_providers.py`.
-- Both implement `BatchDataProvider` protocol. Load data in `__init__`, serve via `get_data()`.
-- Validate column existence and price-in-cents convention at construction time.
+- Extend `CsvProvider` to accept `symbol_col`, `time_col`, `price_col` keyword arguments. Validate column existence and price-in-cents convention at construction time.
+- Add `ParquetProvider(path, symbol_col, time_col, price_col)` with the same interface, backed by `pd.read_parquet()`.
+- Both implement `BatchDataProvider` protocol; serve data via `get_data()`.
 
 ---
 
@@ -260,3 +260,102 @@ Stop orders, iceberg orders, and circuit breakers belong in the **matching engin
 - Remove `MeanRevertingOracleConfig` from `models.py` and the compiler's oracle dispatch.
 - Keep the `MeanRevertingOracle` class itself (for direct low-level use) but remove its config-system entry point.
 - Update docs and templates if any reference it.
+
+---
+
+## P2 — Simulation Science
+
+This section covers the infrastructure for understanding, validating, and calibrating simulations. Items are ordered by dependency: #18 (ensemble runner) is the foundation; #19–#22 build on it.
+
+```
+#18 ensemble runner
+    ├── #19 stylized facts scorecard
+    ├── #20 sensitivity analysis
+    └── #22 agent impact attribution
+
+#18 + #19 + #20 → #21 scenario calibrator
+```
+
+When implemented, these utilities live in `abides-markets/abides_markets/simulation/science.py` (or a `science/` subpackage).
+
+### 18. Multi-Seed Ensemble Runner
+
+**Type:** Infrastructure | **Effort:** Small
+
+**Problem:** Running a single simulation produces stochastic output — a single result is not a reliable estimate of a configuration's behaviour. There is no built-in utility to run the same config over multiple seeds and aggregate results.
+
+**Motivation:** Foundation for all other simulation-science items. Also directly useful for researchers who want confidence intervals on market quality metrics.
+
+**Implementation hints:**
+- `run_ensemble(config, n_seeds, n_jobs=-1, profile=ResultProfile.SUMMARY) -> EnsembleResult`.
+- Use `multiprocessing.Pool` (consistent with `HASUFEL_PARALLEL_SIMULATION.md`). Each worker calls `run_simulation(config.with_seed(seed))` with an independent seed.
+- `EnsembleResult` wraps a `pd.DataFrame` (one row per seed, one column per scalar metric) and exposes `.mean()`, `.std()`, `.ci(alpha=0.05)` helpers.
+- RNG safety: derive per-seed configs using `SimulationConfig.with_seed(seed)` so master-seed isolation is preserved.
+
+### 19. Stylized Facts Scorecard
+
+**Type:** Validation | **Effort:** Medium | **Depends on:** #18
+
+**Problem:** There is no programmatic way to measure whether a simulation produces realistic market microstructure. Currently, realism is assessed by visual inspection of metric printouts.
+
+**Motivation:** The empirical microstructure literature (Cont 2001) defines ~8 canonical stylized facts present in all liquid markets. A scorecard that checks them gives a single, reproducible quality signal — both for human review and as the objective function for the calibrator (#21).
+
+**Implementation hints:**
+- `score_stylized_facts(ensemble: EnsembleResult) -> StyleFacts` computing:
+  - **Return kurtosis** > 3 (fat tails)
+  - **Near-zero return autocorrelation** at lags 1–10 (efficient market)
+  - **Positive autocorrelation of absolute returns** at lags 1–20 (volatility clustering)
+  - **Negative volume–spread correlation** (spread widens in thin markets)
+  - **Bid-ask spread distribution** shape (right-skewed, power-law tail)
+- Each fact produces a pass/fail flag and a numeric score. `StyleFacts.composite_score` is the weighted mean (weights configurable).
+- Requires `ResultProfile.QUANT` for return series. Use the L1 mid-price series for return computation.
+- `StyleFacts` should be serialisable (`model_dump()`) for logging and comparison.
+
+### 20. Parameter Sensitivity Analysis
+
+**Type:** Analysis | **Effort:** Medium | **Depends on:** #18
+
+**Problem:** It is unknown which parameters most strongly influence simulation output metrics. Tuning is done by intuition, which scales poorly.
+
+**Motivation:** A sensitivity analysis identifies which parameters to focus on during calibration and which are near-irrelevant, reducing the calibrator's search dimensionality.
+
+**Implementation hints:**
+- `sensitivity_analysis(base_config, param_space, metric_keys, n_samples, n_seeds) -> SensitivityResult`.
+- `param_space`: dict mapping dotted parameter paths (e.g. `"noise_agent.wake_up_freq"`) to `(low, high)` ranges.
+- Sample the space via Latin Hypercube Sampling (`scipy.stats.qmc.LatinHypercube`). For each sample, patch the config, run the ensemble, record metric means.
+- Compute first-order sensitivity indices as Pearson correlation between parameter values and metric means across samples.
+- `SensitivityResult.matrix` is a `DataFrame[param × metric]` of correlation coefficients; expose `.plot_heatmap()` convenience method.
+
+### 21. Scenario Calibrator
+
+**Type:** Optimisation | **Effort:** Large | **Depends on:** #18, #19, #20
+
+**Problem:** Finding a configuration that produces target market behaviour (e.g., a specific spread, volatility, or volume regime) requires manual trial-and-error.
+
+**Motivation:** A calibrator makes the simulator usable as a model of a specific market. Two modes are supported:
+- **Stylized-facts mode**: find config that maximises `StyleFacts.composite_score` subject to optional metric constraints.
+- **Historical mode**: find config that minimises distance between simulated metric vector and an empirical metric vector derived from real L1/L2 data via the existing `BatchDataProvider` protocol.
+
+**Implementation hints:**
+- `calibrate(base_config, param_space, target, n_seeds, optimizer) -> CalibrationResult`.
+- `target` is either a `StyleFacts` target score or a `dict[str, float]` of metric targets extracted from historical data.
+- Objective function: `loss(params) = ensemble_mean_metric_distance(patched_config, target)`. Evaluated via `run_ensemble()`.
+- Optimizers: `"nelder_mead"` (fast, derivative-free) or `"differential_evolution"` (global, slower) via `scipy.optimize`.
+- `param_space` doubles as bounds for the optimizer.
+- Use sensitivity analysis (#20) output to reduce `param_space` to the top-K most influential parameters before running the optimizer — document this as the recommended workflow.
+- `CalibrationResult` includes: best config, best loss, convergence trace, and a `StyleFacts` score of the calibrated result.
+
+### 22. Agent Impact Attribution
+
+**Type:** Analysis | **Effort:** Small | **Depends on:** #18
+
+**Problem:** It is not clear which agent types drive which market-quality outcomes. Debugging misconfigured simulations requires guesswork.
+
+**Motivation:** Ablation studies identify causal relationships between agent populations and market phenomena (e.g., "removing noise agents collapses spread", "adding AMM halves no-bid time"). Useful for both model validation and debugging.
+
+**Implementation hints:**
+- `agent_impact(base_config, metric_keys, n_seeds) -> ImpactResult`.
+- For each agent group in the config: run the ensemble with that group removed (count=0) and with count halved.
+- `ImpactResult.delta_matrix` is a `DataFrame[agent_group × metric]` of absolute and relative metric changes vs. baseline.
+- Expose `.rank_by_impact(metric)` to surface the most influential agent group for a given metric.
+- Implementation note: "removing" a group means patching count to 0 via the same config-patching mechanism used by #20.
