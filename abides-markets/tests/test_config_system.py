@@ -39,13 +39,17 @@ from abides_markets.config_system.models import (
 
 class TestRegistry:
     def test_builtin_agents_registered(self):
-        """All 5 built-in agent types should be registered."""
+        """All built-in agent types should be registered."""
         names = registry.registered_names()
         assert "noise" in names
         assert "value" in names
         assert "momentum" in names
+        assert "mean_reversion" in names
         assert "adaptive_market_maker" in names
         assert "pov_execution" in names
+        assert "twap_execution" in names
+        assert "vwap_execution" in names
+        assert "impact_order" in names
 
     def test_get_existing_agent(self):
         entry = registry.get("noise")

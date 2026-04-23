@@ -9,6 +9,7 @@ your config class — see ``HASUFEL_CUSTOM_AGENT_GUIDE.md`` in ``docs/ai/``.
 
 from abides_markets.agents import (
     AdaptiveMarketMakerAgent,
+    ImpactOrderAgent,
     MeanReversionAgent,
     MomentumAgent,
     NoiseAgent,
@@ -19,6 +20,7 @@ from abides_markets.agents import (
 )
 from abides_markets.config_system.agent_configs import (
     AdaptiveMarketMakerConfig,
+    ImpactOrderAgentConfig,
     MeanReversionAgentConfig,
     MomentumAgentConfig,
     NoiseAgentConfig,
@@ -148,6 +150,20 @@ def _register_builtins() -> None:
         typical_count_range=(1, 1),
         recommended_with=("noise", "value", "adaptive_market_maker"),
     )(VWAPExecutionAgentConfig)
+
+    register_agent(
+        "impact_order",
+        agent_class=ImpactOrderAgent,
+        category="execution",
+        description=(
+            "Single-shot agent that fires one configurable order (MARKET, "
+            "LIMIT, or AGGRESSIVE_LIMIT) at a fixed offset from market open, "
+            "then becomes permanently inactive.  Designed for price-impact studies."
+        ),
+        requires_oracle=False,
+        typical_count_range=(1, 1),
+        recommended_with=("noise", "value", "adaptive_market_maker"),
+    )(ImpactOrderAgentConfig)
 
 
 _register_builtins()

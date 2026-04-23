@@ -1206,3 +1206,134 @@ class VWAPExecutionAgentConfig(BaseAgentConfig):
         kwargs["name"] = f"VWAP_EXECUTION_AGENT_{agent_id}"
         kwargs["type"] = "ExecutionAgent"
         return kwargs
+
+
+# ---------------------------------------------------------------------------
+# Impact Order Agent
+# ---------------------------------------------------------------------------
+class ImpactOrderAgentConfig(BaseAgentConfig):
+    """Configuration for ImpactOrderAgent — a single-shot order fired at a fixed time.
+
+    **Purpose**: price-impact studies.  The agent sits dormant until
+    ``order_time_offset`` after market open, fires exactly one order, then
+    becomes permanently inactive.
+
+    **Order types**:
+
+    - ``"MARKET"`` — plain market order; guaranteed to fill at whatever prices
+      exist, but may walk multiple levels in a thin book.
+    - ``"LIMIT"`` — limit order at ``limit_price`` (required for this mode);
+      rests in the book unfilled until the price is touched.
+    - ``"AGGRESSIVE_LIMIT"`` — queries the spread at execution time, then
+      places a limit at the best opposite-side price (buy at ask, sell at bid).
+      Fills immediately like a market order but avoids walking deeper into the
+      book.  Falls back to a market order with a warning if the book is empty.
+
+    **Typical use**::
+
+        config = (SimulationBuilder()
+            .from_template("rmsc04")
+            .enable_agent(
+                "impact_order",
+                order_time_offset="01:00:00",   # 1 hour after market open
+                side="BID",
+                quantity=10_000,
+                order_type="AGGRESSIVE_LIMIT",
+            )
+            .seed(42)
+            .build())
+    """
+
+    model_config = {"extra": "forbid"}
+
+    order_time_offset: str = Field(
+        description=(
+            "Duration from market open at which the order is fired.  "
+            "Format: ``'HH:MM:SS'`` or short forms such as ``'30min'``, ``'90s'``.  "
+            "The absolute nanosecond timestamp is computed at compile time as "
+            "``mkt_open + str_to_ns(order_time_offset)``.  "
+            "Must be strictly before market close."
+        ),
+        examples=["00:30:00", "01:00:00", "30min", "90min"],
+        json_schema_extra={"format": "duration"},
+    )
+    side: Literal["BID", "ASK"] = Field(
+        default="BID",
+        description=(
+            "Direction of the order: ``'BID'`` (buy) or ``'ASK'`` (sell).  "
+            "Determines whether the agent adds buying or selling pressure."
+        ),
+    )
+    quantity: int = Field(
+        ge=1,
+        description=(
+            "Number of shares in the single order.  Must be ≥ 1.  "
+            "For impact studies, large values (e.g. 10 000) produce measurable "
+            "mid-price displacement."
+        ),
+        examples=[100, 1_000, 10_000],
+    )
+    order_type: Literal["MARKET", "LIMIT", "AGGRESSIVE_LIMIT"] = Field(
+        default="MARKET",
+        description=(
+            "Execution style for the order:\n\n"
+            "- ``'MARKET'``: plain market order — fills immediately at the best "
+            "available prices, potentially walking the book.\n"
+            "- ``'LIMIT'``: limit order at ``limit_price``; rests in the book "
+            "until touched.  ``limit_price`` is **required** in this mode.\n"
+            "- ``'AGGRESSIVE_LIMIT'``: queries the spread at execution time and "
+            "places a limit at the near touch (buy at ask, sell at bid).  Fills "
+            "immediately without walking deeper into the book.  Falls back to a "
+            "market order if the book side is empty."
+        ),
+    )
+    limit_price: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Limit price in **integer cents** (e.g. $100.00 = ``10_000``).  "
+            "**Required** when ``order_type == 'LIMIT'``; ignored for "
+            "``'MARKET'`` and ``'AGGRESSIVE_LIMIT'``."
+        ),
+        examples=[10_000, 15_050],
+    )
+
+    @model_validator(mode="after")
+    def _check_limit_price_required(self) -> ImpactOrderAgentConfig:
+        if self.order_type == "LIMIT" and self.limit_price is None:
+            raise ValueError(
+                "ImpactOrderAgentConfig: 'limit_price' is required when "
+                "'order_type' is 'LIMIT'."
+            )
+        return self
+
+    _EXCLUDE_FROM_KWARGS: frozenset[str] = _BASE_EXCLUDE | frozenset(
+        {"order_time_offset", "side"}
+    )
+
+    def _prepare_constructor_kwargs(
+        self,
+        kwargs: dict[str, Any],
+        agent_id: int,
+        agent_rng: np.random.RandomState,
+        context: AgentCreationContext,
+    ) -> dict[str, Any]:
+        from abides_markets.orders import Side
+
+        kwargs = super()._prepare_constructor_kwargs(
+            kwargs, agent_id, agent_rng, context
+        )
+
+        order_time = context.mkt_open + str_to_ns(self.order_time_offset)
+        if order_time >= context.mkt_close:
+            raise ValueError(
+                f"ImpactOrderAgentConfig: order_time_offset '{self.order_time_offset}' "
+                f"places the order at or after market close "
+                f"(order_time={order_time}, mkt_close={context.mkt_close})."
+            )
+
+        kwargs["order_time"] = order_time
+        kwargs["side"] = Side.BID if self.side == "BID" else Side.ASK
+        kwargs["name"] = f"ImpactOrderAgent_{agent_id}"
+        kwargs["type"] = "ImpactOrderAgent"
+        return kwargs

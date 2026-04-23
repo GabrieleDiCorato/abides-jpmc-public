@@ -316,8 +316,26 @@ Each `AgentRegistryEntry` carries:
 | `noise` | background | No | 50–5,000 | value, adaptive_market_maker |
 | `value` | background | **Yes** | 10–500 | noise |
 | `momentum` | strategy | No | 1–50 | noise, value |
+| `mean_reversion` | strategy | No | 1–50 | noise, value |
 | `adaptive_market_maker` | market_maker | No | 1–5 | noise, value |
 | `pov_execution` | execution | No | 1–1 | noise, value, adaptive_market_maker |
+| `twap_execution` | execution | No | 1–1 | noise, value, adaptive_market_maker |
+| `vwap_execution` | execution | No | 1–1 | noise, value, adaptive_market_maker |
+| `impact_order` | execution | No | 1–1 | noise, value, adaptive_market_maker |
+
+`impact_order` fires exactly one order at a configurable offset from market open and then goes dormant — purpose-built for price-impact studies.  Key fields:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `order_time_offset` | `str` | **Yes** | — | Offset from market open, e.g. `"01:00:00"`, `"30min"` |
+| `side` | `"BID"\|"ASK"` | No | `"BID"` | Buy or sell |
+| `quantity` | `int ≥ 1` | **Yes** | — | Shares in the single order |
+| `order_type` | `"MARKET"\|"LIMIT"\|"AGGRESSIVE_LIMIT"` | No | `"MARKET"` | See below |
+| `limit_price` | `int \| None` | No† | `None` | Cents, e.g. `10_000` = $100.00 |
+
+†Required when `order_type == "LIMIT"`.
+
+`AGGRESSIVE_LIMIT` crosses the spread at execution time (buy at ask / sell at bid), filling immediately without walking deeper into the book.  Falls back to a market order if the book side is empty.
 
 ### Registering a custom agent
 
