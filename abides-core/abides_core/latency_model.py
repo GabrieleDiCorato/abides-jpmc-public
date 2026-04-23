@@ -129,10 +129,10 @@ class LatencyModel:
 
             # Now apply the cubic model to compute jitter and the final message latency.
             latency = min_latency + ((a / x**3) * (min_latency / unit))
-            return latency
+            return float(latency)
 
         else:  # self.latency_model == 'deterministic'
-            return min_latency
+            return float(min_latency)
 
     def _extract(self, param: Union[float, np.ndarray], sid: int, rid: int):
         """Internal function to extract correct values for a sender->recipient

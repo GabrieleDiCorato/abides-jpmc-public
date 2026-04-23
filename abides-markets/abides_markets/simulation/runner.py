@@ -339,7 +339,7 @@ def _extract_result(
             equity_curve = _extract_equity_curve(agent) if extract_equity else None
             agent_data.append(
                 _extract_agent_data(
-                    agent, exchange_last_trades, symbol_liquidity, equity_curve
+                    agent, exchange_last_trades, symbol_liquidity, equity_curve  # type: ignore[arg-type]
                 )
             )
 

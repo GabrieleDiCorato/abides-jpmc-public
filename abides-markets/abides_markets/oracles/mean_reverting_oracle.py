@@ -149,7 +149,7 @@ class MeanRevertingOracle(Oracle):
         open_price = self.r[symbol].loc[pd.Timestamp(self.mkt_open, unit="ns")]
         logger.debug("Oracle: market open price was was {}", open_price)
 
-        return open_price
+        return int(open_price)
 
     def observe_price(
         self,

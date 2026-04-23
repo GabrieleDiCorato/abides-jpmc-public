@@ -16,9 +16,8 @@ Covers:
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -30,7 +29,7 @@ from abides_markets.orders import Side
 # ---------------------------------------------------------------------------
 # Shared time constants (must match conftest.py so make_agent() is consistent)
 # ---------------------------------------------------------------------------
-from tests.conftest import MKT_CLOSE, MKT_OPEN, make_agent  # type: ignore[import]
+from tests.conftest import MKT_CLOSE, MKT_OPEN, make_agent
 
 ORDER_TIME: int = MKT_OPEN + str_to_ns("01:00:00")
 
@@ -47,7 +46,7 @@ def _make_impact_agent(**kwargs: Any) -> ImpactOrderAgent:
         quantity=100,
     )
     defaults.update(kwargs)
-    return make_agent(ImpactOrderAgent, **defaults)
+    return make_agent(ImpactOrderAgent, **defaults)  # type: ignore[no-any-return]
 
 
 # ---------------------------------------------------------------------------
@@ -109,9 +108,7 @@ class TestWakeupEarlyArrival:
 
         with patch.object(agent, "set_wakeup") as mock_wakeup:
             # Patch super().wakeup to return True (market is open).
-            with patch.object(
-                type(agent).__mro__[1], "wakeup", return_value=True
-            ):
+            with patch.object(type(agent).__mro__[1], "wakeup", return_value=True):
                 agent.wakeup(early)
             mock_wakeup.assert_called_once_with(ORDER_TIME)
 
@@ -122,13 +119,13 @@ class TestWakeupEarlyArrival:
         early = ORDER_TIME - str_to_ns("30min")
         agent.current_time = early
 
-        with patch.object(agent, "_submit_order") as mock_submit:
-            with patch.object(agent, "set_wakeup"):
-                with patch.object(
-                    type(agent).__mro__[1], "wakeup", return_value=True
-                ):
-                    agent.wakeup(early)
-            mock_submit.assert_not_called()
+        with (
+            patch.object(agent, "_submit_order") as mock_submit,
+            patch.object(agent, "set_wakeup"),
+            patch.object(type(agent).__mro__[1], "wakeup", return_value=True),
+        ):
+            agent.wakeup(early)
+        mock_submit.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -148,9 +145,7 @@ class TestWakeupOnTimeDirect:
         agent.current_time = ORDER_TIME
 
         with patch.object(agent, "_submit_order") as mock_submit:
-            with patch.object(
-                type(agent).__mro__[1], "wakeup", return_value=True
-            ):
+            with patch.object(type(agent).__mro__[1], "wakeup", return_value=True):
                 agent.wakeup(ORDER_TIME)
             mock_submit.assert_called_once()
 
@@ -160,13 +155,13 @@ class TestWakeupOnTimeDirect:
         agent = _make_impact_agent(order_type="MARKET")
         agent.current_time = ORDER_TIME
 
-        with patch.object(agent, "get_current_spread") as mock_spread:
-            with patch.object(agent, "_submit_order"):
-                with patch.object(
-                    type(agent).__mro__[1], "wakeup", return_value=True
-                ):
-                    agent.wakeup(ORDER_TIME)
-            mock_spread.assert_not_called()
+        with (
+            patch.object(agent, "get_current_spread") as mock_spread,
+            patch.object(agent, "_submit_order"),
+            patch.object(type(agent).__mro__[1], "wakeup", return_value=True),
+        ):
+            agent.wakeup(ORDER_TIME)
+        mock_spread.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -180,9 +175,7 @@ class TestWakeupAggressiveLimit:
         agent.current_time = ORDER_TIME
 
         with patch.object(agent, "get_current_spread") as mock_spread:
-            with patch.object(
-                type(agent).__mro__[1], "wakeup", return_value=True
-            ):
+            with patch.object(type(agent).__mro__[1], "wakeup", return_value=True):
                 agent.wakeup(ORDER_TIME)
             mock_spread.assert_called_once_with(agent.symbol)
 
@@ -192,13 +185,13 @@ class TestWakeupAggressiveLimit:
         agent = _make_impact_agent(order_type="AGGRESSIVE_LIMIT")
         agent.current_time = ORDER_TIME
 
-        with patch.object(agent, "_submit_order") as mock_submit:
-            with patch.object(agent, "get_current_spread"):
-                with patch.object(
-                    type(agent).__mro__[1], "wakeup", return_value=True
-                ):
-                    agent.wakeup(ORDER_TIME)
-            mock_submit.assert_not_called()
+        with (
+            patch.object(agent, "_submit_order") as mock_submit,
+            patch.object(agent, "get_current_spread"),
+            patch.object(type(agent).__mro__[1], "wakeup", return_value=True),
+        ):
+            agent.wakeup(ORDER_TIME)
+        mock_submit.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -213,9 +206,7 @@ class TestWakeupMarketClosed:
         agent.current_time = ORDER_TIME
 
         with patch.object(agent, "_submit_order") as mock_submit:
-            with patch.object(
-                type(agent).__mro__[1], "wakeup", return_value=False
-            ):
+            with patch.object(type(agent).__mro__[1], "wakeup", return_value=False):
                 agent.wakeup(ORDER_TIME)
             mock_submit.assert_not_called()
 
@@ -234,9 +225,7 @@ class TestWakeupDoneIgnored:
         agent.current_time = ORDER_TIME
 
         with patch.object(agent, "_submit_order") as mock_submit:
-            with patch.object(
-                type(agent).__mro__[1], "wakeup", return_value=True
-            ):
+            with patch.object(type(agent).__mro__[1], "wakeup", return_value=True):
                 agent.wakeup(ORDER_TIME + str_to_ns("1min"))
             mock_submit.assert_not_called()
 
@@ -322,9 +311,7 @@ class TestSubmitOrder:
         mock_mo.assert_called_once_with(agent.symbol, 500, agent.side)
 
     def test_limit_order_calls_place_limit(self):
-        agent = _make_impact_agent(
-            order_type="LIMIT", quantity=200, limit_price=9_950
-        )
+        agent = _make_impact_agent(order_type="LIMIT", quantity=200, limit_price=9_950)
 
         with patch.object(agent, "place_limit_order") as mock_lo:
             agent._submit_order()
@@ -364,10 +351,12 @@ class TestSubmitOrder:
         agent.known_bids["TEST"] = []
         agent.known_asks["TEST"] = [(10_010, 300)]
 
-        with patch.object(agent, "place_market_order") as mock_mo:
-            with patch.object(agent, "place_limit_order") as mock_lo:
-                with pytest.warns(RuntimeWarning, match="book side is empty"):
-                    agent._submit_order()
+        with (
+            patch.object(agent, "place_market_order") as mock_mo,
+            patch.object(agent, "place_limit_order") as mock_lo,
+            pytest.warns(RuntimeWarning, match="book side is empty"),
+        ):
+            agent._submit_order()
         mock_mo.assert_called_once_with(agent.symbol, 100, Side.ASK)
         mock_lo.assert_not_called()
 
@@ -379,9 +368,11 @@ class TestSubmitOrder:
         agent.known_bids["TEST"] = [(9_990, 300)]
         agent.known_asks["TEST"] = []
 
-        with patch.object(agent, "place_market_order") as mock_mo:
-            with pytest.warns(RuntimeWarning, match="book side is empty"):
-                agent._submit_order()
+        with (
+            patch.object(agent, "place_market_order") as mock_mo,
+            pytest.warns(RuntimeWarning, match="book side is empty"),
+        ):
+            agent._submit_order()
         mock_mo.assert_called_once_with(agent.symbol, 100, Side.BID)
 
     def test_aggressive_limit_completely_empty_book_falls_back_to_market(self):
@@ -392,9 +383,11 @@ class TestSubmitOrder:
         agent.known_bids["TEST"] = []
         agent.known_asks["TEST"] = []
 
-        with patch.object(agent, "place_market_order") as mock_mo:
-            with pytest.warns(RuntimeWarning):
-                agent._submit_order()
+        with (
+            patch.object(agent, "place_market_order") as mock_mo,
+            pytest.warns(RuntimeWarning),
+        ):
+            agent._submit_order()
         mock_mo.assert_called_once()
 
 
@@ -519,7 +512,10 @@ class TestImpactOrderAgentConfig:
             side="BID",
         )
         agents = cfg.create_agents(
-            count=1, id_start=0, master_rng=np.random.RandomState(1), context=self._ctx()
+            count=1,
+            id_start=0,
+            master_rng=np.random.RandomState(1),
+            context=self._ctx(),
         )
         assert agents[0].side == Side.BID
 
@@ -532,7 +528,10 @@ class TestImpactOrderAgentConfig:
             side="ASK",
         )
         agents = cfg.create_agents(
-            count=1, id_start=0, master_rng=np.random.RandomState(1), context=self._ctx()
+            count=1,
+            id_start=0,
+            master_rng=np.random.RandomState(1),
+            context=self._ctx(),
         )
         assert agents[0].side == Side.ASK
 
@@ -546,7 +545,10 @@ class TestImpactOrderAgentConfig:
             limit_price=10_500,
         )
         agents = cfg.create_agents(
-            count=1, id_start=0, master_rng=np.random.RandomState(1), context=self._ctx()
+            count=1,
+            id_start=0,
+            master_rng=np.random.RandomState(1),
+            context=self._ctx(),
         )
         assert agents[0].limit_price == 10_500
 
@@ -558,7 +560,10 @@ class TestImpactOrderAgentConfig:
             quantity=100,
         )
         agents = cfg.create_agents(
-            count=1, id_start=7, master_rng=np.random.RandomState(1), context=self._ctx()
+            count=1,
+            id_start=7,
+            master_rng=np.random.RandomState(1),
+            context=self._ctx(),
         )
         assert agents[0].name == "ImpactOrderAgent_7"
         assert agents[0].type == "ImpactOrderAgent"
@@ -571,7 +576,10 @@ class TestImpactOrderAgentConfig:
             quantity=100,
         )
         agents = cfg.create_agents(
-            count=3, id_start=10, master_rng=np.random.RandomState(1), context=self._ctx()
+            count=3,
+            id_start=10,
+            master_rng=np.random.RandomState(1),
+            context=self._ctx(),
         )
         assert agents[0].name == "ImpactOrderAgent_10"
         assert agents[1].name == "ImpactOrderAgent_11"
@@ -722,9 +730,7 @@ class TestImpactOrderBuilderIntegration:
             .build()
         )
         runtime = compile(config)
-        impact = next(
-            a for a in runtime["agents"] if isinstance(a, ImpactOrderAgent)
-        )
+        impact = next(a for a in runtime["agents"] if isinstance(a, ImpactOrderAgent))
         assert impact.side == Side.ASK
         assert impact.order_type == "AGGRESSIVE_LIMIT"
 
@@ -751,8 +757,6 @@ class TestImpactOrderBuilderIntegration:
             .build()
         )
         runtime = compile(config)
-        impact = next(
-            a for a in runtime["agents"] if isinstance(a, ImpactOrderAgent)
-        )
+        impact = next(a for a in runtime["agents"] if isinstance(a, ImpactOrderAgent))
         assert impact.limit_price == 9_800
         assert impact.order_type == "LIMIT"

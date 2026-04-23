@@ -82,7 +82,7 @@ def generate_uniform_random_pairwise_dist_on_line(
     x_coords = random_state.uniform(low=left, high=right, size=num_points)
     x_coords = x_coords.reshape((x_coords.size, 1))
     out = pdist(x_coords, "euclidean")
-    return squareform(out)
+    return squareform(out)  # type: ignore[no-any-return]
 
 
 def meters_to_light_ns(x):
@@ -142,7 +142,7 @@ def dollarize(cents: Union[list[int], int]) -> Union[list[str], str]:
     """
 
     if isinstance(cents, list):
-        return [dollarize(x) for x in cents]
+        return [dollarize(x) for x in cents]  # type: ignore[misc]
     elif isinstance(cents, (int, np.int64)):
         return f"${cents / 100:0.2f}"
     else:

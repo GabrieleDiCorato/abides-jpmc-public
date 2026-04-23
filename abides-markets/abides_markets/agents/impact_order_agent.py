@@ -144,9 +144,7 @@ class ImpactOrderAgent(TradingAgent):
                 f"Must be one of {sorted(_VALID_ORDER_TYPES)}."
             )
         if quantity < 1:
-            raise ValueError(
-                f"ImpactOrderAgent: quantity must be ≥ 1, got {quantity}."
-            )
+            raise ValueError(f"ImpactOrderAgent: quantity must be ≥ 1, got {quantity}.")
         if order_type == _ORDER_TYPE_LIMIT and limit_price is None:
             raise ValueError(
                 "ImpactOrderAgent: limit_price is required when order_type is 'LIMIT'."
@@ -264,9 +262,7 @@ class ImpactOrderAgent(TradingAgent):
                 )
                 self.place_market_order(self.symbol, self.quantity, self.side)
             else:
-                self.place_limit_order(
-                    self.symbol, self.quantity, self.side, price
-                )
+                self.place_limit_order(self.symbol, self.quantity, self.side, price)
 
         logger.debug(
             "{} submitted {} {} {} shares (order_type={}).",

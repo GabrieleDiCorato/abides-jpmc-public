@@ -348,7 +348,7 @@ class L2Snapshots(BaseModel):
 
     @field_serializer("times_ns")
     def _serialize_times(self, arr: np.ndarray) -> list:
-        return arr.tolist()
+        return arr.tolist()  # type: ignore[no-any-return]
 
 
 # ---------------------------------------------------------------------------
@@ -720,7 +720,7 @@ class SimulationResult(BaseModel):
         if df is None:
             return None
         # Coerce non-JSON-native types (NaN → None, numpy ints → int)
-        return json.loads(df.to_json(orient="records"))
+        return json.loads(df.to_json(orient="records"))  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------ public API
 
@@ -850,11 +850,11 @@ class SimulationResult(BaseModel):
         Use :meth:`to_json` for a JSON string.  Your server can store / forward
         this dict without any ABIDES-internal knowledge.
         """
-        return json.loads(self.model_dump_json())
+        return json.loads(self.model_dump_json())  # type: ignore[no-any-return]
 
     def to_json(self) -> str:
         """Return a JSON string representation of this result."""
-        return self.model_dump_json()
+        return self.model_dump_json()  # type: ignore[no-any-return]
 
     def summary_dict(self) -> dict[str, Any]:
         """Return structured summary data for dashboard widgets.

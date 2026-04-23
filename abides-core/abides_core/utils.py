@@ -47,7 +47,7 @@ def restrictdict(d: dict[str, Any], keys: list[str]) -> dict[str, Any]:
 
 def custom_eq(a: Any, b: Any) -> bool:
     """returns a==b or True if both a and b are null"""
-    return (a == b) | ((a != a) & (b != b))
+    return bool((a == b) | ((a != a) & (b != b)))
 
 
 # Utility function to get agent wake up times to follow a U-quadratic distribution.
@@ -71,9 +71,9 @@ def get_wake_time(open_time, close_time, random_state, a=0, b=1) -> NanosecondTi
         """Helper function: returns *real* cube root of a float."""
 
         if n < 0:
-            return -((-n) ** (1.0 / 3.0))
+            return float(-((-n) ** (1.0 / 3.0)))
         else:
-            return n ** (1.0 / 3.0)
+            return float(n ** (1.0 / 3.0))
 
     #  Use inverse transform sampling to obtain variable sampled from U-quadratic
     def u_quadratic_inverse_cdf(y):
@@ -86,14 +86,14 @@ def get_wake_time(open_time, close_time, random_state, a=0, b=1) -> NanosecondTi
     random_multiplier = u_quadratic_inverse_cdf(uniform_0_1)
     wake_time = open_time + random_multiplier * (close_time - open_time)
 
-    return wake_time
+    return int(wake_time)
 
 
 def fmt_ts(timestamp: NanosecondTime) -> str:
     """
     Converts a timestamp stored as nanoseconds into a human readable string.
     """
-    return pd.Timestamp(timestamp, unit="ns").strftime("%Y-%m-%d %H:%M:%S")
+    return pd.Timestamp(timestamp, unit="ns").strftime("%Y-%m-%d %H:%M:%S")  # type: ignore[no-any-return]
 
 
 def str_to_ns(string: str | NanosecondTime) -> NanosecondTime:
@@ -138,7 +138,7 @@ def datetime_str_to_ns(string: str) -> NanosecondTime:
     Arguments:
         string: String to convert into nanoseconds. Uses Pandas to do this.
     """
-    return pd.Timestamp(string).value
+    return int(pd.Timestamp(string).value)
 
 
 def ns_date(ns_datetime: NanosecondTime) -> NanosecondTime:
