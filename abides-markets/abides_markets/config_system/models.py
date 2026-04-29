@@ -431,7 +431,6 @@ class SimulationConfig(BaseModel):
     """
 
     market: MarketConfig = Field(
-        default_factory=MarketConfig,
         description="Market parameters.",
     )
     agents: dict[str, AgentGroupConfig] = Field(

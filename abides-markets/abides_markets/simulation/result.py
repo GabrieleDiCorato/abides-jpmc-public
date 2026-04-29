@@ -26,7 +26,7 @@ SimulationResult
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -241,14 +241,17 @@ class L1Snapshots(BaseModel):
     def as_dataframe(self) -> DataFrame[L1DataFrameSchema]:
         """Return a validated :class:`~pandas.DataFrame` with schema
         :class:`~abides_markets.simulation.schemas.L1DataFrameSchema`."""
-        return pd.DataFrame(
-            {
-                "time_ns": pd.array(self.times_ns, dtype="Int64"),
-                "bid_price_cents": pd.array(self.bid_prices, dtype="Int64"),
-                "bid_qty": pd.array(self.bid_quantities, dtype="Int64"),
-                "ask_price_cents": pd.array(self.ask_prices, dtype="Int64"),
-                "ask_qty": pd.array(self.ask_quantities, dtype="Int64"),
-            }
+        return cast(
+            DataFrame[L1DataFrameSchema],
+            pd.DataFrame(
+                {
+                    "time_ns": pd.array(self.times_ns, dtype="Int64"),
+                    "bid_price_cents": pd.array(self.bid_prices, dtype="Int64"),
+                    "bid_qty": pd.array(self.bid_quantities, dtype="Int64"),
+                    "ask_price_cents": pd.array(self.ask_prices, dtype="Int64"),
+                    "ask_qty": pd.array(self.ask_quantities, dtype="Int64"),
+                }
+            ),
         )
 
     @field_serializer(
@@ -326,15 +329,18 @@ class L2Snapshots(BaseModel):
                     }
                 )
         if not rows:
-            return pd.DataFrame(
-                columns=["time_ns", "side", "level", "price_cents", "qty"]
-            ).astype(
-                {
-                    "time_ns": "Int64",
-                    "level": "Int64",
-                    "price_cents": "Int64",
-                    "qty": "Int64",
-                }
+            return cast(
+                DataFrame[L2DataFrameSchema],
+                pd.DataFrame(
+                    columns=["time_ns", "side", "level", "price_cents", "qty"]
+                ).astype(
+                    {
+                        "time_ns": "Int64",
+                        "level": "Int64",
+                        "price_cents": "Int64",
+                        "qty": "Int64",
+                    }
+                ),
             )
         df = pd.DataFrame(rows).astype(
             {
@@ -344,7 +350,7 @@ class L2Snapshots(BaseModel):
                 "qty": "Int64",
             }
         )
-        return df
+        return cast(DataFrame[L2DataFrameSchema], df)
 
     @field_serializer("times_ns")
     def _serialize_times(self, arr: np.ndarray) -> list:
@@ -842,7 +848,7 @@ class SimulationResult(BaseModel):
         for col in ("fill_price", "limit_price"):
             if col not in filtered.columns:
                 filtered[col] = pd.array([None] * len(filtered), dtype="Int64")
-        return filtered
+        return cast(DataFrame[OrderLogsSchema], filtered)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a fully JSON-serialisable dict (no numpy arrays, no DataFrames).
@@ -854,7 +860,7 @@ class SimulationResult(BaseModel):
 
     def to_json(self) -> str:
         """Return a JSON string representation of this result."""
-        return self.model_dump_json()  # type: ignore[no-any-return]
+        return self.model_dump_json()
 
     def summary_dict(self) -> dict[str, Any]:
         """Return structured summary data for dashboard widgets.

@@ -15,12 +15,12 @@ from abides_markets.config_system.models import SimulationConfig
 
 def config_to_dict(config: SimulationConfig) -> dict[str, Any]:
     """Convert a SimulationConfig to a JSON-serializable dict."""
-    return config.model_dump(mode="json")  # type: ignore[no-any-return]
+    return config.model_dump(mode="json")
 
 
 def config_from_dict(d: dict[str, Any]) -> SimulationConfig:
     """Create a SimulationConfig from a parsed dict (validates on construction)."""
-    return SimulationConfig.model_validate(d)  # type: ignore[no-any-return]
+    return SimulationConfig.model_validate(d)
 
 
 def save_config(config: SimulationConfig, path: Union[str, Path]) -> None:
