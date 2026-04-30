@@ -1,5 +1,5 @@
-import itertools
-from dataclasses import dataclass, field
+import warnings
+from dataclasses import dataclass
 
 
 @dataclass
@@ -12,22 +12,21 @@ class Message:
     The body may be overridden by specific message type subclasses.
     """
 
-    # The autoincrementing variable here will ensure that, when Messages are due for
-    # delivery at the same time step, the Message that was created first is delivered
-    # first. (Which is not important, but Python 3 requires a fully resolved chain of
-    # priority in all cases, so we need something consistent) We might want to generate
-    # these with stochasticity, but guarantee uniqueness somehow, to make delivery of
-    # orders at the same exact timestamp "random" instead of "arbitrary" (FIFO among
-    # tied times) as it currently is.
-    _message_id_generator = itertools.count(1)
-    message_id: int = field(init=False)
+    @property
+    def message_id(self) -> int:
+        """Deprecated: use the kernel's heap entries for ordering instead.
 
-    def __post_init__(self):
-        self.message_id: int = next(Message._message_id_generator)
-
-    def __lt__(self, other: "Message") -> bool:
-        # Required by Python3 for this object to be placed in a priority queue.
-        return self.message_id < other.message_id
+        Returns ``id(self)`` so existing callers do not crash. Heap
+        ordering inside the kernel uses a per-kernel sequence counter
+        embedded in ``_HeapEntry`` and never reads this attribute.
+        """
+        warnings.warn(
+            "Message.message_id is deprecated and will be removed; "
+            "kernel heap ordering uses a per-kernel sequence counter.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return id(self)
 
     def type(self) -> str:
         return self.__class__.__name__

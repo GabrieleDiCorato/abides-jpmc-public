@@ -4,6 +4,32 @@ Unreleased
 Bug Fixes
 ---------
 
+* **Dispatch ordering & heap refactor (PR 3 of kernel improvements).**
+
+  - Fixed a latent bug where ``Agent.delay()`` calls inside a message
+    handler were silently dropped. The kernel now advances the
+    recipient's ``agent_current_times`` *after* dispatch, so any
+    ``delay()`` accumulated during ``wakeup()`` /
+    ``receive_message()`` correctly shifts the agent's next slot.
+  - Replaced the raw ``(deliver_at, (sender, recipient, message))``
+    heap entries with an ordered ``_HeapEntry`` dataclass keyed on a
+    per-kernel monotonic ``seq`` counter (reset by
+    ``Kernel.initialize()``). Messages no longer need to be orderable
+    and no global counter is touched at construction.
+  - ``Message.__lt__`` and the global ``_message_id_generator`` have
+    been removed. ``Message.message_id`` survives as a deprecated
+    property returning ``id(self)`` (emits ``DeprecationWarning``).
+  - ``Kernel.set_wakeup`` now reuses a module-level ``_WAKEUP_SINGLETON``
+    instead of constructing a fresh ``WakeupMsg`` for every wakeup.
+  - The two-branch ``runner()`` dispatch loop has been collapsed into a
+    single path: in-future requeue, then a class-identity dispatch
+    (``WakeupMsg`` / ``MessageBatch`` / regular). ``MessageBatch``
+    sub-messages still receive a single computation delay between
+    deliveries.
+  - Direct heap manipulation outside the kernel is no longer
+    supported; tests and callers should use ``Kernel._enqueue`` (or
+    the public ``send_message`` / ``set_wakeup`` APIs).
+
 * **Kernel state hygiene (PR 2 of kernel improvements).**
 
   - ``Kernel.initialize()`` now clears per-run state (``messages``,

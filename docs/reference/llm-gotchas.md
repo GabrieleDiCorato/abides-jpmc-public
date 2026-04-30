@@ -685,6 +685,32 @@ emits `DeprecationWarning` and falls back to OS entropy. Notebooks and
 ad-hoc scripts should pass `seed=<int>` or
 `random_state=np.random.RandomState(<int>)` for reproducibility.
 
+## Heap entries are `_HeapEntry` dataclasses (added 2026-04)
+
+The kernel's event queue stores `_HeapEntry(deliver_at, seq,
+sender_id, recipient_id, message)` instances, ordered by `(deliver_at,
+seq)`. `seq` is a per-kernel monotonic counter reset by
+`Kernel.initialize()`. Do not push raw tuples onto `kernel.messages`
+— use `Kernel._enqueue(...)` (or the public `send_message` /
+`set_wakeup` APIs).
+
+`Message.__lt__` no longer exists; comparing two `Message` instances
+will raise `TypeError`. `Message.message_id` survives only as a
+deprecated property returning `id(self)` and emits
+`DeprecationWarning` when accessed.
+
+`Kernel.set_wakeup` reuses a module-level `_WAKEUP_SINGLETON`. Do not
+mutate `WakeupMsg` instances — they may be shared.
+
+## `Agent.delay()` works inside `receive_message()` (fixed 2026-04)
+
+Prior to PR 3 of the kernel improvements, calls to `self.delay(N)`
+made inside `receive_message()` were silently dropped because the
+kernel advanced the agent's "busy until" time *before* dispatch. The
+runner now advances `agent_current_times[recipient_id]` *after*
+dispatch, so `delay()` calls inside both `wakeup()` and
+`receive_message()` correctly shift the agent's next slot.
+
 ---
 
 ## See Also

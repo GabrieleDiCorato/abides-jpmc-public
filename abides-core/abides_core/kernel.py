@@ -3,6 +3,7 @@ import logging
 import os
 import warnings
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -19,6 +20,30 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_START_TIME: int = str_to_ns("09:30:00")
 _DEFAULT_STOP_TIME: int = str_to_ns("16:00:00")
+
+
+# Single shared instance: WakeupMsg carries no data, so reusing one
+# instance saves an allocation per scheduled wakeup.
+_WAKEUP_SINGLETON = WakeupMsg()
+
+
+@dataclass(order=True)
+class _HeapEntry:
+    """Heap entry used by the kernel's event queue.
+
+    Ordering is by ``(deliver_at, seq)`` only; sender / recipient /
+    message are excluded from comparison so messages do not need to be
+    orderable themselves. ``seq`` is a per-kernel monotonic counter
+    that breaks ties deterministically and resets on
+    ``Kernel.initialize()``.
+    """
+
+    deliver_at: int
+    seq: int
+    sender_id: int = field(compare=False)
+    recipient_id: int = field(compare=False)
+    message: Message = field(compare=False)
+
 
 # Attribute names that the kernel manages itself. ``custom_properties`` may
 # not shadow these because doing so silently corrupts simulation state.
@@ -134,7 +159,12 @@ class Kernel:
 
         # A single message queue to keep everything organized by increasing
         # delivery timestamp.
-        self.messages: list[tuple[int, tuple[int, int, Message]]] = []
+        self.messages: list[_HeapEntry] = []
+
+        # Per-kernel monotonic counter used as the heap tiebreaker. Reset
+        # by initialize() so seeded simulations are reproducible across
+        # kernel.reset() and across parallel workers in the same process.
+        self._next_seq: int = 0
 
         # Timestamp at which the Kernel was created.  Primarily used to
         # create a unique log directory for this run.  Also used to
@@ -314,6 +344,7 @@ class Kernel:
         self.custom_state.clear()
         self.summary_log.clear()
         self.messages.clear()
+        self._next_seq = 0
         self.current_agent_additional_delay = 0
 
         # Note that num_simulations has not yet been really used or tested
@@ -397,26 +428,30 @@ class Kernel:
             and (self.current_time <= self.stop_time)
         ):
             # Get the next message in timestamp order (delivery time) and extract it.
-            self.current_time, event = heapq.heappop(self.messages)
-
-            sender_id, recipient_id, message = event
+            entry = heapq.heappop(self.messages)
+            self.current_time = entry.deliver_at
+            sender_id = entry.sender_id
+            recipient_id = entry.recipient_id
+            message = entry.message
 
             # Periodically print the simulation time and total messages, even if muted.
             if self.ttl_messages % 100000 == 0:
                 logger.info(
-                    "--- Simulation time: {}, messages processed: {:,}, wallclock elapsed: {:.2f}s ---".format(
-                        fmt_ts(self.current_time),
-                        self.ttl_messages,
-                        (
-                            datetime.now() - self.event_queue_wall_clock_start
-                        ).total_seconds(),
-                    )
+                    "--- Simulation time: %s, messages processed: %s, wallclock elapsed: %.2fs ---",
+                    fmt_ts(self.current_time),
+                    f"{self.ttl_messages:,}",
+                    (
+                        datetime.now() - self.event_queue_wall_clock_start
+                    ).total_seconds(),
                 )
 
             if self.show_trace_messages:
                 logger.debug("--- Kernel Event Queue pop ---")
                 logger.debug(
-                    f"Kernel handling {message.type()} message for agent {recipient_id} at time {self.current_time}"
+                    "Kernel handling %s message for agent %d at time %s",
+                    message.type(),
+                    recipient_id,
+                    self.current_time,
                 )
 
             self.ttl_messages += 1
@@ -424,88 +459,57 @@ class Kernel:
             # In between messages, always reset the current_agent_additional_delay.
             self.current_agent_additional_delay = 0
 
-            # Dispatch message to agent.
-            if isinstance(message, WakeupMsg):
-                # Test to see if the agent is already in the future.  If so,
-                # delay the wakeup until the agent can act again.
-                if self.agent_current_times[recipient_id] > self.current_time:
-                    # Push the wakeup call back into the PQ with a new time.
-                    heapq.heappush(
-                        self.messages,
-                        (
-                            self.agent_current_times[recipient_id],
-                            (sender_id, recipient_id, message),
-                        ),
+            # If the agent is busy in the future, requeue at its busy-until time.
+            if self.agent_current_times[recipient_id] > self.current_time:
+                self._enqueue(
+                    self.agent_current_times[recipient_id],
+                    sender_id,
+                    recipient_id,
+                    message,
+                )
+                if self.show_trace_messages:
+                    logger.debug(
+                        "Agent in future: requeued for %s",
+                        fmt_ts(self.agent_current_times[recipient_id]),
                     )
-                    if self.show_trace_messages:
-                        logger.debug(
-                            f"After wakeup return, agent {recipient_id} delayed from {fmt_ts(self.current_time)} to {fmt_ts(self.agent_current_times[recipient_id])}"
-                        )
-                    continue
+                continue
 
-                # Set agent's current time to global current time for start
-                # of processing.
-                self.agent_current_times[recipient_id] = self.current_time
+            # Set agent's current time to global current time for start of processing.
+            self.agent_current_times[recipient_id] = self.current_time
 
-                # Wake the agent and get value passed to kernel to listen for kernel interruption signal
+            # Dispatch.
+            wakeup_result: Any = None
+            if message.__class__ is WakeupMsg:
                 wakeup_result = self.agents[recipient_id].wakeup(self.current_time)
-
-                # Delay the agent by its computation delay plus any transient additional delay requested.
-                self.agent_current_times[recipient_id] += (
-                    self.agent_computation_delays[recipient_id]
-                    + self.current_agent_additional_delay
-                )
-
-                if self.show_trace_messages:
-                    logger.debug(
-                        f"After wakeup return, agent {recipient_id} delayed from {fmt_ts(self.current_time)} to {fmt_ts(self.agent_current_times[recipient_id])}"
-                    )
-                # catch kernel interruption signal and return wakeup_result which is the raw state from gym agent
-                if wakeup_result is not None:
-                    return {"done": False, "result": wakeup_result}
-            else:
-                # Test to see if the agent is already in the future.  If so,
-                # delay the message until the agent can act again.
-                if self.agent_current_times[recipient_id] > self.current_time:
-                    # Push the message back into the PQ with a new time.
-                    heapq.heappush(
-                        self.messages,
-                        (
-                            self.agent_current_times[recipient_id],
-                            (sender_id, recipient_id, message),
-                        ),
-                    )
-                    if self.show_trace_messages:
-                        logger.debug(
-                            f"Agent in future: message requeued for {fmt_ts(self.agent_current_times[recipient_id])}"
-                        )
-                    continue
-
-                # Set agent's current time to global current time for start
-                # of processing.
-                self.agent_current_times[recipient_id] = self.current_time
-
-                # Deliver the message.
-                # Apply computation delay ONCE per delivery (not per
-                # individual message inside a batch).
-                self.agent_current_times[recipient_id] += (
-                    self.agent_computation_delays[recipient_id]
-                    + self.current_agent_additional_delay
-                )
-
-                messages = (
-                    message.messages if isinstance(message, MessageBatch) else [message]
-                )
-
-                if self.show_trace_messages:
-                    logger.debug(
-                        f"After receive_message return, agent {recipient_id} delayed from {fmt_ts(self.current_time)} to {fmt_ts(self.agent_current_times[recipient_id])}"
-                    )
-
-                for message in messages:
+            elif message.__class__ is MessageBatch:
+                for sub in message.messages:
                     self.agents[recipient_id].receive_message(
-                        self.current_time, sender_id, message
+                        self.current_time, sender_id, sub
                     )
+            else:
+                self.agents[recipient_id].receive_message(
+                    self.current_time, sender_id, message
+                )
+
+            # Advance AFTER delivery so any Agent.delay() call inside
+            # wakeup() / receive_message() takes effect on the agent's
+            # own next slot.
+            self.agent_current_times[recipient_id] += (
+                self.agent_computation_delays[recipient_id]
+                + self.current_agent_additional_delay
+            )
+
+            if self.show_trace_messages:
+                logger.debug(
+                    "After dispatch, agent %d delayed from %s to %s",
+                    recipient_id,
+                    fmt_ts(self.current_time),
+                    fmt_ts(self.agent_current_times[recipient_id]),
+                )
+
+            # Catch kernel interruption signal (gym agent's raw_state).
+            if wakeup_result is not None:
+                return {"done": False, "result": wakeup_result}
 
         if not self.messages:
             logger.debug("--- Kernel Event Queue empty ---")
@@ -667,13 +671,33 @@ class Kernel:
                 )
 
         # Finally drop the message in the queue with priority == delivery time.
-        heapq.heappush(self.messages, (deliver_at, (sender_id, recipient_id, message)))
+        self._enqueue(deliver_at, sender_id, recipient_id, message)
 
         if self.show_trace_messages:
             logger.debug(
                 f"Sent time: {sent_time}, current time {fmt_ts(self.current_time)}, computation delay {self.agent_computation_delays[sender_id]}"
             )
             logger.debug(f"Message queued: {message}")
+
+    def _enqueue(
+        self,
+        deliver_at: int,
+        sender_id: int,
+        recipient_id: int,
+        message: Message,
+    ) -> None:
+        """Push a heap entry with a fresh per-kernel sequence number."""
+        heapq.heappush(
+            self.messages,
+            _HeapEntry(
+                deliver_at=deliver_at,
+                seq=self._next_seq,
+                sender_id=sender_id,
+                recipient_id=recipient_id,
+                message=message,
+            ),
+        )
+        self._next_seq += 1
 
     def set_wakeup(
         self, sender_id: int, requested_time: NanosecondTime | None = None
@@ -705,9 +729,7 @@ class Kernel:
                 f"Kernel adding wakeup for agent {sender_id} at time {fmt_ts(requested_time)}"
             )
 
-        heapq.heappush(
-            self.messages, (requested_time, (sender_id, sender_id, WakeupMsg()))
-        )
+        self._enqueue(requested_time, sender_id, sender_id, _WAKEUP_SINGLETON)
 
     def set_agent_compute_delay(self, sender_id: int, requested_delay: int) -> None:
         """

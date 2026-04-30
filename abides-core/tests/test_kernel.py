@@ -97,7 +97,7 @@ class TestMessageBatchDelay:
         # Enqueue a single message from agent 0 to agent 1
         deliver_at = t + 1  # just past agent's current time
         kernel.current_time = kernel.start_time  # reset so runner loop proceeds
-        heapq.heappush(kernel.messages, (deliver_at, (0, 1, Message())))
+        kernel._enqueue(deliver_at, 0, 1, Message())
 
         kernel.runner()
 
@@ -114,7 +114,7 @@ class TestMessageBatchDelay:
         n_messages = 10
         batch = MessageBatch(messages=[Message() for _ in range(n_messages)])
         kernel.current_time = kernel.start_time
-        heapq.heappush(kernel.messages, (deliver_at, (0, 1, batch)))
+        kernel._enqueue(deliver_at, 0, 1, batch)
 
         kernel.runner()
 
@@ -282,3 +282,123 @@ class TestRandomStateDeprecationWarning:
         with _w.catch_warnings():
             _w.simplefilter("error", DeprecationWarning)
             Kernel(agents=agents, skip_log=True, random_state=rs)
+
+
+# ---------------------------------------------------------------------------
+# PR 3: Dispatch ordering bug + heap refactor
+# ---------------------------------------------------------------------------
+
+
+class _DelayingAgent(StubAgent):
+    """Agent that calls self.delay(N) inside its message handler."""
+
+    def __init__(self, id: int, extra_delay: int) -> None:
+        super().__init__(id)
+        self.extra_delay = extra_delay
+
+    def receive_message(self, current_time, sender_id, message):
+        super().receive_message(current_time, sender_id, message)
+        self.delay(self.extra_delay)
+
+
+class TestDispatchOrderingBug:
+    def test_delay_in_receive_message_advances_agent_time(self):
+        comp_delay = 100
+        extra = 500
+        agents = [StubAgent(0), _DelayingAgent(1, extra)]
+        kernel = Kernel(
+            agents=agents,
+            start_time=str_to_ns("09:30:00"),
+            stop_time=str_to_ns("16:00:00"),
+            default_computation_delay=comp_delay,
+            skip_log=True,
+            seed=1,
+        )
+        kernel.initialize()
+        kernel.runner()  # drain initial wakeups
+
+        deliver_at = kernel.agent_current_times[1] + 1
+        kernel.current_time = kernel.start_time
+        kernel._enqueue(deliver_at, 0, 1, Message())
+        kernel.runner()
+
+        # Without the bug fix, this would equal deliver_at + comp_delay.
+        # The dispatch ordering bug fix means delay(500) inside
+        # receive_message takes effect on the agent's own next slot.
+        assert kernel.agent_current_times[1] == deliver_at + comp_delay + extra
+
+
+class TestHeapSequenceCounter:
+    def test_sequence_resets_across_initialize(self):
+        agents = [StubAgent(0), StubAgent(1)]
+        kernel = Kernel(
+            agents=agents,
+            start_time=str_to_ns("09:30:00"),
+            stop_time=str_to_ns("16:00:00"),
+            skip_log=True,
+            seed=1,
+        )
+        kernel.initialize()
+        baseline_first = kernel._next_seq
+        for _ in range(5):
+            kernel._enqueue(kernel.start_time + 1, 0, 1, Message())
+        delta_first = kernel._next_seq - baseline_first
+
+        kernel.initialize()
+        baseline_second = kernel._next_seq
+        for _ in range(5):
+            kernel._enqueue(kernel.start_time + 1, 0, 1, Message())
+        delta_second = kernel._next_seq - baseline_second
+
+        # initialize() resets the counter; only the 5 enqueues below it count.
+        assert delta_first == delta_second == 5
+        assert baseline_first == baseline_second
+
+    def test_heap_entry_ordering_does_not_touch_message(self):
+        # Two entries with the same deliver_at: ordering must use seq,
+        # never message.__lt__ (which no longer exists).
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel._enqueue(100, 0, 0, Message())
+        kernel._enqueue(100, 0, 0, Message())
+        # Pop both; must not raise even though Message has no __lt__.
+        e1 = heapq.heappop(kernel.messages)
+        e2 = heapq.heappop(kernel.messages)
+        assert e1.seq < e2.seq
+
+
+class TestWakeupSingleton:
+    def test_set_wakeup_reuses_singleton(self):
+        from abides_core.kernel import _WAKEUP_SINGLETON
+
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel.current_time = 0
+        kernel.set_wakeup(0, requested_time=10)
+        kernel.set_wakeup(0, requested_time=20)
+        # Both pending entries should reuse the singleton.
+        wakeup_entries = [e for e in kernel.messages if e.message is _WAKEUP_SINGLETON]
+        assert len(wakeup_entries) == 2
+
+
+class TestMessageBatchDispatch:
+    def test_batch_delivered_as_individual_messages(self):
+        agents = [StubAgent(0), StubAgent(1)]
+        kernel = Kernel(
+            agents=agents,
+            start_time=str_to_ns("09:30:00"),
+            stop_time=str_to_ns("16:00:00"),
+            skip_log=True,
+            seed=1,
+        )
+        kernel.initialize()
+        kernel.runner()
+
+        msgs = [Message() for _ in range(3)]
+        batch = MessageBatch(messages=msgs)
+        kernel.current_time = kernel.start_time
+        kernel._enqueue(kernel.agent_current_times[1] + 1, 0, 1, batch)
+        kernel.runner()
+
+        # All three sub-messages delivered, batch wrapper not.
+        assert agents[1].received == msgs
