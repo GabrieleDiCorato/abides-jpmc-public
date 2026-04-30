@@ -2,7 +2,6 @@ import heapq
 import logging
 import os
 import warnings
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -68,8 +67,6 @@ _KERNEL_RESERVED_ATTRS: frozenset[str] = frozenset(
         "agent_current_times",
         "agent_computation_delays",
         "current_agent_additional_delay",
-        "mean_result_by_agent_type",
-        "agent_count_by_type",
         "event_queue_wall_clock_start",
         "ttl_messages",
         "kernel_wall_clock_start",
@@ -170,9 +167,6 @@ class Kernel:
         # create a unique log directory for this run.  Also used to
         # print some elapsed time and messages per second statistics.
         self.kernel_wall_clock_start: datetime = datetime.now()
-
-        self.mean_result_by_agent_type: defaultdict[str, int] = defaultdict(int)
-        self.agent_count_by_type: defaultdict[str, int] = defaultdict(int)
 
         # The Kernel maintains a summary log to which agents can write
         # information that should be centralized for very fast access
@@ -577,16 +571,21 @@ class Kernel:
         # log itself.
         self.write_summary_log()
 
-        # This should perhaps be elsewhere, as it is explicitly financial, but it
-        # is convenient to have a quick summary of the results for now.
-        logger.info("Mean ending value by agent type:")
-
-        for a in self.mean_result_by_agent_type:
-            value = self.mean_result_by_agent_type[a]
-            count = self.agent_count_by_type.get(a, 0)
-            if count == 0:
-                continue
-            logger.info(f"{a}: {int(round(value / count)):d}")
+        # Print any aggregated agent-type metrics that were reported via
+        # Agent.report_metric() during the simulation. Stored under
+        # self.custom_state["agent_type_metrics"][type][key] = {sum, count}.
+        type_metrics: dict[str, dict[str, dict[str, float]]] = self.custom_state.get(
+            "agent_type_metrics", {}
+        )
+        if type_metrics:
+            logger.info("Mean reported metrics by agent type:")
+            for agent_type, metrics in type_metrics.items():
+                for key, agg in metrics.items():
+                    count = agg.get("count", 0)
+                    if not count:
+                        continue
+                    mean = agg["sum"] / count
+                    logger.info(f"{agent_type}.{key}: {mean:.6g} (n={count})")
 
         logger.info("Simulation ending!")
 

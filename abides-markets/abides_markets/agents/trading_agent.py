@@ -265,8 +265,7 @@ class TradingAgent(FinancialAgent):
 
         # Record final results for presentation/debugging.
         gain = cash - self.starting_cash
-        self.kernel.mean_result_by_agent_type[self.type] += gain
-        self.kernel.agent_count_by_type[self.type] += 1
+        self.report_metric("ending_value", gain)
 
     # Simulation participation messages.
 

@@ -4,6 +4,28 @@ Unreleased
 Bug Fixes
 ---------
 
+* **Removed financial fields from kernel core (PR 4 of kernel improvements).**
+
+  - Removed ``Kernel.mean_result_by_agent_type`` and
+    ``Kernel.agent_count_by_type`` (and the corresponding entries from
+    ``_KERNEL_RESERVED_ATTRS``). The kernel core no longer carries
+    finance-specific aggregation state.
+  - Added a generic ``Agent.report_metric(key, value)`` API that
+    accumulates ``{"sum": float, "count": int}`` per
+    ``(agent_type, key)`` into
+    ``kernel.custom_state["agent_type_metrics"]``.
+  - ``Kernel.terminate()`` now iterates ``custom_state["agent_type_metrics"]``
+    and prints ``mean = sum/count`` for every reported (type, key)
+    pair with ``count > 0``.
+  - ``TradingAgent.kernel_stopping()`` now reports its mark-to-market
+    gain via ``self.report_metric("ending_value", gain)`` instead of
+    mutating kernel attributes directly.
+  - Migration: external code that reads
+    ``kernel.mean_result_by_agent_type`` / ``agent_count_by_type``
+    must read ``kernel.custom_state["agent_type_metrics"][type][key]``
+    (a ``{"sum", "count"}`` dict) instead. External code that writes
+    those attributes should switch to ``Agent.report_metric()``.
+
 * **Dispatch ordering & heap refactor (PR 3 of kernel improvements).**
 
   - Fixed a latent bug where ``Agent.delay()`` calls inside a message

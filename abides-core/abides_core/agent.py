@@ -323,6 +323,28 @@ class Agent:
 
         self.kernel.delay_agent(sender_id=self.id, additional_delay=additional_delay)
 
+    def report_metric(self, key: str, value: float) -> None:
+        """
+        Aggregate a numeric metric for this agent's type into the kernel's
+        ``custom_state``. Used by ``Kernel.terminate()`` to print mean
+        values by agent type at the end of the simulation.
+
+        Storage layout::
+
+            kernel.custom_state["agent_type_metrics"][self.type][key] =
+                {"sum": float, "count": int}
+
+        Arguments:
+            key: short metric name (e.g. ``"ending_value"``).
+            value: numeric value to accumulate. Cast to ``float``.
+        """
+        assert self.kernel is not None
+        type_metrics = self.kernel.custom_state.setdefault("agent_type_metrics", {})
+        agent_metrics = type_metrics.setdefault(self.type, {})
+        agg = agent_metrics.setdefault(key, {"sum": 0.0, "count": 0})
+        agg["sum"] += float(value)
+        agg["count"] += 1
+
     def write_log(self, df_log: pd.DataFrame, filename: str | None = None) -> None:
         """
         Called by the agent, usually at the very end of the simulation just before

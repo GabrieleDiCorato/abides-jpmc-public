@@ -438,12 +438,9 @@ class TestTradingAgentKernelStopping:
         agent.holdings[SYMBOL] = 100
         agent.last_trade[SYMBOL] = 10_000  # $100/share → 100 * 10000 = 1_000_000
 
-        # Need kernel mock with mean_result_by_agent_type and agent_count_by_type
-        from collections import defaultdict
-
+        # Need kernel mock with custom_state for report_metric().
         class FakeKernel:
-            mean_result_by_agent_type = defaultdict(float)
-            agent_count_by_type = defaultdict(int)
+            custom_state: dict = {}
 
         agent.kernel = FakeKernel()
         agent.type = "TestAgent"
@@ -459,10 +456,13 @@ class TestTradingAgentKernelStopping:
         assert len(ending_cash_events) == 1
         assert ending_cash_events[0][1] == 6_000_000
 
-        # The gain should be recorded
+        # The gain should be recorded via report_metric().
         gain = 6_000_000 - 5_000_000
-        assert FakeKernel.mean_result_by_agent_type["TestAgent"] == gain
-        assert FakeKernel.agent_count_by_type["TestAgent"] == 1
+        type_metrics = FakeKernel.custom_state["agent_type_metrics"]
+        assert type_metrics["TestAgent"]["ending_value"] == {
+            "sum": float(gain),
+            "count": 1,
+        }
 
     def test_kernel_stopping_short_position(self):
         """Short position should subtract from cash in mark-to-market."""
@@ -471,11 +471,8 @@ class TestTradingAgentKernelStopping:
         agent.holdings[SYMBOL] = -50
         agent.last_trade[SYMBOL] = 10_000
 
-        from collections import defaultdict
-
         class FakeKernel:
-            mean_result_by_agent_type = defaultdict(float)
-            agent_count_by_type = defaultdict(int)
+            custom_state: dict = {}
 
         agent.kernel = FakeKernel()
         agent.type = "TestAgent"

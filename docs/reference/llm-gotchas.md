@@ -711,6 +711,28 @@ runner now advances `agent_current_times[recipient_id]` *after*
 dispatch, so `delay()` calls inside both `wakeup()` and
 `receive_message()` correctly shift the agent's next slot.
 
+## Per-agent-type metrics live in `custom_state` (added 2026-04)
+
+The kernel no longer carries finance-specific
+`mean_result_by_agent_type` / `agent_count_by_type` defaultdicts.
+Use `Agent.report_metric(key, value)` to aggregate any numeric metric
+by agent type. Storage layout:
+
+```python
+kernel.custom_state["agent_type_metrics"][agent_type][key] = {
+    "sum": float,
+    "count": int,
+}
+```
+
+`Kernel.terminate()` prints `mean = sum/count` for every reported
+`(type, key)` pair with `count > 0`. `TradingAgent.kernel_stopping()`
+already reports its mark-to-market gain as `"ending_value"`.
+
+External code that read the old kernel attributes must switch to
+reading `custom_state["agent_type_metrics"]`. External code that
+wrote them must switch to `Agent.report_metric()`.
+
 ---
 
 ## See Also

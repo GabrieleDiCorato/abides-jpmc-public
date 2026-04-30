@@ -170,13 +170,14 @@ class TestTooManyGymAgentsRaisesValueError:
 
 
 class TestTerminateZeroCountDoesNotCrash:
-    def test_empty_mean_block_does_not_divide_by_zero(self):
+    def test_metric_with_zero_count_does_not_divide_by_zero(self):
         agents = [StubAgent(0)]
         kernel = Kernel(agents=agents, skip_log=True, seed=1)
         kernel.initialize()
-        # Inject a value with no count — formerly would ZeroDivisionError.
-        kernel.mean_result_by_agent_type["Foo"] = 100
-        # No count key for "Foo" -> should be skipped, not crash.
+        # Inject a metric with count==0 — must be skipped, not crash.
+        kernel.custom_state["agent_type_metrics"] = {
+            "Foo": {"ending_value": {"sum": 100.0, "count": 0}}
+        }
         kernel.terminate()
 
 
@@ -402,3 +403,40 @@ class TestMessageBatchDispatch:
 
         # All three sub-messages delivered, batch wrapper not.
         assert agents[1].received == msgs
+
+
+# ---------------------------------------------------------------------------
+# PR 4: report_metric() and removal of financial fields from kernel core
+# ---------------------------------------------------------------------------
+
+
+class TestReportMetricAggregation:
+    def test_aggregates_by_type_and_key(self):
+        agents = [StubAgent(0), StubAgent(1)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel.initialize()
+
+        # Patch type so both stub agents report under the same type.
+        for a in agents:
+            a.type = "StubAgent"
+
+        agents[0].report_metric("ending_value", 100)
+        agents[1].report_metric("ending_value", 300)
+        agents[0].report_metric("trades", 5)
+
+        metrics = kernel.custom_state["agent_type_metrics"]["StubAgent"]
+        assert metrics["ending_value"] == {"sum": 400.0, "count": 2}
+        assert metrics["trades"] == {"sum": 5.0, "count": 1}
+
+    def test_legacy_attrs_are_gone(self):
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        assert not hasattr(kernel, "mean_result_by_agent_type")
+        assert not hasattr(kernel, "agent_count_by_type")
+
+    def test_terminate_handles_missing_metrics(self):
+        # No agent ever reports — terminate() must not crash.
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel.initialize()
+        kernel.terminate()
