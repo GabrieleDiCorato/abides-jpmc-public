@@ -3,6 +3,7 @@
 import heapq
 
 import numpy as np
+import pandas as pd
 
 from abides_core.agent import Agent
 from abides_core.kernel import Kernel
@@ -256,6 +257,8 @@ class TestInitializeClearsState:
         kernel.messages.append((kernel.start_time, (0, 0, object())))
         stale = kernel.messages[-1]
         # Re-initialize and verify the slate is clean.
+        # PR 7: terminate() must precede a second initialize().
+        kernel.terminate()
         kernel.initialize()
         assert kernel.custom_state == {}
         assert kernel.summary_log == []
@@ -356,6 +359,8 @@ class TestHeapSequenceCounter:
             kernel._enqueue(kernel.start_time + 1, 0, 1, Message())
         delta_first = kernel._next_seq - baseline_first
 
+        # PR 7: terminate() must precede a second initialize().
+        kernel.terminate()
         kernel.initialize()
         baseline_second = kernel._next_seq
         for _ in range(5):
@@ -657,3 +662,160 @@ class TestFindAgentsByTypeIndex:
         result = kernel.find_agents_by_type(StubAgent)
         result.append(999)
         assert kernel.find_agents_by_type(StubAgent) == [0, 1]
+
+
+# ---------------------------------------------------------------------------
+# PR 7: LogWriter, KernelState lifecycle, GymAdapter, keyword-only __init__
+# ---------------------------------------------------------------------------
+
+
+class TestLogWriter:
+    def test_null_log_writer_creates_no_files(self, tmp_path):
+        from abides_core.log_writer import NullLogWriter
+
+        writer = NullLogWriter()
+        df = pd.DataFrame({"a": [1, 2, 3]})
+        writer.write_agent_log("Foo", df)
+        writer.write_summary_log(df)
+        # tmp_path must remain empty.
+        assert list(tmp_path.iterdir()) == []
+
+    def test_bz2_log_writer_round_trip(self, tmp_path):
+        from abides_core.log_writer import BZ2PickleLogWriter
+
+        writer = BZ2PickleLogWriter(root=tmp_path, run_id="run42")
+        df = pd.DataFrame({"a": [1, 2, 3]})
+        writer.write_agent_log("Agent X", df)
+        writer.write_summary_log(df)
+        out = tmp_path / "run42"
+        assert (out / "AgentX.bz2").exists()
+        assert (out / "summary_log.bz2").exists()
+        round_tripped = pd.read_pickle(out / "AgentX.bz2", compression="bz2")
+        assert round_tripped.equals(df)
+
+    def test_bz2_log_writer_creates_dir_lazily(self, tmp_path):
+        from abides_core.log_writer import BZ2PickleLogWriter
+
+        writer = BZ2PickleLogWriter(root=tmp_path, run_id="lazy")
+        # Constructing must not create the run dir.
+        assert not (tmp_path / "lazy").exists()
+        writer.write_agent_log("Foo", pd.DataFrame({"a": [1]}))
+        assert (tmp_path / "lazy").exists()
+
+    def test_kernel_uses_injected_log_writer(self, tmp_path):
+        import pandas as _pd
+
+        class _RecordingWriter:
+            def __init__(self):
+                self.agent_calls: list[tuple[str, str | None]] = []
+                self.summary_calls: int = 0
+
+            def write_agent_log(self, name, df, filename=None):
+                self.agent_calls.append((name, filename))
+
+            def write_summary_log(self, df):
+                self.summary_calls += 1
+
+        writer = _RecordingWriter()
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, seed=1, log_writer=writer)
+        kernel.write_log(0, _pd.DataFrame({"a": [1]}))
+        kernel.write_summary_log()
+        assert writer.agent_calls == [(agents[0].name, None)]
+        assert writer.summary_calls == 1
+
+
+class TestKernelLifecycle:
+    def test_rejects_runner_before_initialize(self):
+        import pytest as _pytest
+
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, seed=1)
+        with _pytest.raises(RuntimeError, match="runner"):
+            kernel.runner()
+
+    def test_rejects_initialize_after_initialize(self):
+        import pytest as _pytest
+
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, seed=1)
+        kernel.initialize()
+        with _pytest.raises(RuntimeError, match="initialize"):
+            kernel.initialize()
+
+    def test_rejects_terminate_before_initialize(self):
+        import pytest as _pytest
+
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, seed=1)
+        with _pytest.raises(RuntimeError, match="terminate"):
+            kernel.terminate()
+
+    def test_full_lifecycle_then_reset(self):
+        agents = [StubAgent(0)]
+        kernel = Kernel(
+            agents=agents,
+            start_time=str_to_ns("09:30:00"),
+            stop_time=str_to_ns("16:00:00"),
+            seed=1,
+        )
+        kernel.initialize()
+        kernel.runner()
+        kernel.terminate()
+        # reset() must succeed from TERMINATED.
+        kernel.reset()
+
+
+class _FakeGymAdapter:
+    """Stand-in adapter implementing the GymAdapter Protocol."""
+
+    def __init__(self):
+        self.actions: list = []
+        self.update_calls = 0
+
+    def update_raw_state(self):
+        self.update_calls += 1
+
+    def get_raw_state(self):
+        return {"raw": True}
+
+    def apply_actions(self, actions):
+        self.actions.append(actions)
+
+
+class TestGymAdapter:
+    def test_explicit_registration_no_warning(self):
+        import warnings as _w
+
+        adapter = _FakeGymAdapter()
+        agents = [StubAgent(0)]
+        with _w.catch_warnings():
+            _w.simplefilter("error", DeprecationWarning)
+            kernel = Kernel(agents=agents, seed=1, gym_adapter=adapter)
+        assert kernel._gym_adapter is adapter
+        assert kernel.gym_agents == [adapter]
+
+    def test_auto_detection_emits_deprecation_warning(self):
+        import warnings as _w
+
+        agents = [_FakeGymAgent(0)]
+        with _w.catch_warnings(record=True) as captured:
+            _w.simplefilter("always", DeprecationWarning)
+            kernel = Kernel(agents=agents, seed=1)
+        assert any(
+            issubclass(w.category, DeprecationWarning)
+            and "gym" in str(w.message).lower()
+            for w in captured
+        )
+        assert kernel._gym_adapter is agents[0]
+
+
+class TestKernelInitKeywordOnly:
+    def test_positional_start_time_raises(self):
+        import pytest as _pytest
+
+        agents = [StubAgent(0)]
+        with _pytest.raises(TypeError):
+            # start_time passed positionally should fail with the
+            # keyword-only signature.
+            Kernel(agents, str_to_ns("09:30:00"))

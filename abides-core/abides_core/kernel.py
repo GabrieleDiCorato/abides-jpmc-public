@@ -11,7 +11,10 @@ import pandas as pd
 
 from . import NanosecondTime
 from .agent import Agent
+from .gym_adapter import GymAdapter
 from .latency_model import LatencyModel, MatrixLatencyModel, UniformLatencyModel
+from .lifecycle import KernelState, assert_transition
+from .log_writer import BZ2PickleLogWriter, LogWriter, NullLogWriter
 from .message import Message, MessageBatch, WakeupMsg
 from .utils import fmt_ts, str_to_ns
 
@@ -123,6 +126,7 @@ class Kernel:
     def __init__(
         self,
         agents: list[Agent],
+        *,
         start_time: NanosecondTime = _DEFAULT_START_TIME,
         stop_time: NanosecondTime = _DEFAULT_STOP_TIME,
         default_computation_delay: int = 1,
@@ -133,9 +137,12 @@ class Kernel:
         skip_log: bool = True,
         seed: int | None = None,
         log_dir: str | None = None,
+        log_root: str | os.PathLike = "./log",
+        log_writer: LogWriter | None = None,
         custom_properties: dict[str, Any] | None = None,
         random_state: np.random.RandomState | None = None,
         per_agent_computation_delays: dict[int, int] | None = None,
+        gym_adapter: GymAdapter | None = None,
     ) -> None:
         # Enforce the agents[i].id == i invariant before anything else uses
         # the parallel per-agent state arrays.
@@ -193,8 +200,14 @@ class Kernel:
         # logging should go only to the agent's individual log.  This
         # is for things like "final position value" and such.
         self.summary_log: list[dict[str, Any]] = []
-        # variable to say if has already run at least once or not
+        # variable to say if has already run at least once or not (derived
+        # from ``self._state``; kept as a simple bool attribute for
+        # backwards compatibility with external readers).
         self.has_run = False
+
+        # Lifecycle state machine. Transitions are validated at the public
+        # method boundary (initialize / runner / terminate / reset).
+        self._state: KernelState = KernelState.CONSTRUCTED
 
         for key, value in custom_properties.items():
             setattr(self, key, value)
@@ -203,21 +216,41 @@ class Kernel:
         #        based on class agent.Agent
         self.agents: list[Agent] = agents
 
-        # Filter for any ABIDES-Gym agents - does not require dependency on ABIDES-gym.
-        self.gym_agents: list[Agent] = list(
-            filter(
-                lambda agent: "CoreGymAgent"
-                in [c.__name__ for c in agent.__class__.__bases__],
-                agents,
-            )
+        # Resolve the gym adapter. Explicit ``gym_adapter=`` wins; otherwise
+        # fall back to scanning for legacy ``CoreGymAgent``-based agents and
+        # warn that auto-detection is deprecated.
+        if gym_adapter is None:
+            detected: list[Agent] = [
+                a
+                for a in agents
+                if "CoreGymAgent" in [c.__name__ for c in a.__class__.__bases__]
+            ]
+            if len(detected) > 1:
+                raise ValueError(
+                    "ABIDES-gym currently only supports using one gym agent"
+                )
+            if detected:
+                warnings.warn(
+                    "Auto-detection of gym agents from the `agents` list is "
+                    "deprecated. Pass gym_adapter=<your gym agent> to the "
+                    "Kernel constructor explicitly.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                gym_adapter = detected[0]
+        self._gym_adapter: GymAdapter | None = gym_adapter
+
+        # Back-compat: keep the legacy ``gym_agents`` list view so any
+        # external introspection still works. Single-element list when an
+        # adapter is registered, empty otherwise.
+        self.gym_agents: list[Agent] = (
+            [self._gym_adapter] if self._gym_adapter is not None else []  # type: ignore[list-item]
         )
 
-        # Temporary check until ABIDES-gym supports multiple gym agents.
-        # Use ValueError (not assert) so the check is enforced under `python -O`.
-        if len(self.gym_agents) > 1:
-            raise ValueError("ABIDES-gym currently only supports using one gym agent")
-
-        logger.debug(f"Detected {len(self.gym_agents)} ABIDES-gym agents")
+        logger.debug(
+            "Gym adapter %s",
+            "registered" if self._gym_adapter is not None else "not present",
+        )
 
         # Simulation custom state in a freeform dictionary.  Allows config files
         # that drive multiple simulations, or require the ability to generate
@@ -244,6 +277,16 @@ class Kernel:
         self.log_dir: str = log_dir or str(
             int(self.kernel_wall_clock_start.timestamp())
         )
+
+        # Resolve the log writer. Explicit ``log_writer=`` wins; otherwise
+        # build the default disk writer or a no-op based on ``skip_log``.
+        if log_writer is None:
+            log_writer = (
+                NullLogWriter()
+                if skip_log
+                else BZ2PickleLogWriter(log_root, self.log_dir)
+            )
+        self._log_writer: LogWriter = log_writer
 
         # The kernel maintains a current time for each agent to allow
         # simulation of per-agent computation delays.  The agent's time
@@ -342,6 +385,11 @@ class Kernel:
           - Instantiation of the latency network
           - Calls on the kernel_initializing and KernelStarting of the different agents
         """
+        assert_transition(
+            self._state,
+            (KernelState.CONSTRUCTED, KernelState.TERMINATED),
+            "initialize",
+        )
 
         logger.debug("Kernel started")
         logger.debug("Simulation started!")
@@ -409,6 +457,7 @@ class Kernel:
         self.ttl_messages = 0
 
         self.has_run = True
+        self._state = KernelState.INITIALIZED
 
     def runner(
         self, agent_actions: tuple[Agent, list[dict[str, Any]]] | None = None
@@ -431,6 +480,13 @@ class Kernel:
         if agent_actions is not None:
             exp_agent, action_list = agent_actions
             exp_agent.apply_actions(action_list)
+
+        assert_transition(
+            self._state,
+            (KernelState.INITIALIZED, KernelState.RUNNING),
+            "runner",
+        )
+        self._state = KernelState.RUNNING
 
         # Process messages until there aren't any (at which point there never can
         # be again, because agents only "wake" in response to messages), or until
@@ -531,9 +587,9 @@ class Kernel:
             logger.debug("--- Kernel Stop Time surpassed ---")
 
         # if gets here means sim queue is fully processed, return to show sim is done
-        if len(self.gym_agents) > 0:
-            self.gym_agents[0].update_raw_state()
-            return {"done": True, "result": self.gym_agents[0].get_raw_state()}
+        if self._gym_adapter is not None:
+            self._gym_adapter.update_raw_state()
+            return {"done": True, "result": self._gym_adapter.get_raw_state()}
         else:
             return {"done": True, "result": None}
 
@@ -547,7 +603,11 @@ class Kernel:
         Returns:
             custom_state: it is an object that contains everything in the simulation. In particular it is useful to retrieve agents and/or logs after the simulation to proceed to analysis.
         """
-        # Record wall clock stop time and elapsed time for stats at the end.
+        assert_transition(
+            self._state,
+            (KernelState.INITIALIZED, KernelState.RUNNING),
+            "terminate",
+        )
         event_queue_wall_clock_stop = datetime.now()
 
         event_queue_wall_clock_elapsed = (
@@ -610,6 +670,7 @@ class Kernel:
 
         logger.info("Simulation ending!")
 
+        self._state = KernelState.TERMINATED
         return self.custom_state
 
     def reset(self) -> None:
@@ -620,8 +681,7 @@ class Kernel:
           - Then runs the simulation (not specifying any action this time).
         """
 
-        if self.has_run:  # meaning at leat initialization has been run once
-
+        if self._state in (KernelState.INITIALIZED, KernelState.RUNNING):
             self.terminate()
 
         self.initialize()
@@ -879,21 +939,8 @@ class Kernel:
             df_log: dataframe representation of the log that contains all the events logged during the simulation.
             filename: Location on disk to write the log to.
         """
-
-        if self.skip_log:
-            return
-
-        path = os.path.join(".", "log", self.log_dir)
-
-        if filename:
-            file = f"{filename}.bz2"
-        else:
-            file = "{}.bz2".format(self.agents[sender_id].name.replace(" ", ""))
-
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-        df_log.to_pickle(os.path.join(path, file), compression="bz2")
+        agent_name = self.agents[sender_id].name
+        self._log_writer.write_agent_log(agent_name, df_log, filename)
 
     def append_summary_log(self, sender_id: int, event_type: str, event: Any) -> None:
         """
@@ -915,18 +962,8 @@ class Kernel:
         )
 
     def write_summary_log(self) -> None:
-        if self.skip_log:
-            return
-
-        path = os.path.join(".", "log", self.log_dir)
-        file = "summary_log.bz2"
-
-        if not os.path.exists(path):
-            os.makedirs(path)
-
         df_log = pd.DataFrame(self.summary_log)
-
-        df_log.to_pickle(os.path.join(path, file), compression="bz2")
+        self._log_writer.write_summary_log(df_log)
 
     def update_agent_state(self, agent_id: int, state: Any) -> None:
         """

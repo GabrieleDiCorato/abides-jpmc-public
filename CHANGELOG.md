@@ -25,6 +25,38 @@ Breaking Changes
 Bug Fixes
 ---------
 
+* **Kernel architecture decomposition (PR 7 of kernel improvements).**
+
+  - Introduced ``abides_core.log_writer.LogWriter`` (Protocol) with
+    two concrete implementations: ``NullLogWriter`` (no-op) and
+    ``BZ2PickleLogWriter`` (legacy ``<root>/<run_id>/<name>.bz2``
+    format, with the run directory created lazily on first write so
+    dry-run configs leave no empty dirs). ``Kernel`` accepts an
+    explicit ``log_writer=`` kwarg and a new ``log_root=`` kwarg;
+    ``skip_log`` and ``log_dir`` keep their previous semantics for
+    callers that do not inject a writer.
+  - Introduced ``abides_core.lifecycle.KernelState`` (4 states:
+    ``CONSTRUCTED``, ``INITIALIZED``, ``RUNNING``, ``TERMINATED``).
+    ``Kernel.initialize()``, ``runner()``, ``terminate()`` and
+    ``reset()`` now validate transitions at the public method
+    boundary and raise ``RuntimeError`` on out-of-order calls
+    (previously a silent ``has_run`` flag could hide the mistake).
+  - Introduced ``abides_core.gym_adapter.GymAdapter`` (Protocol).
+    ``Kernel`` accepts an explicit ``gym_adapter=`` kwarg. Legacy
+    auto-detection of ``CoreGymAgent``-based agents still works for
+    one release but emits a ``DeprecationWarning``. The
+    ``abides-gym`` core environment was migrated to pass
+    ``gym_adapter=self.gym_agent`` explicitly so the gym test suite
+    is warning-free immediately. ``Kernel.gym_agents`` remains as a
+    list view (``[adapter]`` or ``[]``) for backwards compatibility.
+  - ``Kernel.__init__`` is now keyword-only after ``agents``: every
+    other constructor parameter must be passed by keyword. All
+    in-tree callers already used kwargs; out-of-tree callers that
+    pass positional arguments will get a ``TypeError`` with a clear
+    diagnosis.
+  - New documentation: ``docs/reference/kernel-architecture.md``
+    (full architecture write-up).
+
 * **Per-agent state moved to numpy arrays (PR 6 of kernel improvements).**
 
   - ``Kernel._agent_current_times`` and ``Kernel._agent_computation_delays``

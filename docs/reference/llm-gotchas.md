@@ -815,6 +815,59 @@ every agent under each class in its MRO at construction time, so
 passing a base class still returns every subclass instance
 (`isinstance` semantics are preserved).
 
+## Kernel constructor is keyword-only (changed 2026-04)
+
+Every parameter on `Kernel.__init__` after `agents` is keyword-only.
+Calling `Kernel(my_agents, str_to_ns("09:30:00"), …)` raises
+`TypeError`. Use `Kernel(agents=my_agents, start_time=…, …)` instead.
+
+## Kernel lifecycle is enforced (added 2026-04)
+
+`Kernel` tracks its own state through four positions
+(`CONSTRUCTED → INITIALIZED → RUNNING → TERMINATED`) and validates
+transitions at the public method boundary:
+
+| Method | Allowed inbound state |
+|--------|----------------------|
+| `initialize()` | `CONSTRUCTED`, `TERMINATED` (post-`reset` re-init) |
+| `runner()` | `INITIALIZED`, `RUNNING` (gym yields keep state at `RUNNING`) |
+| `terminate()` | `INITIALIZED`, `RUNNING` |
+| `reset()` | any state — terminates first if needed, then initialises |
+
+Out-of-order calls raise `RuntimeError` with the offending state and
+the list of allowed states. The legacy public attribute `has_run`
+remains as a bool for back-compat.
+
+## Inject a `GymAdapter`; auto-detection is deprecated (added 2026-04)
+
+If you build a `Kernel` with an `abides-gym` experimental agent in
+the `agents` list but do not pass `gym_adapter=…`, the kernel still
+detects it but emits a `DeprecationWarning`. Migrate by passing
+the gym agent explicitly:
+
+```python
+kernel = Kernel(agents=agents, gym_adapter=my_gym_agent, …)
+```
+
+The kernel only requires the three-method `GymAdapter` Protocol
+(`update_raw_state`, `get_raw_state`, `apply_actions`); any object
+that implements them works.
+
+## Pluggable log sink via `LogWriter` (added 2026-04)
+
+The kernel no longer pickles dataframes itself; it delegates to a
+`LogWriter` injected via the new `log_writer=` kwarg. Two
+implementations ship in `abides_core.log_writer`:
+
+- `NullLogWriter` — writes nothing.
+- `BZ2PickleLogWriter(root, run_id)` — the legacy on-disk format
+  (`<root>/<run_id>/<name>.bz2`); the run directory is created
+  lazily on first write.
+
+If you do not inject a writer, the kernel builds the right one for
+you based on `skip_log` and (the new) `log_root` / `log_dir` kwargs,
+so existing call sites keep working.
+
 ---
 
 ## See Also

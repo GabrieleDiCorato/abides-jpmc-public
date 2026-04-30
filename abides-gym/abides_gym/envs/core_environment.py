@@ -109,6 +109,7 @@ class AbidesGymCoreEnv(gym.Env, ABC):
         # instantiate the kernel object
         kernel = Kernel(
             random_state=np.random.RandomState(seed=internal_seed),
+            gym_adapter=self.gym_agent,
             **subdict(
                 config_state,
                 [
