@@ -1,6 +1,7 @@
 import heapq
 import logging
 import os
+import warnings
 from collections import defaultdict
 from datetime import datetime
 from typing import Any
@@ -18,6 +19,38 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_START_TIME: int = str_to_ns("09:30:00")
 _DEFAULT_STOP_TIME: int = str_to_ns("16:00:00")
+
+# Attribute names that the kernel manages itself. ``custom_properties`` may
+# not shadow these because doing so silently corrupts simulation state.
+_KERNEL_RESERVED_ATTRS: frozenset[str] = frozenset(
+    {
+        "agents",
+        "messages",
+        "current_time",
+        "start_time",
+        "stop_time",
+        "random_state",
+        "seed",
+        "skip_log",
+        "log_dir",
+        "summary_log",
+        "custom_state",
+        "has_run",
+        "gym_agents",
+        "agent_latency",
+        "agent_latency_model",
+        "latency_noise",
+        "agent_current_times",
+        "agent_computation_delays",
+        "current_agent_additional_delay",
+        "mean_result_by_agent_type",
+        "agent_count_by_type",
+        "event_queue_wall_clock_start",
+        "ttl_messages",
+        "kernel_wall_clock_start",
+        "show_trace_messages",
+    }
+)
 
 
 class Kernel:
@@ -74,12 +107,30 @@ class Kernel:
 
         custom_properties = custom_properties or {}
 
-        self.random_state: np.random.RandomState = (
-            random_state
-            or np.random.RandomState(
-                seed=np.random.randint(low=0, high=2**32, dtype="uint64")
+        # Reject custom_properties keys that would shadow kernel-managed
+        # attributes. Silent shadowing has caused subtle reset/state bugs.
+        bad = set(custom_properties).intersection(_KERNEL_RESERVED_ATTRS)
+        if bad:
+            raise ValueError(
+                f"custom_properties may not contain reserved kernel attribute "
+                f"names: {sorted(bad)}. Reserved names are managed by the "
+                f"kernel itself."
             )
-        )
+
+        if random_state is None:
+            if seed is None:
+                warnings.warn(
+                    "Kernel constructed without an explicit seed or "
+                    "random_state. A non-reproducible random seed will be "
+                    "drawn from the OS entropy pool. Pass seed=<int> or "
+                    "random_state=np.random.RandomState(...) for "
+                    "reproducibility.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                seed = int(np.random.randint(low=0, high=2**32, dtype="uint64"))
+            random_state = np.random.RandomState(seed=seed)
+        self.random_state: np.random.RandomState = random_state
 
         # A single message queue to keep everything organized by increasing
         # delivery timestamp.
@@ -251,6 +302,19 @@ class Kernel:
 
         logger.debug("Kernel started")
         logger.debug("Simulation started!")
+
+        # Reset per-run state so the kernel is safe to ``reset()`` and
+        # re-``initialize()`` mid-process (gym training loops, parallel
+        # workers in the same interpreter, etc.). Note that
+        # ``agent_computation_delays`` is intentionally not cleared here:
+        # it carries per-agent overrides from the constructor that must
+        # persist across resets.
+        self.agent_current_times[:] = [self.start_time] * len(self.agents)
+        self.ttl_messages = 0
+        self.custom_state.clear()
+        self.summary_log.clear()
+        self.messages.clear()
+        self.current_agent_additional_delay = 0
 
         # Note that num_simulations has not yet been really used or tested
         # for anything.  Instead we have been running multiple simulations

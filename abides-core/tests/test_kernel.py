@@ -44,14 +44,14 @@ class TestLatencyMatrixAliasing:
 
     def test_rows_are_independent_objects(self):
         agents = [StubAgent(i) for i in range(3)]
-        kernel = Kernel(agents=agents, skip_log=True)
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
         # Each row must be a distinct list object
         assert kernel.agent_latency[0] is not kernel.agent_latency[1]
         assert kernel.agent_latency[1] is not kernel.agent_latency[2]
 
     def test_mutating_one_row_does_not_affect_others(self):
         agents = [StubAgent(i) for i in range(3)]
-        kernel = Kernel(agents=agents, default_latency=100, skip_log=True)
+        kernel = Kernel(agents=agents, default_latency=100, skip_log=True, seed=1)
         # Mutate row 0
         kernel.agent_latency[0][0] = 999
         # Row 1 must be unchanged
@@ -60,7 +60,7 @@ class TestLatencyMatrixAliasing:
 
     def test_default_values_correct(self):
         agents = [StubAgent(i) for i in range(4)]
-        kernel = Kernel(agents=agents, default_latency=42, skip_log=True)
+        kernel = Kernel(agents=agents, default_latency=42, skip_log=True, seed=1)
         for row in kernel.agent_latency:
             assert row == [42, 42, 42, 42]
 
@@ -81,6 +81,7 @@ class TestMessageBatchDelay:
             stop_time=str_to_ns("16:00:00"),
             default_computation_delay=comp_delay,
             skip_log=True,
+            seed=1,
         )
         kernel.initialize()
         # Drain any wakeup messages queued during initialize
@@ -154,7 +155,7 @@ class TestWriteSummaryLogRespectsSkipLog:
     def test_skip_log_creates_no_file(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, skip_log=True)
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
         kernel.write_summary_log()
         assert not (tmp_path / "log").exists()
 
@@ -165,13 +166,13 @@ class TestTooManyGymAgentsRaisesValueError:
 
         agents = [_FakeGymAgent(0), _FakeGymAgent(1)]
         with pytest.raises(ValueError, match="one gym agent"):
-            Kernel(agents=agents, skip_log=True)
+            Kernel(agents=agents, skip_log=True, seed=1)
 
 
 class TestTerminateZeroCountDoesNotCrash:
     def test_empty_mean_block_does_not_divide_by_zero(self):
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, skip_log=True)
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
         kernel.initialize()
         # Inject a value with no count — formerly would ZeroDivisionError.
         kernel.mean_result_by_agent_type["Foo"] = 100
@@ -188,4 +189,96 @@ class TestAgentIdInvariantViolationRaises:
         # Swap their ids so agents[i].id != i.
         a.id, b.id = 1, 0
         with pytest.raises(ValueError, match="agents\\[i\\]\\.id"):
-            Kernel(agents=[a, b], skip_log=True)
+            Kernel(agents=[a, b], skip_log=True, seed=1)
+
+
+# ---------------------------------------------------------------------------
+# PR 2: State validation & reset hygiene
+# ---------------------------------------------------------------------------
+
+
+class TestCustomPropertiesReservedKey:
+    def test_reserved_key_raises(self):
+        import pytest
+
+        agents = [StubAgent(0)]
+        with pytest.raises(ValueError, match="reserved kernel attribute"):
+            Kernel(
+                agents=agents,
+                skip_log=True,
+                seed=1,
+                custom_properties={"agents": [1, 2, 3]},
+            )
+
+    def test_user_keys_allowed(self):
+        agents = [StubAgent(0)]
+        sentinel = object()
+        kernel = Kernel(
+            agents=agents,
+            skip_log=True,
+            seed=1,
+            custom_properties={"oracle": sentinel, "my_thing": 42},
+        )
+        assert kernel.oracle is sentinel
+        assert kernel.my_thing == 42
+
+
+class TestInitializeClearsState:
+    def test_initialize_clears_per_run_state(self):
+        agents = [StubAgent(0), StubAgent(1)]
+        kernel = Kernel(
+            agents=agents,
+            start_time=str_to_ns("09:30:00"),
+            stop_time=str_to_ns("16:00:00"),
+            skip_log=True,
+            seed=1,
+        )
+        kernel.initialize()
+        # Mutate per-run state.
+        kernel.custom_state["x"] = 1
+        kernel.summary_log.append({"AgentID": 0})
+        kernel.ttl_messages = 99
+        kernel.current_agent_additional_delay = 500
+        # Stuff a stale message that would survive across a re-init if
+        # initialize() did not clear ``messages``.
+        kernel.messages.append((kernel.start_time, (0, 0, object())))
+        stale = kernel.messages[-1]
+        # Re-initialize and verify the slate is clean.
+        kernel.initialize()
+        assert kernel.custom_state == {}
+        assert kernel.summary_log == []
+        assert kernel.ttl_messages == 0
+        assert kernel.current_agent_additional_delay == 0
+        # The stale message must not survive; only fresh wakeups enqueued
+        # by ``kernel_starting`` may now be present.
+        assert stale not in kernel.messages
+        assert all(t == kernel.start_time for t in kernel.agent_current_times)
+
+
+class TestRandomStateDeprecationWarning:
+    def test_warns_when_neither_seed_nor_random_state(self):
+        import warnings as _w
+
+        agents = [StubAgent(0)]
+        with _w.catch_warnings(record=True) as captured:
+            _w.simplefilter("always")
+            Kernel(agents=agents, skip_log=True)
+        msgs = [str(w.message) for w in captured]
+        assert any("explicit seed" in m for m in msgs), msgs
+
+    def test_no_warning_with_seed(self):
+        import warnings as _w
+
+        agents = [StubAgent(0)]
+        with _w.catch_warnings():
+            _w.simplefilter("error", DeprecationWarning)
+            Kernel(agents=agents, skip_log=True, seed=42)
+
+    def test_no_warning_with_random_state(self):
+        import warnings as _w
+
+        agents = [StubAgent(0)]
+        rs = np.random.RandomState(7)
+        with _w.catch_warnings():
+            _w.simplefilter("error", DeprecationWarning)
+            Kernel(agents=agents, skip_log=True, random_state=rs)

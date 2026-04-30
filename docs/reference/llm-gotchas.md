@@ -647,6 +647,44 @@ The `config_add_agents()` helper in `abides_markets.utils` does this
 reassignment automatically when appending runtime agents to a built
 config.
 
+## `Kernel.initialize()` is the canonical reset point (added 2026-04)
+
+`Kernel.initialize()` clears per-run state before notifying agents, so
+it is safe to call repeatedly (gym training loops, parallel workers in
+the same interpreter, custom multi-episode harnesses). The following
+state is reset to a clean slate every call:
+
+- `messages` (event heap)
+- `custom_state` (the dict returned by `terminate()`)
+- `summary_log`
+- `ttl_messages`
+- `current_agent_additional_delay`
+- `agent_current_times` (reset to `start_time`)
+
+`agent_computation_delays` is **not** cleared — it carries per-agent
+overrides from the constructor that must persist across resets. If an
+agent mutates its own delay at runtime via `set_agent_compute_delay()`,
+that mutation also survives across `initialize()`.
+
+`Kernel.reset()` calls `terminate()` then `initialize()`; the actual
+clearing lives in `initialize()` so any direct call to it gets the
+same clean slate.
+
+## Reserved `custom_properties` keys (added 2026-04)
+
+`Kernel(custom_properties={...})` rejects keys that would shadow
+kernel-managed attributes (`agents`, `messages`, `random_state`,
+`current_time`, latency fields, etc.). Use this dict only for
+user-defined extras like `oracle`. The full blocklist is in
+`abides_core.kernel._KERNEL_RESERVED_ATTRS`.
+
+## Always seed the kernel (added 2026-04)
+
+Constructing a `Kernel` without an explicit `seed=` or `random_state=`
+emits `DeprecationWarning` and falls back to OS entropy. Notebooks and
+ad-hoc scripts should pass `seed=<int>` or
+`random_state=np.random.RandomState(<int>)` for reproducibility.
+
 ---
 
 ## See Also

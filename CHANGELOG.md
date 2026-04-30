@@ -4,6 +4,24 @@ Unreleased
 Bug Fixes
 ---------
 
+* **Kernel state hygiene (PR 2 of kernel improvements).**
+
+  - ``Kernel.initialize()`` now clears per-run state (``messages``,
+    ``custom_state``, ``summary_log``, ``ttl_messages``,
+    ``current_agent_additional_delay``, and per-agent current-time
+    array) before re-running ``kernel_initializing`` /
+    ``kernel_starting``. Makes ``kernel.reset()`` and gym
+    re-initialization safe in the same interpreter.
+    ``agent_computation_delays`` is intentionally not cleared so
+    constructor-set per-agent overrides survive resets.
+  - ``Kernel.__init__(custom_properties=...)`` now rejects keys that
+    would shadow kernel-managed attributes (``agents``, ``messages``,
+    ``random_state``, etc.) and raises ``ValueError``. The full
+    blocklist is in ``_KERNEL_RESERVED_ATTRS``.
+  - Constructing a ``Kernel`` without an explicit ``seed=`` or
+    ``random_state=`` now emits ``DeprecationWarning``. Callers should
+    pass one or the other for reproducible runs.
+
 * **Kernel hygiene fixes (PR 1 of kernel improvements).**
 
   - ``Kernel.write_summary_log()`` now respects ``skip_log=True`` and no
