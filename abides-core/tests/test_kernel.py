@@ -459,16 +459,32 @@ class TestReportMetricAggregation:
 
 
 class TestLatencyModelSubclasses:
-    def test_uniform_default_noise_consumes_one_draw(self):
+    def test_uniform_default_does_not_touch_random_state(self):
         from abides_core.latency_model import UniformLatencyModel
 
+        # PR 5b: with the default noise=None, get_latency must NOT
+        # consume any RNG draws. Pass a fresh RNG and assert its state
+        # is unchanged.
+        rs = np.random.RandomState(seed=42)
+        before = rs.get_state()
+        model = UniformLatencyModel(latency=100)
+        for _ in range(10):
+            assert model.get_latency(0, 1, random_state=rs) == 100
+        after = rs.get_state()
+        assert before[0] == after[0]
+        assert (before[1] == after[1]).all()
+        assert before[2] == after[2]
+
+    def test_uniform_explicit_noise_consumes_one_draw(self):
+        from abides_core.latency_model import UniformLatencyModel
+
+        # Explicit noise=[1.0] restores the legacy pre-PR-5b behavior.
         rs1 = np.random.RandomState(seed=42)
         rs2 = np.random.RandomState(seed=42)
-        model = UniformLatencyModel(latency=100)
+        model = UniformLatencyModel(latency=100, noise=[1.0])
         for _ in range(10):
             model.get_latency(0, 1, random_state=rs1)
             rs2.choice(1, p=[1.0])
-        # Both RNGs must be in identical state.
         assert rs1.tomaxint() == rs2.tomaxint()
 
     def test_uniform_returns_constant_with_default_noise(self):

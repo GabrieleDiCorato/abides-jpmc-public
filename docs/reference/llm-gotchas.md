@@ -761,6 +761,25 @@ keeping bit-for-bit reproducibility for cubic users.
 `Kernel.agent_latency` and `Kernel.latency_noise` no longer exist —
 read the underlying data from the model object directly.
 
+## Latency models default to no RNG draw (changed 2026-04, BREAKING)
+
+`UniformLatencyModel` and `MatrixLatencyModel` default to
+`noise=None`. When `noise` is `None`, `get_latency` returns its
+configured latency directly and does **not** touch the kernel RNG.
+
+This is a deliberate reproducibility break versus pre-PR-5b runs,
+which always consumed one `np.random.choice([1.0])` draw per
+`send_message` even when no noise was configured. To restore the
+legacy bit-for-bit behavior, pass `noise=[1.0]` explicitly:
+
+```python
+model = UniformLatencyModel(latency=1_000_000_000, noise=[1.0])
+```
+
+The `Kernel` constructor's legacy `latency_noise` kwarg still
+forwards into the wrapped model unchanged, so callers that already
+pass `latency_noise=[1.0]` are unaffected.
+
 ---
 
 ## See Also

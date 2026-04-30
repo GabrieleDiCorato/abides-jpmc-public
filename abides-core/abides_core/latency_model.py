@@ -172,11 +172,11 @@ class UniformLatencyModel(LatencyModel):
     """Latency model that returns a single configured constant for every
     sender/recipient pair, plus an optional integer noise draw.
 
-    The default ``noise=[1.0]`` consumes exactly one
-    ``random_state.choice`` draw per call (matching the legacy default
-    code path in ``Kernel.send_message``). Callers wanting a noise-free
-    model that does *not* touch the kernel RNG should pass ``noise=[]``
-    is invalid; use PR 5b's ``noise=None`` default once it lands.
+    By default (``noise=None``) the model is purely deterministic and
+    does **not** touch the kernel RNG. Pass an explicit ``noise`` list
+    (e.g. ``noise=[1.0]``) to consume one ``random_state.choice`` draw
+    per call — e.g. to restore the legacy pre-PR-5b default-noise
+    behavior bit-for-bit.
     """
 
     def __init__(
@@ -185,7 +185,7 @@ class UniformLatencyModel(LatencyModel):
         noise: list[float] | None = None,
     ) -> None:
         self._latency: int = int(latency)
-        self._noise: list[float] = noise if noise is not None else [1.0]
+        self._noise: list[float] | None = noise
 
     def get_latency(
         self,
@@ -194,9 +194,11 @@ class UniformLatencyModel(LatencyModel):
         *,
         random_state: np.random.RandomState | None = None,
     ) -> int:
+        if self._noise is None:
+            return self._latency
         assert random_state is not None, (
             "UniformLatencyModel.get_latency requires a random_state kwarg "
-            "(passed by Kernel.send_message)."
+            "when constructed with a noise list."
         )
         draw = int(random_state.choice(len(self._noise), p=self._noise))
         return self._latency + draw
@@ -206,6 +208,10 @@ class MatrixLatencyModel(LatencyModel):
     """Latency model backed by a per-pair integer matrix
     ``M[sender_id, recipient_id]``, plus an optional integer noise
     draw with the same semantics as ``UniformLatencyModel``.
+
+    By default (``noise=None``) the model is purely deterministic and
+    does **not** touch the kernel RNG. Pass an explicit ``noise`` list
+    to opt in to a per-call ``random_state.choice`` draw.
     """
 
     def __init__(
@@ -214,7 +220,7 @@ class MatrixLatencyModel(LatencyModel):
         noise: list[float] | None = None,
     ) -> None:
         self._matrix: np.ndarray = np.ascontiguousarray(matrix, dtype=np.int64)
-        self._noise: list[float] = noise if noise is not None else [1.0]
+        self._noise: list[float] | None = noise
 
     def get_latency(
         self,
@@ -223,9 +229,11 @@ class MatrixLatencyModel(LatencyModel):
         *,
         random_state: np.random.RandomState | None = None,
     ) -> int:
+        if self._noise is None:
+            return int(self._matrix[sender_id, recipient_id])
         assert random_state is not None, (
             "MatrixLatencyModel.get_latency requires a random_state kwarg "
-            "(passed by Kernel.send_message)."
+            "when constructed with a noise list."
         )
         draw = int(random_state.choice(len(self._noise), p=self._noise))
         return int(self._matrix[sender_id, recipient_id]) + draw

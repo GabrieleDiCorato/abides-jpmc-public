@@ -1,6 +1,27 @@
 Unreleased
 ==========
 
+Breaking Changes
+----------------
+
+* **Removed the no-op default latency-noise RNG draw (PR 5b of kernel
+  improvements).** ``UniformLatencyModel`` and ``MatrixLatencyModel``
+  now default to ``noise=None`` (was ``[1.0]``). When ``noise`` is
+  ``None`` the model returns its configured latency directly without
+  consuming any RNG draws. **This is an explicit reproducibility
+  break**: seeded simulations that previously relied on the implicit
+  ``np.random.choice([1.0])`` draw per ``send_message`` will now
+  diverge from pre-PR-5b runs.
+
+  Migration: pass ``noise=[1.0]`` explicitly to either model
+  constructor to restore the legacy bit-for-bit behavior. The
+  ``Kernel`` constructor's legacy ``latency_noise`` keyword still
+  forwards into the wrapped model unchanged, so callers that already
+  passed ``latency_noise=[1.0]`` are unaffected.
+
+  ``test_seed_replicability.py`` compares two same-seed runs to each
+  other (not to a hardcoded baseline) so it passes unchanged.
+
 Bug Fixes
 ---------
 
