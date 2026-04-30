@@ -288,7 +288,7 @@ When implemented, these utilities live in `abides-markets/abides_markets/simulat
 
 **Implementation hints:**
 - `run_ensemble(config, n_seeds, n_jobs=-1, profile=ResultProfile.SUMMARY) -> EnsembleResult`.
-- Use `multiprocessing.Pool` (consistent with `HASUFEL_PARALLEL_SIMULATION.md`). Each worker calls `run_simulation(config.with_seed(seed))` with an independent seed.
+- Use `multiprocessing.Pool` (consistent with `parallel-simulation.md`). Each worker calls `run_simulation(config.with_seed(seed))` with an independent seed.
 - `EnsembleResult` wraps a `pd.DataFrame` (one row per seed, one column per scalar metric) and exposes `.mean()`, `.std()`, `.ci(alpha=0.05)` helpers.
 - RNG safety: derive per-seed configs using `SimulationConfig.with_seed(seed)` so master-seed isolation is preserved.
 

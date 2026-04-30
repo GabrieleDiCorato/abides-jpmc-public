@@ -3,7 +3,7 @@
 This guide is optimized for AI coding agents implementing custom trading strategies in ABIDES.
 Since the ABIDES source code is available in your environment, this guide focuses on **architecture, API contracts, and critical behaviors**, avoiding redundant code snippets.
 
-**CRITICAL PREREQUISITE:** Before building any agent, you **MUST** read [`HASUFEL_LLM_GOTCHAS.md`](./HASUFEL_LLM_GOTCHAS.md) to understand how market data is asynchronously populated (and avoids `None`/`KeyError` crashes).
+**CRITICAL PREREQUISITE:** Before building any agent, you **MUST** read [`llm-gotchas.md`](./llm-gotchas.md) to understand how market data is asynchronously populated (and avoids `None`/`KeyError` crashes).
 
 ---
 
@@ -164,7 +164,7 @@ Send a query (e.g., `self.get_current_spread(symbol)`).
 - The result arrives later as a `QuerySpreadResponseMsg`.
 - Your `receive_message()` must intercept this to invoke your strategy.
 
-*(Refer to `HASUFEL_LLM_GOTCHAS.md` for safe access patterns, as all internal data dictionaries start empty).*
+*(Refer to `llm-gotchas.md` for safe access patterns, as all internal data dictionaries start empty).*
 
 ---
 
@@ -567,8 +567,8 @@ Start with unit tests for rapid iteration, then add one integration test to conf
 
 ## Further Reading
 
-- [`HASUFEL_CONFIG_SYSTEM.md`](./HASUFEL_CONFIG_SYSTEM.md) — declarative config system, builder, templates, serialization
-- [`HASUFEL_LLM_GOTCHAS.md`](./HASUFEL_LLM_GOTCHAS.md) — all `None`/`KeyError` traps, safe patterns
-- [`HASUFEL_DATA_EXTRACTION.md`](./HASUFEL_DATA_EXTRACTION.md) — parsing simulation logs and L1/L2 book history
-- [`HASUFEL_PARALLEL_SIMULATION.md`](./HASUFEL_PARALLEL_SIMULATION.md) — multiprocessing, RNG hierarchy, log layout
+- [`config-system.md`](./config-system.md) — declarative config system, builder, templates, serialization
+- [`llm-gotchas.md`](./llm-gotchas.md) — all `None`/`KeyError` traps, safe patterns
+- [`data-extraction.md`](./data-extraction.md) — parsing simulation logs and L1/L2 book history
+- [`parallel-simulation.md`](./parallel-simulation.md) — multiprocessing, RNG hierarchy, log layout
 - [`notebooks/demo_Config_System.ipynb`](../notebooks/demo_Config_System.ipynb) — interactive walkthrough of the config system

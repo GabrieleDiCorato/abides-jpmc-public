@@ -519,7 +519,7 @@ This provides two guarantees:
 - **Composition invariance** — adding, removing, or resizing an agent
   group does not shift any other component's seed.
 
-See [HASUFEL_PARALLEL_SIMULATION.md](HASUFEL_PARALLEL_SIMULATION.md) for the
+See [parallel-simulation.md](parallel-simulation.md) for the
 full derivation tree.
 
 > **Breaking change from v2.3.0:** the same master seed produces different

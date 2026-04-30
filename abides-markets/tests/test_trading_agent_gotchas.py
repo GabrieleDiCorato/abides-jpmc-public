@@ -1,6 +1,6 @@
 """Tests for TradingAgent async data-flow gotchas and edge cases.
 
-Covers the documented traps from HASUFEL_LLM_GOTCHAS.md (docs/ai/):
+Covers the documented traps from llm-gotchas.md (docs/reference/):
 - mark_to_market() with missing last_trade, asymmetric quotes, default basket_size/nav_diff
 - _pending_order_delta() with malformed orders (missing symbol attr)
 - get_known_bid_ask() before any spread response

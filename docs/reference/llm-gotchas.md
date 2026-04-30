@@ -558,7 +558,7 @@ from abides_markets.simulation import run_batch
 results = run_batch([cfg1, cfg2, cfg3], n_workers=4, profile=ResultProfile.QUANT)
 ```
 
-> Full API: `HASUFEL_CONFIG_SYSTEM.md`, `HASUFEL_METRICS_API.md`, `HASUFEL_PARALLEL_SIMULATION.md`
+> Full API: `config-system.md`, `metrics-api.md`, `parallel-simulation.md`
 
 ---
 
@@ -590,7 +590,7 @@ result = run_simulation(config, oracle_instance=my_oracle)
 ```
 
 > Full pattern, `DataFrameProvider`, and oracle-less simulations:
-> `HASUFEL_CUSTOM_AGENT_GUIDE.md §7`
+> `custom-agent-guide.md §7`
 
 ---
 
@@ -628,7 +628,7 @@ self.logEvent("TRADE", {"price": price, "qty": qty})
 
 ## See Also
 
-- `HASUFEL_CUSTOM_AGENT_GUIDE.md` — adapter pattern, scaffold, checklist
-- `HASUFEL_CONFIG_SYSTEM.md` — builder API, templates, oracle config, serialization
-- `HASUFEL_DATA_EXTRACTION.md` — parsing results, L1/L2 book history
-- `HASUFEL_PARALLEL_SIMULATION.md` — multiprocessing, RNG hierarchy, log layout
+- `custom-agent-guide.md` — adapter pattern, scaffold, checklist
+- `config-system.md` — builder API, templates, oracle config, serialization
+- `data-extraction.md` — parsing results, L1/L2 book history
+- `parallel-simulation.md` — multiprocessing, RNG hierarchy, log layout

@@ -4,7 +4,7 @@ This module is imported by ``config_system.__init__`` to ensure all
 standard agents are available without explicit user action.
 
 For custom agents, use the ``@register_agent`` decorator directly on
-your config class — see ``HASUFEL_CUSTOM_AGENT_GUIDE.md`` in ``docs/ai/``.
+your config class — see ``custom-agent-guide.md`` in ``docs/reference/``.
 """
 
 from abides_markets.agents import (

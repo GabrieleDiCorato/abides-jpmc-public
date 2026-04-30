@@ -38,7 +38,7 @@ For **subscribe-mode agents**: call `super().wakeup()` but proceed with one-time
 ## Custom agent pattern
 Subclass `TradingAgent` for your adapter → define a strategy protocol in your own project → register via `@register_agent(name, agent_class=..., category=...)`.
 Use `BaseAgentConfig._prepare_constructor_kwargs()` to inject non-serializable strategy instances at compile time.
-See: `docs/ai/HASUFEL_CUSTOM_AGENT_GUIDE.md`
+See: `docs/reference/custom-agent-guide.md`
 
 ## Declarative config system
 Use `SimulationBuilder` to build a `SimulationConfig`, then `run_simulation(config)` from `abides_markets.simulation`.
@@ -46,11 +46,11 @@ The low-level path is `compile(config)` → `abides.run(runtime)` — the runtim
 Register agents with `@register_agent(name, agent_class=..., category=...)`.
 Config fields map to constructor args by name; override `_prepare_constructor_kwargs()` for computed args.
 `build()` eagerly validates agent params — unknown fields are rejected immediately.
-See: `docs/ai/HASUFEL_CONFIG_SYSTEM.md` and `notebooks/demo_Config_System.ipynb`
+See: `docs/reference/config-system.md` and `notebooks/demo_Config_System.ipynb`
 
 ## Full reference
-- `docs/ai/HASUFEL_CONFIG_SYSTEM.md` — declarative config system, builder, templates, per-agent delays
-- `docs/ai/HASUFEL_LLM_GOTCHAS.md` — all None/NaN traps, safe patterns
-- `docs/ai/HASUFEL_CUSTOM_AGENT_GUIDE.md` — full adapter pattern
-- `docs/ai/HASUFEL_DATA_EXTRACTION.md` — parsing logs (`parse_logs_df`) and L1/L2 book history
-- `docs/ai/HASUFEL_PARALLEL_SIMULATION.md` — multiprocessing, RNG hierarchy, log layout
+- `docs/reference/config-system.md` — declarative config system, builder, templates, per-agent delays
+- `docs/reference/llm-gotchas.md` — all None/NaN traps, safe patterns
+- `docs/reference/custom-agent-guide.md` — full adapter pattern
+- `docs/reference/data-extraction.md` — parsing logs (`parse_logs_df`) and L1/L2 book history
+- `docs/reference/parallel-simulation.md` — multiprocessing, RNG hierarchy, log layout

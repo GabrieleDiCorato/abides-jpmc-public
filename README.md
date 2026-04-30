@@ -162,7 +162,7 @@ runtime = compile(config)       # fresh runtime dict — consumed once
 end_state = abides.run(runtime)
 ```
 
-See [`docs/ai/HASUFEL_CONFIG_SYSTEM.md`](docs/ai/HASUFEL_CONFIG_SYSTEM.md) for full
+See [`docs/reference/config-system.md`](docs/reference/config-system.md) for full
 reference and [`notebooks/demo_Config_System.ipynb`](notebooks/demo_Config_System.ipynb)
 for an interactive tutorial.
 

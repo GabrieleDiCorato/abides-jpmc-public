@@ -1,3 +1,22 @@
+Unreleased
+==========
+
+Documentation
+-------------
+
+* **Docs reorganization.** ``docs/ai/`` merged into ``docs/reference/``
+  (single home for all technical references). ``docs/plans/`` renamed to
+  ``docs/active-plans/`` to clarify its ephemeral, per-PR scope.
+  ``docs/project/HASUFEL_PLAN.md`` renamed to ``docs/project/roadmap.md``
+  to disambiguate from the plans folder. The ``HASUFEL_`` filename prefix
+  was dropped throughout and files renamed to lowercase kebab-case
+  (e.g. ``HASUFEL_CONFIG_SYSTEM.md`` → ``config-system.md``). The
+  previous logging audit (``LOGGING_ANALYSIS.md``) moved into
+  ``docs/reference/logging-architecture.md``. Old paths are not
+  preserved — external bookmarks must be updated.
+
+---
+
 2026-04 Release v2.5.8
 ==================
 

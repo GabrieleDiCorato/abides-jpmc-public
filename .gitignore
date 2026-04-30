@@ -167,8 +167,8 @@ cython_debug/
 .vscode/
 .idea/
 
-# Personal Copilot instructions (workspace-level)
-.github/instructions/
+# Personal Copilot configuration 
+.github/
 
 # macOS
 .DS_Store
