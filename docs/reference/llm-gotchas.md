@@ -733,6 +733,34 @@ External code that read the old kernel attributes must switch to
 reading `custom_state["agent_type_metrics"]`. External code that
 wrote them must switch to `Agent.report_metric()`.
 
+## `LatencyModel.get_latency` requires `random_state` kwarg (added 2026-04)
+
+`Kernel.send_message` always routes through `agent_latency_model`
+now, even when the caller did not pass one (the kernel wraps the
+legacy `agent_latency` / `default_latency` / `latency_noise` args
+into a `MatrixLatencyModel` or `UniformLatencyModel`).
+
+The kernel passes `random_state=self.random_state` to every
+`get_latency` call. Custom `LatencyModel` subclasses **must** accept
+`random_state` as a keyword-only parameter:
+
+```python
+def get_latency(
+    self,
+    sender_id: int,
+    recipient_id: int,
+    *,
+    random_state: np.random.RandomState | None = None,
+) -> int:
+    ...
+```
+
+The built-in cubic `LatencyModel` accepts the kwarg but ignores it,
+keeping bit-for-bit reproducibility for cubic users.
+
+`Kernel.agent_latency` and `Kernel.latency_noise` no longer exist —
+read the underlying data from the model object directly.
+
 ---
 
 ## See Also

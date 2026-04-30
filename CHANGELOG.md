@@ -4,6 +4,35 @@ Unreleased
 Bug Fixes
 ---------
 
+* **Latency model unification (PR 5a of kernel improvements).**
+
+  - ``Kernel.send_message`` now always routes through a
+    ``LatencyModel``. The dual code path (legacy
+    ``agent_latency`` matrix + ``latency_noise`` list vs. injected
+    ``agent_latency_model``) is gone.
+  - When ``agent_latency_model`` is not provided, the kernel wraps
+    the legacy ``agent_latency`` / ``default_latency`` /
+    ``latency_noise`` constructor kwargs into a new
+    ``MatrixLatencyModel`` or ``UniformLatencyModel`` (both in
+    ``abides_core.latency_model``). The legacy default
+    ``noise=[1.0]`` RNG draw is preserved so seeded simulations
+    remain bit-for-bit identical (``test_seed_replicability.py``
+    passes unmodified).
+  - ``LatencyModel.get_latency`` gained a keyword-only
+    ``random_state`` parameter. The kernel passes
+    ``self.random_state`` on every call. The cubic
+    ``LatencyModel`` ignores the kwarg and continues to use its own
+    constructor-injected RNG (zero behavioral change for cubic
+    users). Custom ``LatencyModel`` subclasses outside the repo must
+    add ``*, random_state: np.random.RandomState | None = None`` to
+    their ``get_latency`` signatures.
+  - ``LatencyModel.get_latency`` now returns ``int`` (was
+    ``float``). The cubic model casts at the boundary.
+  - Removed ``Kernel.agent_latency`` and ``Kernel.latency_noise``
+    attributes (and their entries in ``_KERNEL_RESERVED_ATTRS``).
+    External readers must access the underlying matrix / noise list
+    via the model object instead.
+
 * **Removed financial fields from kernel core (PR 4 of kernel improvements).**
 
   - Removed ``Kernel.mean_result_by_agent_type`` and

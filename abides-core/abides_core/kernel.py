@@ -11,7 +11,7 @@ import pandas as pd
 
 from . import NanosecondTime
 from .agent import Agent
-from .latency_model import LatencyModel
+from .latency_model import LatencyModel, MatrixLatencyModel, UniformLatencyModel
 from .message import Message, MessageBatch, WakeupMsg
 from .utils import fmt_ts, str_to_ns
 
@@ -61,9 +61,7 @@ _KERNEL_RESERVED_ATTRS: frozenset[str] = frozenset(
         "custom_state",
         "has_run",
         "gym_agents",
-        "agent_latency",
         "agent_latency_model",
-        "latency_noise",
         "agent_current_times",
         "agent_computation_delays",
         "current_agent_additional_delay",
@@ -254,31 +252,21 @@ class Kernel:
                 if 0 <= agent_id < len(self.agents):
                     self.agent_computation_delays[agent_id] = delay
 
-        # If an agent_latency_model is defined, it will be used instead of
-        # the older, non-model-based attributes.
-        self.agent_latency_model = agent_latency_model
-
-        # If an agent_latency_model is NOT defined, the older parameters:
-        # agent_latency (or default_latency) and latency_noise should be specified.
-        # These should be considered deprecated and will be removed in the future.
-
-        # If agent_latency is not defined, define it using the default_latency.
-        # This matrix defines the communication delay between every pair of
-        # agents.
-        if agent_latency is None:
-            self.agent_latency: list[list[float]] = [
-                [default_latency] * len(self.agents) for _ in range(len(self.agents))
-            ]
-        else:
-            self.agent_latency = agent_latency
-
-        # There is a noise model for latency, intended to be a one-sided
-        # distribution with the peak at zero.  By default there is no noise
-        # (100% chance to add zero ns extra delay).  Format is a list with
-        # list index = ns extra delay, value = probability of this delay.
-        self.latency_noise: list[float] = (
-            latency_noise if latency_noise is not None else [1.0]
-        )
+        # Normalize legacy latency parameters into a LatencyModel. Always
+        # going through a model removes the dual code path inside
+        # send_message and lets PR 5b cleanly drop the noise list later.
+        # The new wrappers preserve the legacy default-noise RNG draw
+        # (one np.random.choice on [1.0]) for bit-for-bit reproducibility.
+        if agent_latency_model is None:
+            if agent_latency is not None:
+                agent_latency_model = MatrixLatencyModel(
+                    agent_latency, noise=latency_noise
+                )
+            else:
+                agent_latency_model = UniformLatencyModel(
+                    default_latency, noise=latency_noise
+                )
+        self.agent_latency_model: LatencyModel = agent_latency_model
 
         # The kernel maintains an accumulating additional delay parameter
         # for the current agent.  This is applied to each message sent
@@ -647,27 +635,17 @@ class Kernel:
             + delay
         )
 
-        # Apply communication delay per the agent_latency_model, if defined, or the
-        # agent_latency matrix [sender_id][recipient_id] otherwise.
-        if self.agent_latency_model is not None:
-            latency: float = self.agent_latency_model.get_latency(
-                sender_id=sender_id, recipient_id=recipient_id
+        # Apply communication delay via the (always-present) latency model.
+        latency: int = self.agent_latency_model.get_latency(
+            sender_id=sender_id,
+            recipient_id=recipient_id,
+            random_state=self.random_state,
+        )
+        deliver_at = sent_time + latency
+        if self.show_trace_messages:
+            logger.debug(
+                f"Kernel applied latency {latency}, accumulated delay {self.current_agent_additional_delay}, one-time delay {delay} on send_message from: {self.agents[sender_id].name} to {self.agents[recipient_id].name}, scheduled for {fmt_ts(deliver_at)}"
             )
-            deliver_at = sent_time + int(latency)
-            if self.show_trace_messages:
-                logger.debug(
-                    f"Kernel applied latency {latency}, accumulated delay {self.current_agent_additional_delay}, one-time delay {delay} on send_message from: {self.agents[sender_id].name} to {self.agents[recipient_id].name}, scheduled for {fmt_ts(deliver_at)}"
-                )
-        else:
-            latency = self.agent_latency[sender_id][recipient_id]
-            noise = self.random_state.choice(
-                len(self.latency_noise), p=self.latency_noise
-            )
-            deliver_at = sent_time + int(latency + noise)
-            if self.show_trace_messages:
-                logger.debug(
-                    f"Kernel applied latency {latency}, noise {noise}, accumulated delay {self.current_agent_additional_delay}, one-time delay {delay} on send_message from: {self.agents[sender_id].name} to {self.agents[recipient_id].name}, scheduled for {fmt_ts(deliver_at)}"
-                )
 
         # Finally drop the message in the queue with priority == delivery time.
         self._enqueue(deliver_at, sender_id, recipient_id, message)

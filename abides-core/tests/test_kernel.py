@@ -35,34 +35,45 @@ class StubAgent(Agent):
 
 
 # ---------------------------------------------------------------------------
-# Step 1.1: Latency matrix aliasing
+# Step 1.1: Latency model wiring (PR 5a)
 # ---------------------------------------------------------------------------
 
 
-class TestLatencyMatrixAliasing:
-    """Rows of the default latency matrix must be independent lists."""
+class TestLatencyModelWiring:
+    """Kernel always builds a LatencyModel; legacy attrs are gone."""
 
-    def test_rows_are_independent_objects(self):
+    def test_default_wraps_into_uniform_latency_model(self):
+        from abides_core.latency_model import UniformLatencyModel
+
         agents = [StubAgent(i) for i in range(3)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
-        # Each row must be a distinct list object
-        assert kernel.agent_latency[0] is not kernel.agent_latency[1]
-        assert kernel.agent_latency[1] is not kernel.agent_latency[2]
-
-    def test_mutating_one_row_does_not_affect_others(self):
-        agents = [StubAgent(i) for i in range(3)]
-        kernel = Kernel(agents=agents, default_latency=100, skip_log=True, seed=1)
-        # Mutate row 0
-        kernel.agent_latency[0][0] = 999
-        # Row 1 must be unchanged
-        assert kernel.agent_latency[1][0] == 100
-        assert kernel.agent_latency[2][0] == 100
-
-    def test_default_values_correct(self):
-        agents = [StubAgent(i) for i in range(4)]
         kernel = Kernel(agents=agents, default_latency=42, skip_log=True, seed=1)
-        for row in kernel.agent_latency:
-            assert row == [42, 42, 42, 42]
+        assert isinstance(kernel.agent_latency_model, UniformLatencyModel)
+        assert (
+            kernel.agent_latency_model.get_latency(
+                0, 1, random_state=kernel.random_state
+            )
+            == 42
+        )
+
+    def test_legacy_agent_latency_param_wraps_into_matrix_model(self):
+        from abides_core.latency_model import MatrixLatencyModel
+
+        agents = [StubAgent(i) for i in range(3)]
+        matrix = [[10, 20, 30], [40, 50, 60], [70, 80, 90]]
+        kernel = Kernel(agents=agents, agent_latency=matrix, skip_log=True, seed=1)
+        assert isinstance(kernel.agent_latency_model, MatrixLatencyModel)
+        assert (
+            kernel.agent_latency_model.get_latency(
+                1, 2, random_state=kernel.random_state
+            )
+            == 60
+        )
+
+    def test_no_longer_exposes_agent_latency_attr(self):
+        agents = [StubAgent(i) for i in range(2)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        assert not hasattr(kernel, "agent_latency")
+        assert not hasattr(kernel, "latency_noise")
 
 
 # ---------------------------------------------------------------------------
@@ -440,3 +451,79 @@ class TestReportMetricAggregation:
         kernel = Kernel(agents=agents, skip_log=True, seed=1)
         kernel.initialize()
         kernel.terminate()
+
+
+# ---------------------------------------------------------------------------
+# PR 5a: Concrete LatencyModel subclasses
+# ---------------------------------------------------------------------------
+
+
+class TestLatencyModelSubclasses:
+    def test_uniform_default_noise_consumes_one_draw(self):
+        from abides_core.latency_model import UniformLatencyModel
+
+        rs1 = np.random.RandomState(seed=42)
+        rs2 = np.random.RandomState(seed=42)
+        model = UniformLatencyModel(latency=100)
+        for _ in range(10):
+            model.get_latency(0, 1, random_state=rs1)
+            rs2.choice(1, p=[1.0])
+        # Both RNGs must be in identical state.
+        assert rs1.tomaxint() == rs2.tomaxint()
+
+    def test_uniform_returns_constant_with_default_noise(self):
+        from abides_core.latency_model import UniformLatencyModel
+
+        rs = np.random.RandomState(seed=0)
+        model = UniformLatencyModel(latency=250)
+        assert model.get_latency(0, 1, random_state=rs) == 250
+        assert model.get_latency(2, 3, random_state=rs) == 250
+
+    def test_uniform_casts_float_latency_to_int(self):
+        from abides_core.latency_model import UniformLatencyModel
+
+        rs = np.random.RandomState(seed=0)
+        model = UniformLatencyModel(latency=99.7)
+        # int() truncates toward zero.
+        assert model.get_latency(0, 1, random_state=rs) == 99
+
+    def test_matrix_returns_pairwise_value(self):
+        from abides_core.latency_model import MatrixLatencyModel
+
+        rs = np.random.RandomState(seed=0)
+        m = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.int64)
+        model = MatrixLatencyModel(m)
+        assert model.get_latency(0, 2, random_state=rs) == 3
+        assert model.get_latency(2, 1, random_state=rs) == 8
+
+    def test_cubic_ignores_random_state_kwarg(self):
+        from abides_core.latency_model import LatencyModel
+
+        own_rs = np.random.RandomState(seed=1)
+        model = LatencyModel(
+            random_state=own_rs,
+            min_latency=np.array([[100, 200], [300, 400]], dtype=np.int64),
+            latency_model="cubic",
+        )
+        # Pass a fresh, unused RandomState; cubic must NOT touch it.
+        passed_rs = np.random.RandomState(seed=99)
+        before = passed_rs.get_state()
+        model.get_latency(0, 1, random_state=passed_rs)
+        after = passed_rs.get_state()
+        # State tuple equality: same algorithm name, same key array, same pos.
+        assert before[0] == after[0]
+        assert (before[1] == after[1]).all()
+        assert before[2] == after[2]
+
+    def test_deterministic_returns_int(self):
+        from abides_core.latency_model import LatencyModel
+
+        rs = np.random.RandomState(seed=0)
+        model = LatencyModel(
+            random_state=rs,
+            min_latency=np.array([[100, 200], [300, 400]], dtype=np.int64),
+            latency_model="deterministic",
+        )
+        result = model.get_latency(0, 1, random_state=rs)
+        assert isinstance(result, int)
+        assert result == 200

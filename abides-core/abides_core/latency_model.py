@@ -102,13 +102,23 @@ class LatencyModel:
             self.jitter_clip = jitter_clip
             self.jitter_unit = jitter_unit
 
-    def get_latency(self, sender_id: int, recipient_id: int) -> float:
+    def get_latency(
+        self,
+        sender_id: int,
+        recipient_id: int,
+        *,
+        random_state: np.random.RandomState | None = None,
+    ) -> int:
         """LatencyModel.get_latency() samples and returns the final latency for a single
         Message according to the model specified during initialization.
 
         Arguments:
           sender_id: Simulation agent_id for the agent sending the message.
           recipient_id: Simulation agent_id for the agent receiving the message.
+          random_state: Accepted for signature compatibility with
+            ``UniformLatencyModel`` / ``MatrixLatencyModel``. The cubic
+            model ignores it and always uses the ``random_state``
+            injected at construction.
         """
 
         min_latency = self._extract(self.min_latency, sender_id, recipient_id)
@@ -129,10 +139,10 @@ class LatencyModel:
 
             # Now apply the cubic model to compute jitter and the final message latency.
             latency = min_latency + ((a / x**3) * (min_latency / unit))
-            return float(latency)
+            return int(latency)
 
         else:  # self.latency_model == 'deterministic'
-            return float(min_latency)
+            return int(min_latency)
 
     def _extract(self, param: Union[float, np.ndarray], sid: int, rid: int):
         """Internal function to extract correct values for a sender->recipient
@@ -156,3 +166,66 @@ class LatencyModel:
         raise Exception(
             "Config error: LatencyModel parameter is not scalar, 1-D ndarray, or 2-D ndarray."
         )
+
+
+class UniformLatencyModel(LatencyModel):
+    """Latency model that returns a single configured constant for every
+    sender/recipient pair, plus an optional integer noise draw.
+
+    The default ``noise=[1.0]`` consumes exactly one
+    ``random_state.choice`` draw per call (matching the legacy default
+    code path in ``Kernel.send_message``). Callers wanting a noise-free
+    model that does *not* touch the kernel RNG should pass ``noise=[]``
+    is invalid; use PR 5b's ``noise=None`` default once it lands.
+    """
+
+    def __init__(
+        self,
+        latency: int | float,
+        noise: list[float] | None = None,
+    ) -> None:
+        self._latency: int = int(latency)
+        self._noise: list[float] = noise if noise is not None else [1.0]
+
+    def get_latency(
+        self,
+        sender_id: int,
+        recipient_id: int,
+        *,
+        random_state: np.random.RandomState | None = None,
+    ) -> int:
+        assert random_state is not None, (
+            "UniformLatencyModel.get_latency requires a random_state kwarg "
+            "(passed by Kernel.send_message)."
+        )
+        draw = int(random_state.choice(len(self._noise), p=self._noise))
+        return self._latency + draw
+
+
+class MatrixLatencyModel(LatencyModel):
+    """Latency model backed by a per-pair integer matrix
+    ``M[sender_id, recipient_id]``, plus an optional integer noise
+    draw with the same semantics as ``UniformLatencyModel``.
+    """
+
+    def __init__(
+        self,
+        matrix: np.ndarray | list[list[int]] | list[list[float]],
+        noise: list[float] | None = None,
+    ) -> None:
+        self._matrix: np.ndarray = np.ascontiguousarray(matrix, dtype=np.int64)
+        self._noise: list[float] = noise if noise is not None else [1.0]
+
+    def get_latency(
+        self,
+        sender_id: int,
+        recipient_id: int,
+        *,
+        random_state: np.random.RandomState | None = None,
+    ) -> int:
+        assert random_state is not None, (
+            "MatrixLatencyModel.get_latency requires a random_state kwarg "
+            "(passed by Kernel.send_message)."
+        )
+        draw = int(random_state.choice(len(self._noise), p=self._noise))
+        return int(self._matrix[sender_id, recipient_id]) + draw
