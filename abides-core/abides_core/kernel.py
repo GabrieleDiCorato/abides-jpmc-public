@@ -26,6 +26,27 @@ _DEFAULT_STOP_TIME: int = str_to_ns("16:00:00")
 _WAKEUP_SINGLETON = WakeupMsg()
 
 
+# Process-level set of deprecated kernel attribute names that have already
+# emitted a warning. Used by the property shims for ``agent_current_times``
+# and ``agent_computation_delays`` so each name warns at most once per
+# process (avoids logging spam in long-running gym training loops).
+_WARNED_DEPRECATED_ATTRS: set[str] = set()
+
+
+def _warn_deprecated_attr(name: str, new_name: str) -> None:
+    """Emit a one-shot ``DeprecationWarning`` for a renamed kernel attribute."""
+    if name in _WARNED_DEPRECATED_ATTRS:
+        return
+    _WARNED_DEPRECATED_ATTRS.add(name)
+    warnings.warn(
+        f"Kernel.{name} is deprecated; use Kernel.{new_name} (numpy int64 "
+        f"array) instead. The legacy attribute returns a read-only view and "
+        f"will be removed in a future release.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
 @dataclass(order=True)
 class _HeapEntry:
     """Heap entry used by the kernel's event queue.
@@ -230,11 +251,13 @@ class Kernel:
         # cannot receive new messages/wakeups until the global time
         # reaches the agent's time.  (i.e. it cannot act again while
         # it is still "in the future")
-
-        # This also nicely enforces agents being unable to act before
-        # the simulation start_time.
-        self.agent_current_times: list[NanosecondTime] = [self.start_time] * len(
-            self.agents
+        #
+        # Stored as numpy int64 arrays for fast O(1) hot-loop access.
+        # External readers should use the ``agent_current_times`` /
+        # ``agent_computation_delays`` properties (deprecated, read-only).
+        n = len(self.agents)
+        self._agent_current_times: np.ndarray = np.full(
+            n, self.start_time, dtype=np.int64
         )
 
         # agent_computation_delays is in nanoseconds, starts with a default
@@ -242,15 +265,23 @@ class Kernel:
         # (for itself only).  It represents the time penalty applied to
         # an agent each time it is awakened  (wakeup or recvMsg).  The
         # penalty applies _after_ the agent acts, before it may act again.
-        self.agent_computation_delays: list[int] = [default_computation_delay] * len(
-            self.agents
+        self._agent_computation_delays: np.ndarray = np.full(
+            n, default_computation_delay, dtype=np.int64
         )
 
         # Apply any per-agent computation delay overrides from the config.
         if per_agent_computation_delays:
             for agent_id, delay in per_agent_computation_delays.items():
-                if 0 <= agent_id < len(self.agents):
-                    self.agent_computation_delays[agent_id] = delay
+                if 0 <= agent_id < n:
+                    self._agent_computation_delays[agent_id] = delay
+
+        # Type index for O(1) ``find_agents_by_type`` lookups. Walks each
+        # agent's MRO so callers may query with a base class and still
+        # get every subclass instance (preserves ``isinstance`` semantics).
+        self._agents_by_type: dict[type, list[int]] = {}
+        for agent in self.agents:
+            for cls in type(agent).__mro__:
+                self._agents_by_type.setdefault(cls, []).append(agent.id)
 
         # Normalize legacy latency parameters into a LatencyModel. Always
         # going through a model removes the dual code path inside
@@ -321,7 +352,7 @@ class Kernel:
         # ``agent_computation_delays`` is intentionally not cleared here:
         # it carries per-agent overrides from the constructor that must
         # persist across resets.
-        self.agent_current_times[:] = [self.start_time] * len(self.agents)
+        self._agent_current_times[:] = self.start_time
         self.ttl_messages = 0
         self.custom_state.clear()
         self.summary_log.clear()
@@ -442,9 +473,9 @@ class Kernel:
             self.current_agent_additional_delay = 0
 
             # If the agent is busy in the future, requeue at its busy-until time.
-            if self.agent_current_times[recipient_id] > self.current_time:
+            if self._agent_current_times[recipient_id] > self.current_time:
                 self._enqueue(
-                    self.agent_current_times[recipient_id],
+                    int(self._agent_current_times[recipient_id]),
                     sender_id,
                     recipient_id,
                     message,
@@ -452,12 +483,12 @@ class Kernel:
                 if self.show_trace_messages:
                     logger.debug(
                         "Agent in future: requeued for %s",
-                        fmt_ts(self.agent_current_times[recipient_id]),
+                        fmt_ts(int(self._agent_current_times[recipient_id])),
                     )
                 continue
 
             # Set agent's current time to global current time for start of processing.
-            self.agent_current_times[recipient_id] = self.current_time
+            self._agent_current_times[recipient_id] = self.current_time
 
             # Dispatch.
             wakeup_result: Any = None
@@ -476,8 +507,8 @@ class Kernel:
             # Advance AFTER delivery so any Agent.delay() call inside
             # wakeup() / receive_message() takes effect on the agent's
             # own next slot.
-            self.agent_current_times[recipient_id] += (
-                self.agent_computation_delays[recipient_id]
+            self._agent_current_times[recipient_id] += (
+                self._agent_computation_delays[recipient_id]
                 + self.current_agent_additional_delay
             )
 
@@ -486,7 +517,7 @@ class Kernel:
                     "After dispatch, agent %d delayed from %s to %s",
                     recipient_id,
                     fmt_ts(self.current_time),
-                    fmt_ts(self.agent_current_times[recipient_id]),
+                    fmt_ts(int(self._agent_current_times[recipient_id])),
                 )
 
             # Catch kernel interruption signal (gym agent's raw_state).
@@ -549,8 +580,10 @@ class Kernel:
         self.custom_state["kernel_event_queue_elapsed_wallclock"] = (
             event_queue_wall_clock_elapsed
         )
-        self.custom_state["kernel_slowest_agent_finish_time"] = max(
-            self.agent_current_times
+        # Cast to Python int so downstream consumers (notebooks, log parsers)
+        # never see a numpy int64 inside custom_state.
+        self.custom_state["kernel_slowest_agent_finish_time"] = int(
+            self._agent_current_times.max()
         )
         self.custom_state["agents"] = self.agents
 
@@ -630,7 +663,7 @@ class Kernel:
         # requested delay for this specific message only.
         sent_time = (
             self.current_time
-            + self.agent_computation_delays[sender_id]
+            + int(self._agent_computation_delays[sender_id])
             + self.current_agent_additional_delay
             + delay
         )
@@ -652,7 +685,7 @@ class Kernel:
 
         if self.show_trace_messages:
             logger.debug(
-                f"Sent time: {sent_time}, current time {fmt_ts(self.current_time)}, computation delay {self.agent_computation_delays[sender_id]}"
+                f"Sent time: {sent_time}, current time {fmt_ts(self.current_time)}, computation delay {int(self._agent_computation_delays[sender_id])}"
             )
             logger.debug(f"Message queued: {message}")
 
@@ -740,7 +773,7 @@ class Kernel:
                 f"requested_delay: {requested_delay}"
             )
 
-        self.agent_computation_delays[sender_id] = requested_delay
+        self._agent_computation_delays[sender_id] = requested_delay
 
     def get_agent_compute_delay(self, sender_id: int) -> int:
         """Return the current computation delay for the given agent.
@@ -748,7 +781,7 @@ class Kernel:
         Arguments:
             sender_id: The ID of the agent to query.
         """
-        return self.agent_computation_delays[sender_id]
+        return int(self._agent_computation_delays[sender_id])
 
     def delay_agent(self, sender_id: int, additional_delay: int) -> None:
         """
@@ -784,13 +817,41 @@ class Kernel:
         """
         Returns the IDs of any agents that are of the given type.
 
+        Lookup is O(1): the kernel pre-indexes every agent under each class
+        in its MRO at construction time, so passing a base class still
+        returns every subclass instance (preserves ``isinstance`` semantics).
+
         Arguments:
-            type: The agent type to search for.
+            agent_type: The agent type to search for.
 
         Returns:
             A list of agent IDs that are instances of the type.
         """
-        return [agent.id for agent in self.agents if isinstance(agent, agent_type)]
+        return list(self._agents_by_type.get(agent_type, []))
+
+    @property
+    def agent_current_times(self) -> np.ndarray:
+        """Deprecated read-only view of per-agent next-available times.
+
+        Use :attr:`_agent_current_times` directly inside ``abides_core``.
+        External callers should treat this as a transitional accessor.
+        """
+        _warn_deprecated_attr("agent_current_times", "_agent_current_times")
+        view = self._agent_current_times.view()
+        view.flags.writeable = False
+        return view
+
+    @property
+    def agent_computation_delays(self) -> np.ndarray:
+        """Deprecated read-only view of per-agent computation delays.
+
+        Use :attr:`_agent_computation_delays` directly inside ``abides_core``.
+        External callers should treat this as a transitional accessor.
+        """
+        _warn_deprecated_attr("agent_computation_delays", "_agent_computation_delays")
+        view = self._agent_computation_delays.view()
+        view.flags.writeable = False
+        return view
 
     def write_log(
         self, sender_id: int, df_log: pd.DataFrame, filename: str | None = None

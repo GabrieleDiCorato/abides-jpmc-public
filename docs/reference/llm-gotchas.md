@@ -780,6 +780,41 @@ The `Kernel` constructor's legacy `latency_noise` kwarg still
 forwards into the wrapped model unchanged, so callers that already
 pass `latency_noise=[1.0]` are unaffected.
 
+## Per-agent state is numpy `int64` (changed 2026-04)
+
+`Kernel.agent_current_times` and `Kernel.agent_computation_delays`
+are now `numpy.ndarray[int64]`, exposed internally as
+`Kernel._agent_current_times` and `Kernel._agent_computation_delays`.
+The legacy public names remain as **read-only deprecation
+properties** that emit a one-shot `DeprecationWarning` and return
+a non-writable `ndarray` view.
+
+Implications:
+
+- External *readers* keep working (with one warning per attribute
+  per process) but should migrate to the underscore names if they
+  are inside `abides_core`.
+- External *writers* will fail loudly: the returned view rejects
+  item assignment. Use `kernel.set_agent_compute_delay(agent_id, ns)`
+  for runtime delay updates, or pass `per_agent_computation_delays`
+  to the `Kernel` constructor for static overrides.
+- `numpy.int64` arithmetic does not auto-promote to Python `int`
+  inside f-strings and JSON serialisers. Cast at the boundary if
+  you read these arrays directly:
+
+  ```python
+  finish_time = int(kernel._agent_current_times[agent_id])
+  ```
+
+  The kernel itself already casts
+  `custom_state["kernel_slowest_agent_finish_time"]` to a Python
+  `int` so notebooks and log parsers stay clean.
+
+`Kernel.find_agents_by_type` is now O(1): the kernel pre-indexes
+every agent under each class in its MRO at construction time, so
+passing a base class still returns every subclass instance
+(`isinstance` semantics are preserved).
+
 ---
 
 ## See Also

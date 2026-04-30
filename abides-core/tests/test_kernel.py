@@ -104,7 +104,7 @@ class TestMessageBatchDelay:
         comp_delay = 100
         kernel, agents = self._make_kernel(comp_delay)
 
-        t = kernel.agent_current_times[1]
+        t = int(kernel._agent_current_times[1])
         # Enqueue a single message from agent 0 to agent 1
         deliver_at = t + 1  # just past agent's current time
         kernel.current_time = kernel.start_time  # reset so runner loop proceeds
@@ -113,14 +113,14 @@ class TestMessageBatchDelay:
         kernel.runner()
 
         # Agent 1 should have been delayed by exactly comp_delay from delivery time
-        assert kernel.agent_current_times[1] == deliver_at + comp_delay
+        assert kernel._agent_current_times[1] == deliver_at + comp_delay
 
     def test_batch_delay_applied_once(self):
         """MessageBatch of N messages must apply delay only ONCE."""
         comp_delay = 100
         kernel, agents = self._make_kernel(comp_delay)
 
-        t = kernel.agent_current_times[1]
+        t = int(kernel._agent_current_times[1])
         deliver_at = t + 1
         n_messages = 10
         batch = MessageBatch(messages=[Message() for _ in range(n_messages)])
@@ -130,7 +130,7 @@ class TestMessageBatchDelay:
         kernel.runner()
 
         # Key assertion: delay is 1× comp_delay, NOT n_messages × comp_delay
-        assert kernel.agent_current_times[1] == deliver_at + comp_delay
+        assert kernel._agent_current_times[1] == deliver_at + comp_delay
         # All messages in batch should have been delivered
         assert len(agents[1].received) == n_messages
 
@@ -264,7 +264,7 @@ class TestInitializeClearsState:
         # The stale message must not survive; only fresh wakeups enqueued
         # by ``kernel_starting`` may now be present.
         assert stale not in kernel.messages
-        assert all(t == kernel.start_time for t in kernel.agent_current_times)
+        assert all(t == kernel.start_time for t in kernel._agent_current_times)
 
 
 class TestRandomStateDeprecationWarning:
@@ -329,7 +329,7 @@ class TestDispatchOrderingBug:
         kernel.initialize()
         kernel.runner()  # drain initial wakeups
 
-        deliver_at = kernel.agent_current_times[1] + 1
+        deliver_at = int(kernel._agent_current_times[1]) + 1
         kernel.current_time = kernel.start_time
         kernel._enqueue(deliver_at, 0, 1, Message())
         kernel.runner()
@@ -337,7 +337,7 @@ class TestDispatchOrderingBug:
         # Without the bug fix, this would equal deliver_at + comp_delay.
         # The dispatch ordering bug fix means delay(500) inside
         # receive_message takes effect on the agent's own next slot.
-        assert kernel.agent_current_times[1] == deliver_at + comp_delay + extra
+        assert kernel._agent_current_times[1] == deliver_at + comp_delay + extra
 
 
 class TestHeapSequenceCounter:
@@ -409,7 +409,7 @@ class TestMessageBatchDispatch:
         msgs = [Message() for _ in range(3)]
         batch = MessageBatch(messages=msgs)
         kernel.current_time = kernel.start_time
-        kernel._enqueue(kernel.agent_current_times[1] + 1, 0, 1, batch)
+        kernel._enqueue(int(kernel._agent_current_times[1]) + 1, 0, 1, batch)
         kernel.runner()
 
         # All three sub-messages delivered, batch wrapper not.
@@ -543,3 +543,117 @@ class TestLatencyModelSubclasses:
         result = model.get_latency(0, 1, random_state=rs)
         assert isinstance(result, int)
         assert result == 200
+
+
+# ---------------------------------------------------------------------------
+# PR 6: Per-agent state to numpy arrays + agent type index
+# ---------------------------------------------------------------------------
+
+
+class TestPerAgentStateNumpy:
+    def test_per_agent_state_is_numpy_int64(self):
+        agents = [StubAgent(0), StubAgent(1)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        assert isinstance(kernel._agent_current_times, np.ndarray)
+        assert kernel._agent_current_times.dtype == np.int64
+        assert kernel._agent_current_times.shape == (2,)
+        assert isinstance(kernel._agent_computation_delays, np.ndarray)
+        assert kernel._agent_computation_delays.dtype == np.int64
+        assert kernel._agent_computation_delays.shape == (2,)
+
+    def test_per_agent_computation_delays_overrides_applied(self):
+        agents = [StubAgent(i) for i in range(4)]
+        kernel = Kernel(
+            agents=agents,
+            skip_log=True,
+            seed=1,
+            default_computation_delay=10,
+            per_agent_computation_delays={1: 100, 3: 300},
+        )
+        assert list(kernel._agent_computation_delays) == [10, 100, 10, 300]
+
+    def test_initialize_resets_current_times_in_place(self):
+        # The slice-assign reset must mutate the same numpy buffer (no realloc),
+        # so callers holding a reference to the array see the reset.
+        agents = [StubAgent(0), StubAgent(1)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        buf_id = id(kernel._agent_current_times)
+        kernel._agent_current_times[0] = 999_999
+        kernel.initialize()
+        assert id(kernel._agent_current_times) == buf_id
+        assert (kernel._agent_current_times == kernel.start_time).all()
+
+
+class TestLegacyPerAgentAttrShims:
+    def test_legacy_attr_warns_and_is_readonly(self):
+        import warnings as _w
+
+        # Reset the process-level warned set so the warning fires here even
+        # if another test has already hit this attribute.
+        from abides_core.kernel import _WARNED_DEPRECATED_ATTRS
+
+        _WARNED_DEPRECATED_ATTRS.discard("agent_current_times")
+
+        agents = [StubAgent(0), StubAgent(1)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        with _w.catch_warnings(record=True) as captured:
+            _w.simplefilter("always", DeprecationWarning)
+            view = kernel.agent_current_times
+        assert any(
+            issubclass(w.category, DeprecationWarning)
+            and "agent_current_times" in str(w.message)
+            for w in captured
+        )
+        # Returned view must be read-only.
+        import pytest as _pytest
+
+        with _pytest.raises(ValueError):
+            view[0] = 0
+
+    def test_legacy_attr_warns_only_once(self):
+        import warnings as _w
+
+        from abides_core.kernel import _WARNED_DEPRECATED_ATTRS
+
+        _WARNED_DEPRECATED_ATTRS.discard("agent_computation_delays")
+
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        with _w.catch_warnings(record=True) as captured:
+            _w.simplefilter("always", DeprecationWarning)
+            _ = kernel.agent_computation_delays
+            _ = kernel.agent_computation_delays
+            _ = kernel.agent_computation_delays
+        relevant = [w for w in captured if "agent_computation_delays" in str(w.message)]
+        assert len(relevant) == 1
+
+
+class _SpecialStub(StubAgent):
+    pass
+
+
+class TestFindAgentsByTypeIndex:
+    def test_returns_subclass_matches(self):
+        # Indexing walks the MRO so passing the parent class returns
+        # both parent-typed and subclass-typed agents.
+        agents = [StubAgent(0), _SpecialStub(1), StubAgent(2), _SpecialStub(3)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        assert kernel.find_agents_by_type(_SpecialStub) == [1, 3]
+        assert kernel.find_agents_by_type(StubAgent) == [0, 1, 2, 3]
+
+    def test_unknown_type_returns_empty(self):
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+
+        class _Other(Agent):
+            pass
+
+        assert kernel.find_agents_by_type(_Other) == []
+
+    def test_returned_list_is_a_copy(self):
+        # Caller mutation of the returned list must not corrupt the index.
+        agents = [StubAgent(0), StubAgent(1)]
+        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        result = kernel.find_agents_by_type(StubAgent)
+        result.append(999)
+        assert kernel.find_agents_by_type(StubAgent) == [0, 1]

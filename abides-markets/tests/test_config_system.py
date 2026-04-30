@@ -1010,11 +1010,11 @@ class TestPerAgentComputationDelay:
             default_computation_delay=50,
             per_agent_computation_delays={1: 100, 3: 200},
         )
-        assert kernel.agent_computation_delays[0] == 50
-        assert kernel.agent_computation_delays[1] == 100
-        assert kernel.agent_computation_delays[2] == 50
-        assert kernel.agent_computation_delays[3] == 200
-        assert kernel.agent_computation_delays[4] == 50
+        assert kernel._agent_computation_delays[0] == 50
+        assert kernel._agent_computation_delays[1] == 100
+        assert kernel._agent_computation_delays[2] == 50
+        assert kernel._agent_computation_delays[3] == 200
+        assert kernel._agent_computation_delays[4] == 50
 
     def test_kernel_without_per_agent_delays(self):
         """Kernel should use default_computation_delay for all agents when no overrides."""
@@ -1022,7 +1022,7 @@ class TestPerAgentComputationDelay:
 
         agents = [type("FakeAgent", (), {"id": i, "type": "Test"})() for i in range(3)]
         kernel = Kernel(agents=agents, default_computation_delay=75)
-        assert all(d == 75 for d in kernel.agent_computation_delays)
+        assert all(d == 75 for d in kernel._agent_computation_delays)
 
     def test_mixed_agents_with_and_without_delay(self):
         """Only agents with explicit computation_delay should appear in overrides."""

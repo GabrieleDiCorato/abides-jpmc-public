@@ -25,6 +25,30 @@ Breaking Changes
 Bug Fixes
 ---------
 
+* **Per-agent state moved to numpy arrays (PR 6 of kernel improvements).**
+
+  - ``Kernel._agent_current_times`` and ``Kernel._agent_computation_delays``
+    are now ``numpy.ndarray[int64]`` for O(1) hot-loop indexing and a
+    smaller per-agent memory footprint than the previous Python lists.
+  - The legacy attribute names ``agent_current_times`` and
+    ``agent_computation_delays`` remain as **read-only deprecation
+    properties** that emit a one-shot ``DeprecationWarning`` per
+    attribute name and return a non-writable ``ndarray`` view. External
+    code that *reads* these attributes keeps working (with a warning);
+    external code that *writes* will fail loudly because the view
+    rejects item assignment.
+  - ``Kernel.find_agents_by_type`` is now O(1): the kernel pre-indexes
+    each agent's MRO at construction time into ``_agents_by_type``, so
+    passing a base class still returns every subclass instance
+    (``isinstance`` semantics preserved).
+  - ``Kernel.initialize()`` resets the per-agent times via slice
+    assignment on the existing buffer (no realloc); per-agent
+    computation-delay overrides from the constructor still persist
+    across resets.
+  - ``custom_state["kernel_slowest_agent_finish_time"]`` is now cast to
+    a Python ``int`` to keep notebooks and log parsers free of
+    ``numpy.int64`` leaks.
+
 * **Latency model unification (PR 5a of kernel improvements).**
 
   - ``Kernel.send_message`` now always routes through a
