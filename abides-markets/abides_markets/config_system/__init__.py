@@ -184,7 +184,7 @@ def get_config_schema() -> dict[str, Any]:
 
     AI agents can use this to understand the complete config structure.
     """
-    return SimulationConfig.model_json_schema()
+    return SimulationConfig.model_json_schema()  # type: ignore[no-any-return]
 
 
 def get_full_manifest() -> dict[str, Any]:

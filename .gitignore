@@ -167,7 +167,7 @@ cython_debug/
 .vscode/
 .idea/
 
-# Personal Copilot configuration 
+# Personal Copilot configuration
 .github/
 
 # macOS

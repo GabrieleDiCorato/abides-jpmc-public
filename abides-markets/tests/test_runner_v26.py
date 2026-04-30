@@ -145,14 +145,22 @@ class TestRuntimeAgents:
         assert agent.id >= 0
 
     def test_preserve_caller_set_id(self, short_config):
-        """Agents with a valid id (>= 0) keep their caller-set id."""
+        """Caller-set ids are reassigned to match final list index.
+
+        Runtime agents are appended to the kernel's agents list, and the
+        kernel requires ``agents[i].id == i``. Any caller-set id that
+        does not match the final index is overwritten on injection.
+        """
         agent = _make_noise_agent("FixedId", agent_id=999)
-        run_simulation(
+        result = run_simulation(
             short_config,
             profile=ResultProfile.SUMMARY,
             runtime_agents=[agent],
         )
-        assert agent.id == 999
+        # The runtime agent's id is reassigned away from the requested 999.
+        assert agent.id != 999
+        # And the reassigned id appears in the result.
+        assert any(a.agent_id == agent.id for a in result.agents)
 
     def test_default_category_is_runtime(self, short_config):
         """Agents without a category get 'runtime' assigned."""

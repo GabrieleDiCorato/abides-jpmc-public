@@ -121,3 +121,71 @@ class TestMessageBatchDelay:
         assert kernel.agent_current_times[1] == deliver_at + comp_delay
         # All messages in batch should have been delivered
         assert len(agents[1].received) == n_messages
+
+
+# ---------------------------------------------------------------------------
+# PR 1: Hygiene fixes
+# ---------------------------------------------------------------------------
+
+
+class _CoreGymAgentBase(Agent):
+    """Stand-in for the abides-gym CoreGymAgent base class.
+
+    The kernel detects gym agents by class name lookup, not by import,
+    so the simulated base just needs ``__name__ == 'CoreGymAgent'``.
+    """
+
+
+# Force the detection key without importing abides-gym.
+_CoreGymAgentBase.__name__ = "CoreGymAgent"
+
+
+class _FakeGymAgent(_CoreGymAgentBase):
+    def __init__(self, id: int) -> None:
+        super().__init__(
+            id=id,
+            name=f"Gym_{id}",
+            random_state=np.random.RandomState(seed=id),
+            log_events=False,
+        )
+
+
+class TestWriteSummaryLogRespectsSkipLog:
+    def test_skip_log_creates_no_file(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, skip_log=True)
+        kernel.write_summary_log()
+        assert not (tmp_path / "log").exists()
+
+
+class TestTooManyGymAgentsRaisesValueError:
+    def test_two_gym_agents_raises(self):
+        import pytest
+
+        agents = [_FakeGymAgent(0), _FakeGymAgent(1)]
+        with pytest.raises(ValueError, match="one gym agent"):
+            Kernel(agents=agents, skip_log=True)
+
+
+class TestTerminateZeroCountDoesNotCrash:
+    def test_empty_mean_block_does_not_divide_by_zero(self):
+        agents = [StubAgent(0)]
+        kernel = Kernel(agents=agents, skip_log=True)
+        kernel.initialize()
+        # Inject a value with no count — formerly would ZeroDivisionError.
+        kernel.mean_result_by_agent_type["Foo"] = 100
+        # No count key for "Foo" -> should be skipped, not crash.
+        kernel.terminate()
+
+
+class TestAgentIdInvariantViolationRaises:
+    def test_swapped_ids_raises(self):
+        import pytest
+
+        a = StubAgent(0)
+        b = StubAgent(1)
+        # Swap their ids so agents[i].id != i.
+        a.id, b.id = 1, 0
+        with pytest.raises(ValueError, match="agents\\[i\\]\\.id"):
+            Kernel(agents=[a, b], skip_log=True)

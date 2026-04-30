@@ -1,5 +1,3 @@
-import shutil
-
 import numpy as np
 
 from abides_core import Kernel
@@ -37,6 +35,5 @@ def test_rmsc04():
 
     kernel.run()
 
-    shutil.rmtree("log/__test_logs")
     ## just checking simulation runs without crashing and reaches the assert
     assert True

@@ -249,7 +249,7 @@ class SimulationBuilder:
 
         self._cross_validate(config, oracle_present)
 
-        return config
+        return config  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Cross-agent / cross-section consistency checks

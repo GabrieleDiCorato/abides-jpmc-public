@@ -190,6 +190,10 @@ def config_add_agents(orig_config_state, agents, random_state):
     """
     Add agents to a configuration state and regenerate the latency model.
 
+    Each appended agent has its ``id`` reassigned to match its final index
+    in the kernel's agents list, preserving the ``agents[i].id == i``
+    invariant that the kernel relies on.
+
     Args:
         orig_config_state: The original configuration state dictionary
         agents: List of agents to add
@@ -199,6 +203,8 @@ def config_add_agents(orig_config_state, agents, random_state):
         Updated configuration state
     """
     agent_count = len(orig_config_state["agents"])
+    for offset, agent in enumerate(agents):
+        agent.id = agent_count + offset
     orig_config_state["agents"] = orig_config_state["agents"] + agents
     # adding an agent to the config implies regenerating the latency model for the full fleet
     lat_mod = generate_latency_model(agent_count + len(agents), random_state)

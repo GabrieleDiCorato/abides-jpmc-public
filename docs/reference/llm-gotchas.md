@@ -623,6 +623,29 @@ self.logEvent("TRADE", {"price": price, "qty": qty})
 | `TypeError: unsupported operand None + int` | `mkt_open` is `None` | Check `super().wakeup()` return |
 | Prices wrong by factor of 100 | Treating cents as dollars | All prices are integer cents |
 | `RuntimeError` at `kernel_stopping` | `mark_to_market` called before first trade | Guard with `self.last_trade.get(symbol)` |
+| `ValueError: Kernel agents list violates agents[i].id == i` | Agent injected with non-matching id | Use `config_add_agents()` (auto-reassigns) or set `agent.id = index` before passing to `Kernel(...)` |
+
+---
+
+## Kernel invariants (added 2026-04)
+
+The kernel maintains a strict invariant: **for every agent in
+`Kernel.__init__(agents=...)`, `agents[i].id == i`**. The kernel
+indexes its parallel per-agent state arrays by agent id, and a
+mismatch would silently corrupt routing.
+
+If you build the agents list manually, assign ids by enumeration:
+
+```python
+agents = [...]
+for i, a in enumerate(agents):
+    a.id = i
+kernel = Kernel(agents=agents, ...)
+```
+
+The `config_add_agents()` helper in `abides_markets.utils` does this
+reassignment automatically when appending runtime agents to a built
+config.
 
 ---
 

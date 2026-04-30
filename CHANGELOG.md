@@ -1,6 +1,30 @@
 Unreleased
 ==========
 
+Bug Fixes
+---------
+
+* **Kernel hygiene fixes (PR 1 of kernel improvements).**
+
+  - ``Kernel.write_summary_log()`` now respects ``skip_log=True`` and no
+    longer creates a summary log file when logging is disabled. The
+    ``abides.run()`` entry point now plumbs ``skip_log`` from the
+    runtime config to the kernel.
+  - The "only one gym agent" check is now a ``ValueError`` instead of
+    an ``assert``, so it is enforced under ``python -O``.
+  - ``Kernel.terminate()`` no longer crashes with ``ZeroDivisionError``
+    when ``mean_result_by_agent_type`` contains entries with no
+    matching count in ``agent_count_by_type``.
+  - ``Kernel.__init__`` validates the long-standing convention that
+    ``agents[i].id == i`` and raises ``ValueError`` on violation. The
+    ``config_add_agents()`` runtime injection helper now reassigns
+    appended agent ids to match their final list index.
+  - ``event_queue_wall_clock_start`` and ``ttl_messages`` are now
+    declared in ``__init__`` with safe defaults instead of being
+    first-assigned in ``initialize()``.
+  - ``default_latency`` and ``agent_latency`` parameter type
+    annotations corrected from ``float`` to ``int``.
+
 Documentation
 -------------
 

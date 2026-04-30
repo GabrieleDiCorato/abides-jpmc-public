@@ -39,6 +39,11 @@ class Kernel:
         log_dir: directory where data is store.
         custom_properties: Different attributes that can be added to the simulation
             (e.g., the oracle).
+
+    Invariant:
+        ``agents[i].id == i`` for every agent. The kernel relies on this to
+        index its parallel per-agent state arrays. Violations raise
+        ``ValueError`` at construction time.
     """
 
     def __init__(
@@ -47,8 +52,8 @@ class Kernel:
         start_time: NanosecondTime = _DEFAULT_START_TIME,
         stop_time: NanosecondTime = _DEFAULT_STOP_TIME,
         default_computation_delay: int = 1,
-        default_latency: float = 1,
-        agent_latency: list[list[float]] | None = None,
+        default_latency: int = 1,
+        agent_latency: list[list[int]] | None = None,
         latency_noise: list[float] | None = None,
         agent_latency_model: LatencyModel | None = None,
         skip_log: bool = True,
@@ -58,6 +63,15 @@ class Kernel:
         random_state: np.random.RandomState | None = None,
         per_agent_computation_delays: dict[int, int] | None = None,
     ) -> None:
+        # Enforce the agents[i].id == i invariant before anything else uses
+        # the parallel per-agent state arrays.
+        for idx, agent in enumerate(agents):
+            if agent.id != idx:
+                raise ValueError(
+                    f"Kernel agents list violates agents[i].id == i invariant: "
+                    f"agents[{idx}].id == {agent.id}"
+                )
+
         custom_properties = custom_properties or {}
 
         self.random_state: np.random.RandomState = (
@@ -104,10 +118,10 @@ class Kernel:
             )
         )
 
-        # Temporary check until ABIDES-gym supports multiple gym agents
-        assert (
-            len(self.gym_agents) <= 1
-        ), "ABIDES-gym currently only supports using one gym agent"
+        # Temporary check until ABIDES-gym supports multiple gym agents.
+        # Use ValueError (not assert) so the check is enforced under `python -O`.
+        if len(self.gym_agents) > 1:
+            raise ValueError("ABIDES-gym currently only supports using one gym agent")
 
         logger.debug(f"Detected {len(self.gym_agents)} ABIDES-gym agents")
 
@@ -200,6 +214,10 @@ class Kernel:
         self.current_agent_additional_delay: int = 0
 
         self.show_trace_messages: bool = False
+
+        # Wall-clock anchor and message counter, set in initialize().
+        self.event_queue_wall_clock_start: datetime | None = None
+        self.ttl_messages: int = 0
 
         logger.debug("Kernel initialized")
 
@@ -298,7 +316,7 @@ class Kernel:
         Returns:
           - it is a dictionnary composed of two elements:
             - "done": boolean True if the simulation is done, else False. It is true when simulation reaches end_time or when the message queue is empty.
-            - "results": it is the raw_state returned by the gym experimental agent, contains data that will be formated in the gym environement to formulate state, reward, info etc.. If
+            - "result": it is the raw_state returned by the gym experimental agent, contains data that will be formated in the gym environement to formulate state, reward, info etc.. If
                there is no gym experimental agent, then it is None.
         """
         # run an action on a given agent before resuming queue: to be used to take exp agent action before resuming run
@@ -316,7 +334,6 @@ class Kernel:
         ):
             # Get the next message in timestamp order (delivery time) and extract it.
             self.current_time, event = heapq.heappop(self.messages)
-            assert self.current_time is not None
 
             sender_id, recipient_id, message = event
 
@@ -498,7 +515,9 @@ class Kernel:
 
         for a in self.mean_result_by_agent_type:
             value = self.mean_result_by_agent_type[a]
-            count = self.agent_count_by_type[a]
+            count = self.agent_count_by_type.get(a, 0)
+            if count == 0:
+                continue
             logger.info(f"{a}: {int(round(value / count)):d}")
 
         logger.info("Simulation ending!")
@@ -772,6 +791,9 @@ class Kernel:
         )
 
     def write_summary_log(self) -> None:
+        if self.skip_log:
+            return
+
         path = os.path.join(".", "log", self.log_dir)
         file = "summary_log.bz2"
 
