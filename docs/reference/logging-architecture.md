@@ -434,13 +434,15 @@ filesystem ([test_kernel.py L47, 54, 63, 83](../../abides-core/tests/test_kernel
 ### 7.3 Architectural smells
 
 - **Kernel owns filesystem.** Path construction, format choice,
-  directory creation, error handling are all inside
-  `kernel.write_log` / `kernel.write_summary_log`. No abstraction.
-  Kernel improvement plan's D.1 (LogWriter Protocol) addresses this.
-- **Hardcoded `./log/`** — the kernel writes into the CWD, no
-  `log_root` parameter. Two kernels in the same process clash; running
-  from a different directory silently changes the destination.
-  Addressed as A.11 / D.1 in the kernel plan.
+  directory creation, error handling were all inside
+  `kernel.write_log` / `kernel.write_summary_log`. **Resolved by PR 7**:
+  the kernel now delegates to an injectable `LogWriter` Protocol
+  (`abides_core.log_writer`); the legacy bz2-pickle path is one
+  implementation among several.
+- **Hardcoded `./log/`** — the kernel used to write into CWD with no
+  override. **Resolved by PR 7**: `Kernel(log_root=...)` is now a
+  first-class kwarg, and the run directory is created lazily on the
+  first write rather than at construction time.
 - **Three logging systems share one `./log/<run_id>/` directory** with
   different lifecycles and consumers. Not separated, not labelled in
   the directory layout. A user looking at the folder cannot tell what
@@ -469,7 +471,7 @@ filesystem ([test_kernel.py L47, 54, 63, 83](../../abides-core/tests/test_kernel
 ### 7.5 What is *not* a problem
 
 - Standard Python logging is well-behaved. Lazy formatting in the hot
-  loop is the only fix needed (already in PR 3 of the kernel plan).
+  loop landed in PR 3.
 - The `Agent.logEvent` API is good. Cheap, simple, lossless.
 - `parse_logs_df` is the right shape (DataFrame), just implemented
   poorly.
@@ -491,10 +493,12 @@ filesystem ([test_kernel.py L47, 54, 63, 83](../../abides-core/tests/test_kernel
 > retained only because removing it would break the documented disk
 > layout.
 >
-> The kernel currently entangles all three: it owns the format, the
-> filesystem path, the lifecycle, and a financial-summary leak from the
-> markets layer. The kernel improvement plan's PR 4 + PR 7 break this
-> entanglement.
+> The kernel used to entangle all three: it owned the format, the
+> filesystem path, the lifecycle, and a financial-summary leak from
+> the markets layer. **PR 4 moved financial metrics out of core**, and
+> **PR 7 introduced the `LogWriter` Protocol** so the kernel no longer
+> owns format or path. The lifecycle is now governed by `KernelState`
+> (`abides_core.lifecycle`).
 
 ---
 
@@ -506,13 +510,15 @@ avoid:
 1. **Should `summary_log` survive?** Remove (free), keep (needs a
    reader and a purpose), or replace with the new `report_metric()`
    mechanism (B.4 in the kernel plan)?
-2. **Format pluggability.** Hardcode bz2-pickle forever, or expose a
-   `LogWriter` Protocol (parquet, JSONL, sqlite)? The kernel plan's
-   D.1 provides the seam; the *choice* of formats is open.
+2. **Format pluggability.** PR 7 provided the seam (`log_writer=`
+   kwarg + `LogWriter` Protocol). The *choice* of additional formats
+   (parquet, JSONL, sqlite) is still open — only `NullLogWriter` and
+   `BZ2PickleLogWriter` ship today.
 3. **Incremental writes.** Do long simulations need streaming flush, or
    is "all at terminate" forever good enough?
-4. **`./log/` root.** Make it a `Kernel(log_root=...)` parameter, or
-   keep CWD-relative and accept the surprise?
+4. **`./log/` root.** Resolved by PR 7: `Kernel(log_root=...)` is now
+   a kwarg with `"./log"` as default. CWD-relative remains the default
+   for backwards compatibility.
 5. **`log_dir` collision.** Make UUID the default in `Kernel` itself
    (today only `run_simulation()` does this), or keep the wall-clock
    default for backwards compatibility?
