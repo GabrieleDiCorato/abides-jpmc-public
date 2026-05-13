@@ -20,8 +20,8 @@ corrupting kernel state.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import Enum, auto
-from typing import Iterable
 
 
 class KernelState(Enum):

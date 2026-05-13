@@ -75,10 +75,7 @@ class BZ2PickleLogWriter:
         self, agent_name: str, df_log: pd.DataFrame, filename: str | None = None
     ) -> None:
         self._ensure_dir()
-        if filename:
-            file = f"{filename}.bz2"
-        else:
-            file = f"{agent_name.replace(' ', '')}.bz2"
+        file = f"{filename}.bz2" if filename else f"{agent_name.replace(' ', '')}.bz2"
         df_log.to_pickle(os.path.join(self.output_dir, file), compression="bz2")
 
     def write_summary_log(self, df_log: pd.DataFrame) -> None:
