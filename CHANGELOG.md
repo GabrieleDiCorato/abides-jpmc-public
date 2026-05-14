@@ -1,17 +1,75 @@
 Unreleased
 ==========
 
+(no changes yet)
+
+---
+
+2026-05 Release v2.6.0
+==================
+
+This release stabilises a series of kernel-internal improvements
+landed since v2.5.8: numpy-backed per-agent state, a unified latency
+model code path, an explicit kernel lifecycle state machine, and
+pluggable log-writer / gym-adapter protocols. Two intentional
+reproducibility breaks are documented under *Breaking Changes*.
+
+It also marks the **transition of the project to a public PyPI
+release** under two distribution names — see *Distribution
+Rename* below.
+
+Distribution Rename
+-------------------
+
+This is the first release published to PyPI. The project transitions
+from the personal-fork name ``abides-hasufel`` to two public
+distributions:
+
+* **``abides-markets``** — kernel and market microstructure
+  (contains the ``abides_core`` and ``abides_markets`` import
+  modules and the ``abides`` CLI script).
+* **``abides-gym``** — Gymnasium / RLlib adapters (contains the
+  ``abides_gym`` import module). Depends on
+  ``abides-markets==2.6.0``.
+
+**Import names are unchanged**: existing user code that does
+``from abides_core import ...``, ``from abides_markets import ...``,
+or ``from abides_gym import ...`` requires no changes.
+
+**Migration**:
+
+* Replace ``pip install abides-hasufel`` (which was never on PyPI)
+  with ``pip install abides-markets`` for headless simulation work,
+  or ``pip install abides-gym`` if you also need the RL stack.
+* Source/dev installs use the new ``uv`` workspace layout — clone
+  the repo and run ``uv sync --dev`` as before.
+
+Other release-engineering changes shipped in this release:
+
+* Fixed the ``pyproject.toml`` ``version`` field (was ``"v2.6.0"``,
+  now PEP 440-compliant ``"2.6.0"``).
+* Added PyPI metadata: classifiers, keywords, project URLs, and
+  authors / maintainers on both wheels.
+* Added ``CONTRIBUTING.md``, ``SECURITY.md``, and a ``Governance``
+  section in the README.
+* Added a tag-triggered release workflow with PyPI / TestPyPI
+  trusted publishing (OIDC). See
+  ``docs/project/release-process.md`` for the full process.
+* Added ``docs/project/reproducibility.md`` formalising the
+  reproducibility guarantees and the policy that breaking them
+  requires a major-version bump.
+
 Breaking Changes
 ----------------
 
-* **Removed the no-op default latency-noise RNG draw (PR 5b of kernel
-  improvements).** ``UniformLatencyModel`` and ``MatrixLatencyModel``
-  now default to ``noise=None`` (was ``[1.0]``). When ``noise`` is
-  ``None`` the model returns its configured latency directly without
-  consuming any RNG draws. **This is an explicit reproducibility
-  break**: seeded simulations that previously relied on the implicit
-  ``np.random.choice([1.0])`` draw per ``send_message`` will now
-  diverge from pre-PR-5b runs.
+* **Removed the no-op default latency-noise RNG draw.**
+  ``UniformLatencyModel`` and ``MatrixLatencyModel`` now default to
+  ``noise=None`` (was ``[1.0]``). When ``noise`` is ``None`` the model
+  returns its configured latency directly without consuming any RNG
+  draws. **This is an explicit reproducibility break**: seeded
+  simulations that previously relied on the implicit
+  ``np.random.choice([1.0])`` draw per ``send_message`` will diverge
+  from prior runs.
 
   Migration: pass ``noise=[1.0]`` explicitly to either model
   constructor to restore the legacy bit-for-bit behavior. The
@@ -25,7 +83,7 @@ Breaking Changes
 Bug Fixes
 ---------
 
-* **Kernel architecture decomposition (PR 7 of kernel improvements).**
+* **Kernel architecture decomposition.**
 
   - Introduced ``abides_core.log_writer.LogWriter`` (Protocol) with
     two concrete implementations: ``NullLogWriter`` (no-op) and
@@ -57,7 +115,7 @@ Bug Fixes
   - New documentation: ``docs/reference/kernel-architecture.md``
     (full architecture write-up).
 
-* **Per-agent state moved to numpy arrays (PR 6 of kernel improvements).**
+* **Per-agent state moved to numpy arrays.**
 
   - ``Kernel._agent_current_times`` and ``Kernel._agent_computation_delays``
     are now ``numpy.ndarray[int64]`` for O(1) hot-loop indexing and a
@@ -81,7 +139,7 @@ Bug Fixes
     a Python ``int`` to keep notebooks and log parsers free of
     ``numpy.int64`` leaks.
 
-* **Latency model unification (PR 5a of kernel improvements).**
+* **Latency model unification.**
 
   - ``Kernel.send_message`` now always routes through a
     ``LatencyModel``. The dual code path (legacy
@@ -110,7 +168,7 @@ Bug Fixes
     External readers must access the underlying matrix / noise list
     via the model object instead.
 
-* **Removed financial fields from kernel core (PR 4 of kernel improvements).**
+* **Removed financial fields from kernel core.**
 
   - Removed ``Kernel.mean_result_by_agent_type`` and
     ``Kernel.agent_count_by_type`` (and the corresponding entries from
@@ -132,7 +190,7 @@ Bug Fixes
     (a ``{"sum", "count"}`` dict) instead. External code that writes
     those attributes should switch to ``Agent.report_metric()``.
 
-* **Dispatch ordering & heap refactor (PR 3 of kernel improvements).**
+* **Dispatch ordering & heap refactor.**
 
   - Fixed a latent bug where ``Agent.delay()`` calls inside a message
     handler were silently dropped. The kernel now advances the
@@ -158,7 +216,7 @@ Bug Fixes
     supported; tests and callers should use ``Kernel._enqueue`` (or
     the public ``send_message`` / ``set_wakeup`` APIs).
 
-* **Kernel state hygiene (PR 2 of kernel improvements).**
+* **Kernel state hygiene.**
 
   - ``Kernel.initialize()`` now clears per-run state (``messages``,
     ``custom_state``, ``summary_log``, ``ttl_messages``,
@@ -176,7 +234,7 @@ Bug Fixes
     ``random_state=`` now emits ``DeprecationWarning``. Callers should
     pass one or the other for reproducible runs.
 
-* **Kernel hygiene fixes (PR 1 of kernel improvements).**
+* **Kernel hygiene fixes.**
 
   - ``Kernel.write_summary_log()`` now respects ``skip_log=True`` and no
     longer creates a summary log file when logging is disabled. The
