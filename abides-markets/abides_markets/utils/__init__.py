@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.distance import pdist, squareform
 
-from abides_core import LatencyModel
+from abides_core.latency_model import DeterministicLatencyModel
 
 
 # Utility method to flatten nested lists.
@@ -175,12 +175,7 @@ def generate_latency_model(agent_count, random_state, latency_type="deterministi
     else:  # latency_type == "no_latency"
         pairwise_latencies = np.zeros(pairwise, dtype=int)
 
-    latency_model = LatencyModel(
-        latency_model="deterministic",
-        random_state=latency_rstate,
-        connected=True,
-        min_latency=pairwise_latencies,
-    )
+    latency_model = DeterministicLatencyModel(min_latency=pairwise_latencies)
 
     return latency_model
 

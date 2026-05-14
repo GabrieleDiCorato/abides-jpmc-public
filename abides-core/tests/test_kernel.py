@@ -427,12 +427,11 @@ class TestReportMetricAggregation:
 
 
 class TestLatencyModelSubclasses:
-    def test_uniform_default_does_not_touch_random_state(self):
+    def test_uniform_does_not_touch_random_state(self):
         from abides_core.latency_model import UniformLatencyModel
 
-        # PR 5b: with the default noise=None, get_latency must NOT
-        # consume any RNG draws. Pass a fresh RNG and assert its state
-        # is unchanged.
+        # UniformLatencyModel is purely deterministic; it must not
+        # consume any RNG draws.
         rs = np.random.RandomState(seed=42)
         before = rs.get_state()
         model = UniformLatencyModel(latency=100)
@@ -443,19 +442,7 @@ class TestLatencyModelSubclasses:
         assert (before[1] == after[1]).all()
         assert before[2] == after[2]
 
-    def test_uniform_explicit_noise_consumes_one_draw(self):
-        from abides_core.latency_model import UniformLatencyModel
-
-        # Explicit noise=[1.0] restores the legacy pre-PR-5b behavior.
-        rs1 = np.random.RandomState(seed=42)
-        rs2 = np.random.RandomState(seed=42)
-        model = UniformLatencyModel(latency=100, noise=[1.0])
-        for _ in range(10):
-            model.get_latency(0, 1, random_state=rs1)
-            rs2.choice(1, p=[1.0])
-        assert rs1.tomaxint() == rs2.tomaxint()
-
-    def test_uniform_returns_constant_with_default_noise(self):
+    def test_uniform_returns_constant(self):
         from abides_core.latency_model import UniformLatencyModel
 
         rs = np.random.RandomState(seed=0)
@@ -480,37 +467,81 @@ class TestLatencyModelSubclasses:
         assert model.get_latency(0, 2, random_state=rs) == 3
         assert model.get_latency(2, 1, random_state=rs) == 8
 
-    def test_cubic_ignores_random_state_kwarg(self):
-        from abides_core.latency_model import LatencyModel
+    def test_cubic_uses_passed_random_state(self):
+        from abides_core.latency_model import CubicLatencyModel
 
-        own_rs = np.random.RandomState(seed=1)
-        model = LatencyModel(
-            random_state=own_rs,
+        model = CubicLatencyModel(
             min_latency=np.array([[100, 200], [300, 400]], dtype=np.int64),
-            latency_model="cubic",
         )
-        # Pass a fresh, unused RandomState; cubic must NOT touch it.
         passed_rs = np.random.RandomState(seed=99)
         before = passed_rs.get_state()
         model.get_latency(0, 1, random_state=passed_rs)
         after = passed_rs.get_state()
-        # State tuple equality: same algorithm name, same key array, same pos.
-        assert before[0] == after[0]
-        assert (before[1] == after[1]).all()
-        assert before[2] == after[2]
+        # Cubic must have consumed at least one draw.
+        assert before[2] != after[2] or not (before[1] == after[1]).all()
+
+    def test_cubic_requires_random_state(self):
+        import pytest as _pytest
+
+        from abides_core.latency_model import CubicLatencyModel
+
+        model = CubicLatencyModel(min_latency=100)
+        with _pytest.raises(ValueError, match="random_state"):
+            model.get_latency(0, 1)
 
     def test_deterministic_returns_int(self):
-        from abides_core.latency_model import LatencyModel
+        from abides_core.latency_model import DeterministicLatencyModel
 
-        rs = np.random.RandomState(seed=0)
-        model = LatencyModel(
-            random_state=rs,
+        model = DeterministicLatencyModel(
             min_latency=np.array([[100, 200], [300, 400]], dtype=np.int64),
-            latency_model="deterministic",
         )
-        result = model.get_latency(0, 1, random_state=rs)
+        result = model.get_latency(0, 1)
         assert isinstance(result, int)
         assert result == 200
+
+    def test_message_type_aware_routes_by_class(self):
+        from abides_core.latency_model import (
+            MessageTypeAwareLatencyModel,
+            UniformLatencyModel,
+        )
+        from abides_core.message import Message, WakeupMsg
+
+        class _OtherMsg(Message):
+            pass
+
+        default = UniformLatencyModel(latency=10)
+        wakeup_model = UniformLatencyModel(latency=999)
+        model = MessageTypeAwareLatencyModel(
+            default=default, mapping={WakeupMsg: wakeup_model}
+        )
+        assert model.get_latency(0, 1, message_class=WakeupMsg) == 999
+        assert model.get_latency(0, 1, message_class=_OtherMsg) == 10
+        assert model.get_latency(0, 1, message_class=None) == 10
+
+    def test_factory_constructs_each_subclass(self):
+        from abides_core.latency_model import (
+            CubicLatencyModel,
+            DeterministicLatencyModel,
+            LatencyModelFactory,
+            MatrixLatencyModel,
+            MessageTypeAwareLatencyModel,
+            UniformLatencyModel,
+        )
+
+        assert isinstance(LatencyModelFactory.cubic(min_latency=10), CubicLatencyModel)
+        assert isinstance(
+            LatencyModelFactory.deterministic(min_latency=10),
+            DeterministicLatencyModel,
+        )
+        assert isinstance(LatencyModelFactory.uniform(10), UniformLatencyModel)
+        assert isinstance(
+            LatencyModelFactory.matrix([[1, 2], [3, 4]]), MatrixLatencyModel
+        )
+        default = LatencyModelFactory.uniform(1)
+        assert isinstance(
+            LatencyModelFactory.by_message_type(default=default, mapping={}),
+            MessageTypeAwareLatencyModel,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -594,7 +625,7 @@ class TestFindAgentsByTypeIndex:
 
 
 # ---------------------------------------------------------------------------
-# PR 7: LogWriter, KernelState lifecycle, GymAdapter, keyword-only __init__
+# PR 7: LogWriter, KernelState lifecycle, RunnerHook, keyword-only __init__
 # ---------------------------------------------------------------------------
 
 
@@ -697,8 +728,8 @@ class TestKernelLifecycle:
         kernel.reset()
 
 
-class _FakeGymAdapter:
-    """Stand-in adapter implementing the GymAdapter Protocol."""
+class _FakeRunnerHook:
+    """Stand-in implementing the RunnerHook Protocol."""
 
     def __init__(self):
         self.actions: list = []
@@ -714,20 +745,16 @@ class _FakeGymAdapter:
         self.actions.append(actions)
 
 
-class TestGymAdapter:
-    def test_explicit_registration_no_warning(self):
-        import warnings as _w
-
-        adapter = _FakeGymAdapter()
+class TestRunnerHook:
+    def test_explicit_registration(self):
+        hook = _FakeRunnerHook()
         agents = [StubAgent(0)]
-        with _w.catch_warnings():
-            _w.simplefilter("error", DeprecationWarning)
-            kernel = Kernel(
-                agents=agents,
-                random_state=np.random.RandomState(seed=1),
-                gym_adapter=adapter,
-            )
-        assert kernel._gym_adapter is adapter
+        kernel = Kernel(
+            agents=agents,
+            random_state=np.random.RandomState(seed=1),
+            runner_hook=hook,
+        )
+        assert kernel._runner_hook is hook
 
 
 class TestKernelInitKeywordOnly:

@@ -10,11 +10,11 @@ import pandas as pd
 
 from . import NanosecondTime
 from .agent import Agent
-from .gym_adapter import GymAdapter
 from .latency_model import LatencyModel, UniformLatencyModel
 from .lifecycle import KernelState, assert_transition
 from .log_writer import BZ2PickleLogWriter, LogWriter, NullLogWriter
 from .message import Message, MessageBatch, WakeupMsg
+from .runner_hook import RunnerHook
 from .utils import fmt_ts, str_to_ns
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ class Kernel:
         log_writer: LogWriter | None = None,
         custom_properties: dict[str, Any] | None = None,
         per_agent_computation_delays: dict[int, int] | None = None,
-        gym_adapter: GymAdapter | None = None,
+        runner_hook: RunnerHook | None = None,
     ) -> None:
         # Enforce the agents[i].id == i invariant before anything else uses
         # the parallel per-agent state arrays.
@@ -173,13 +173,13 @@ class Kernel:
         #        based on class agent.Agent
         self.agents: list[Agent] = agents
 
-        # Gym adapter slot. ``gym_adapter=`` is the only registration path;
-        # auto-detection of ``CoreGymAgent`` subclasses is gone.
-        self._gym_adapter: GymAdapter | None = gym_adapter
+        # Runner hook slot. ``runner_hook=`` is the only registration path;
+        # the kernel never auto-detects hook-shaped agents.
+        self._runner_hook: RunnerHook | None = runner_hook
 
         logger.debug(
-            "Gym adapter %s",
-            "registered" if self._gym_adapter is not None else "not present",
+            "Runner hook %s",
+            "registered" if self._runner_hook is not None else "not present",
         )
 
         # Simulation custom state in a freeform dictionary.  Allows config files
@@ -376,25 +376,29 @@ class Kernel:
         self._state = KernelState.INITIALIZED
 
     def runner(
-        self, agent_actions: tuple[Agent, list[dict[str, Any]]] | None = None
+        self, hook_actions: tuple[Agent, list[dict[str, Any]]] | None = None
     ) -> dict[str, Any]:
         """
         Start the simulation and processing of the message queue.
-        Possibility to add the optional argument agent_actions. It is a list of dictionaries corresponding
-        to actions to be performed by the experimental agent (Gym Agent).
 
         Arguments:
-            agent_actions: A list of the different actions to be performed represented in a dictionary per action.
+            hook_actions: Optional ``(agent, actions)`` tuple. When
+                provided, ``agent.apply_actions(actions)`` is invoked
+                before the event loop resumes; this is how outer-loop
+                hooks (e.g. ABIDES-gym) inject actions between
+                kernel steps.
 
         Returns:
-          - it is a dictionnary composed of two elements:
-            - "done": boolean True if the simulation is done, else False. It is true when simulation reaches end_time or when the message queue is empty.
-            - "result": it is the raw_state returned by the gym experimental agent, contains data that will be formated in the gym environement to formulate state, reward, info etc.. If
-               there is no gym experimental agent, then it is None.
+            Dictionary with two keys:
+              - ``done``: ``True`` once the simulation has reached
+                ``stop_time`` or the message queue is empty.
+              - ``result``: the raw state returned by the registered
+                :class:`RunnerHook`, or ``None`` when no hook is
+                attached.
         """
-        # run an action on a given agent before resuming queue: to be used to take exp agent action before resuming run
-        if agent_actions is not None:
-            exp_agent, action_list = agent_actions
+        # Apply pending hook actions (e.g. a gym step) before resuming.
+        if hook_actions is not None:
+            exp_agent, action_list = hook_actions
             exp_agent.apply_actions(action_list)
 
         assert_transition(
@@ -492,7 +496,7 @@ class Kernel:
                     fmt_ts(int(self._agent_current_times[recipient_id])),
                 )
 
-            # Catch kernel interruption signal (gym agent's raw_state).
+            # Catch kernel interruption signal (runner hook's raw state).
             if wakeup_result is not None:
                 return {"done": False, "result": wakeup_result}
 
@@ -503,9 +507,9 @@ class Kernel:
             logger.debug("--- Kernel Stop Time surpassed ---")
 
         # if gets here means sim queue is fully processed, return to show sim is done
-        if self._gym_adapter is not None:
-            self._gym_adapter.update_raw_state()
-            return {"done": True, "result": self._gym_adapter.get_raw_state()}
+        if self._runner_hook is not None:
+            self._runner_hook.update_raw_state()
+            return {"done": True, "result": self._runner_hook.get_raw_state()}
         else:
             return {"done": True, "result": None}
 
@@ -637,19 +641,10 @@ class Kernel:
         # This means message delay (before latency) is the agent's standard computation
         # delay PLUS any accumulated delay for this wake cycle PLUS any one-time
         # requested delay for this specific message only.
-        sent_time = (
-            self.current_time
-            + int(self._agent_computation_delays[sender_id])
-            + self.current_agent_additional_delay
-            + delay
-        )
+        sent_time = self._compute_delay(sender_id, delay)
 
         # Apply communication delay via the (always-present) latency model.
-        latency: int = self.agent_latency_model.get_latency(
-            sender_id=sender_id,
-            recipient_id=recipient_id,
-            random_state=self.random_state,
-        )
+        latency = self._latency(sender_id, recipient_id, message)
         deliver_at = sent_time + latency
         if self.show_trace_messages:
             logger.debug(
@@ -664,6 +659,37 @@ class Kernel:
                 f"Sent time: {sent_time}, current time {fmt_ts(self.current_time)}, computation delay {int(self._agent_computation_delays[sender_id])}"
             )
             logger.debug(f"Message queued: {message}")
+
+    def _compute_delay(self, sender_id: int, one_time_delay: int = 0) -> int:
+        """Return the kernel timestamp at which a message sent by
+        ``sender_id`` can be considered transmitted, accounting for the
+        agent's standing computation delay, any accumulated per-cycle
+        delay, and the optional one-time pipeline delay.
+        """
+        return (
+            self.current_time
+            + int(self._agent_computation_delays[sender_id])
+            + self.current_agent_additional_delay
+            + one_time_delay
+        )
+
+    def _latency(
+        self,
+        sender_id: int,
+        recipient_id: int,
+        message: Message,
+    ) -> int:
+        """Network latency for a single message between ``sender_id``
+        and ``recipient_id``. Routes through the configured
+        :class:`LatencyModel` and forwards the message class so
+        message-type-aware models can dispatch on it.
+        """
+        return self.agent_latency_model.get_latency(
+            sender_id=sender_id,
+            recipient_id=recipient_id,
+            message_class=type(message),
+            random_state=self.random_state,
+        )
 
     def _enqueue(
         self,
