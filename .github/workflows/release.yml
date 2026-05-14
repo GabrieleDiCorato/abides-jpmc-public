@@ -71,7 +71,7 @@ jobs:
       - name: Install build tools
         run: uv sync --dev
 
-      - name: Build abides-markets wheel
+      - name: Build abides-ng wheel
         run: |
           cd abides-markets
           uv build --wheel

@@ -6,7 +6,7 @@ If you discover a security vulnerability in ABIDES, **please do not
 open a public issue.** Instead, report it privately via one of:
 
 - **GitHub Security Advisories** (preferred):
-  <https://github.com/GabrieleDiCorato/abides/security/advisories/new>
+  <https://github.com/GabrieleDiCorato/abides-ng/security/advisories/new>
 - **Email**: gabriele.dicorato@gmail.com — please include
   `[abides-security]` in the subject line.
 
@@ -14,7 +14,7 @@ open a public issue.** Instead, report it privately via one of:
 
 - A description of the issue and its potential impact.
 - Steps to reproduce (a minimal proof-of-concept is ideal).
-- The version of `abides-markets` / `abides-gym` affected.
+- The version of `abides-ng` affected (e.g. `pip show abides-ng`).
 - Your environment (Python version, OS) if relevant.
 
 ## Response cadence
@@ -56,8 +56,7 @@ notes.
 
 In scope:
 
-- Vulnerabilities in published `abides-markets` and `abides-gym`
-  wheels.
+- Vulnerabilities in the published `abides-ng` wheel.
 - Insecure defaults that could affect downstream simulations
   (e.g. predictable RNG, log-injection paths).
 - Supply-chain issues in our build/release pipeline.

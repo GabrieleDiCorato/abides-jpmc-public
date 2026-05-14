@@ -3,7 +3,7 @@
 
 ## Development Policies
 
-Development is done on GitHub at [https://github.com/GabrieleDiCorato/abides-hasufel](https://github.com/GabrieleDiCorato/abides-hasufel).
+Development is done on GitHub at [https://github.com/GabrieleDiCorato/abides-ng](https://github.com/GabrieleDiCorato/abides-ng).
 
 ### Git Processes
 

@@ -2,8 +2,8 @@
 
 # ABIDES: Agent-Based Interactive Discrete Event Simulation environment
 
-[![CI](https://github.com/GabrieleDiCorato/abides-hasufel/actions/workflows/ci.yml/badge.svg)](https://github.com/GabrieleDiCorato/abides-hasufel/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/GabrieleDiCorato/abides-hasufel/graph/badge.svg)](https://codecov.io/gh/GabrieleDiCorato/abides-hasufel)
+[![CI](https://github.com/GabrieleDiCorato/abides-ng/actions/workflows/ci.yml/badge.svg)](https://github.com/GabrieleDiCorato/abides-ng/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/GabrieleDiCorato/abides-ng/graph/badge.svg)](https://codecov.io/gh/GabrieleDiCorato/abides-ng)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -319,6 +319,6 @@ Distributed under the BSD 3-Clause "New" or "Revised" License. See `LICENSE` for
 ## Acknowledgments
 - ABIDES was originally developed by David Byrd and Tucker Balch at Georgia Tech: https://github.com/abides-sim/abides
 - The J.P. Morgan Chase team ([Jared Vann](https://github.com/jaredvann), [Selim Amrouni](https://github.com/selimamrouni), [Aymeric Moulin](https://github.com/AymericCAMoulin)) maintained the [abides-jpmc-public](https://github.com/jpmorganchase/abides-jpmc-public) fork.
-- This fork (abides-hasufel) is maintained by [Gabriele Di Corato](https://github.com/GabrieleDiCorato).
+- This project (abides-ng) is maintained by [Gabriele Di Corato](https://github.com/GabrieleDiCorato).
 
 <p align="right">(<a href="#top">back to top</a>)</p>

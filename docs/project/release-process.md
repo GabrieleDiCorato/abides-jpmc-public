@@ -14,12 +14,12 @@ is published in the v2.6.x line**:
   `abides-markets/` (directory keeps its original name). Bundles
   `abides_core` via hatchling `force-include` from
   `abides-core/abides_core/`. **Published.**
-- **`abides-gym`** — Gymnasium and RLlib adapters. Depends on
-  `abides-ng==<same-version>`. **Deferred from v2.6.x** — the
-  gym adapter has not been re-validated against the new
-  `SimulationConfig` system and has no pytest coverage in this repo.
-  It will ship as a separate `abides-gym` release once validated.
-  Until then, install it from source: `pip install -e abides-gym/`.
+- **`abides-ng[gym]`** — Gymnasium and RLlib adapters (`abides_gym` source
+  in `abides-gym/` directory). **Deferred from v2.6.x** — the gym adapter
+  has not been re-validated against the new `SimulationConfig` system and
+  has no pytest coverage in this repo. The optional extra is declared in the
+  `abides-ng` metadata; the source will be bundled into the wheel once
+  validated. Until then, install from source: `pip install -e abides-gym/`.
 
 The release is **wheel-only**: no sdist is published. Source builds
 require cloning the repository (and are CI-tested via `uv build`).

@@ -8,7 +8,7 @@ a larger role.
 ## Reporting bugs and requesting features
 
 Use the GitHub issue tracker:
-<https://github.com/GabrieleDiCorato/abides/issues>
+<https://github.com/GabrieleDiCorato/abides-ng/issues>
 
 For security-sensitive reports, see [SECURITY.md](SECURITY.md) instead.
 
@@ -17,8 +17,8 @@ For security-sensitive reports, see [SECURITY.md](SECURITY.md) instead.
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/GabrieleDiCorato/abides
-cd abides
+git clone https://github.com/GabrieleDiCorato/abides-ng
+cd abides-ng
 uv sync --dev
 uv run pre-commit install
 ```
@@ -29,15 +29,15 @@ pre-commit hooks (black, ruff, mypy, nb-clean, basic file checks).
 ### Editable-install caveat
 
 The kernel source lives in `abides-core/abides_core/` but is bundled
-into the published `abides-markets` wheel via `force-include`. As a
-result, an editable install of `abides-markets` copies a snapshot of
+into the published `abides-ng` wheel via `force-include`. As a
+result, an editable install of `abides-ng` copies a snapshot of
 `abides_core` into `site-packages` rather than linking it.
 
 **When you edit code in `abides-core/abides_core/`, refresh the
 editable copy:**
 
 ```bash
-uv sync --reinstall-package abides-markets
+uv sync --reinstall-package abides-ng
 ```
 
 Tests under `abides-core/tests/` and `abides-markets/tests/` import
