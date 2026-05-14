@@ -2,9 +2,37 @@
 name = "abides-markets"
 version = "2.6.0"
 description = "ABIDES: Agent-Based Interactive Discrete Event Simulation — kernel and market microstructure"
-readme = { file = "../README.md", content-type = "text/markdown" }
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "BSD-3-Clause" }
+authors = [{ name = "Gabriele Di Corato", email = "gabriele.dicorato@gmail.com" }]
+maintainers = [{ name = "Gabriele Di Corato", email = "gabriele.dicorato@gmail.com" }]
+keywords = [
+    "market simulation",
+    "discrete event simulation",
+    "agent based modeling",
+    "quantitative finance",
+    "market microstructure",
+    "order book",
+    "abides",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: System :: Distributed Computing",
+    "Typing :: Typed",
+]
 dependencies = [
     "coloredlogs>=15.0.1",
     "matplotlib>=3.9.0",
@@ -32,6 +60,13 @@ docs = [
 [project.scripts]
 abides = "abides_core.abides:main"
 
+[project.urls]
+Homepage = "https://github.com/GabrieleDiCorato/abides"
+Repository = "https://github.com/GabrieleDiCorato/abides"
+Issues = "https://github.com/GabrieleDiCorato/abides/issues"
+Changelog = "https://github.com/GabrieleDiCorato/abides/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/GabrieleDiCorato/abides/tree/main/docs"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -41,12 +76,3 @@ packages = ["abides_markets"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "../abides-core/abides_core" = "abides_core"
-
-[tool.hatch.build.targets.sdist]
-include = [
-    "abides_markets",
-    "../abides-core/abides_core",
-    "../README.md",
-    "../LICENSE",
-    "../LICENSE-ORIGINAL.txt",
-]

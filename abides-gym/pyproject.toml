@@ -2,14 +2,46 @@
 name = "abides-gym"
 version = "2.6.0"
 description = "ABIDES: Gymnasium and RLlib adapters for ABIDES market simulation"
-readme = { file = "../README.md", content-type = "text/markdown" }
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "BSD-3-Clause" }
+authors = [{ name = "Gabriele Di Corato", email = "gabriele.dicorato@gmail.com" }]
+maintainers = [{ name = "Gabriele Di Corato", email = "gabriele.dicorato@gmail.com" }]
+keywords = [
+    "market simulation",
+    "reinforcement learning",
+    "gymnasium",
+    "rllib",
+    "quantitative finance",
+    "abides",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = [
     "abides-markets==2.6.0",
     "gymnasium>=1.0.0",
     "ray[rllib]>=2.40.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/GabrieleDiCorato/abides"
+Repository = "https://github.com/GabrieleDiCorato/abides"
+Issues = "https://github.com/GabrieleDiCorato/abides/issues"
+Changelog = "https://github.com/GabrieleDiCorato/abides/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/GabrieleDiCorato/abides/tree/main/docs"
 
 [build-system]
 requires = ["hatchling"]
@@ -17,11 +49,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["abides_gym"]
-
-[tool.hatch.build.targets.sdist]
-include = [
-    "abides_gym",
-    "../README.md",
-    "../LICENSE",
-    "../LICENSE-ORIGINAL.txt",
-]
