@@ -51,12 +51,17 @@ The project is currently broken down into 3 parts: ABIDES-Core, ABIDES-Markets a
 
 ## About this Fork
 
-This project, **abides-hasufel**, extends ABIDES (Byrd & Balch, 2019), originally developed
-at Georgia Tech and later maintained by J.P. Morgan Chase as
-[abides-jpmc-public](https://github.com/jpmorganchase/abides-jpmc-public) (now archived).
-This [fork](https://github.com/GabrieleDiCorato/abides-hasufel) modernizes the codebase with
-updated dependencies, UV dependency management, performance fixes, and bug corrections.
-See CHANGELOG.md for details.
+This project extends ABIDES (Byrd & Balch, 2019), originally
+developed at Georgia Tech and later maintained by J.P. Morgan Chase
+as [abides-jpmc-public](https://github.com/jpmorganchase/abides-jpmc-public)
+(now archived). It modernizes the codebase with updated dependencies,
+uv-based dependency management, a declarative configuration system,
+oracle redesign, kernel state machine, integer-cents pricing
+discipline, type-checked source, and numerous bug fixes.
+
+Released as `abides-markets` and `abides-gym` on PyPI starting with
+v2.6.0 (formerly distributed as `abides-hasufel`). See
+[CHANGELOG.md](CHANGELOG.md) for full version history.
 
 <!-- CITING -->
 ## Citing ABIDES
@@ -92,39 +97,60 @@ or by using the following BibTeX:
 
 <!-- GETTING STARTED -->
 ## Getting Started
-### Installation
 
-1. Download the ABIDES source code, either directly from GitHub or with git:
+### Install from PyPI (recommended)
+
+Two distributions are published:
+
+- **`abides-markets`** — kernel + market microstructure (covers
+  `abides_core` and `abides_markets`). Use this for simulation,
+  research, and custom-agent development.
+- **`abides-gym`** — Gymnasium and RLlib adapters for reinforcement
+  learning. Pulls `abides-markets` as a dependency. Install only if
+  you need RL — it brings in `gymnasium` and `ray[rllib]`.
+
+```bash
+# Simulation only (lightweight install)
+pip install abides-markets
+
+# With reinforcement-learning extras
+pip install abides-gym
+```
+
+Import names are unchanged from earlier `abides-hasufel` releases:
+`abides_core`, `abides_markets`, `abides_gym` all keep working.
+
+### Install from source (for contributors)
+
+1. Clone the repository:
 
     ```bash
-    git clone https://github.com/GabrieleDiCorato/abides-hasufel
-    cd abides-hasufel
+    git clone https://github.com/GabrieleDiCorato/abides
+    cd abides
     ```
 
-    **Note:** The latest stable version is contained within the `main` branch.
-
-2. **Option A: Install with UV (Recommended)**
+2. Install with [uv](https://docs.astral.sh/uv/) (recommended):
 
     ```bash
-    # Install UV if you haven't already
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-
-    # Install ABIDES and all dependencies (runtime only)
+    # Runtime only
     uv sync --no-dev
 
-    # For development (includes dev dependencies, tests, docs)
+    # Full development environment (tests, docs, lint, mypy)
     uv sync --dev
+    uv run pre-commit install
     ```
 
-3. **Option B: Traditional pip install**
+   See [CONTRIBUTING.md](CONTRIBUTING.md) for the development
+   workflow, including the editable-install caveat for
+   `abides-core/`.
 
-    ```bash
-    pip install -e .
+## Governance
 
-    # For testing and docs support
-    pip install -e .[test,docs]
-    ```
-
+This project is **solo-maintained on a best-effort basis** by
+Gabriele Di Corato and **welcomes co-maintainers**. If you'd like to
+take on a recurring maintenance role, open an issue. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and
+[SECURITY.md](SECURITY.md) for vulnerability disclosure.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
