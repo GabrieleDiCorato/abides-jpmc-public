@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from abides_markets.config_system.models import SimulationConfig
 
@@ -23,7 +23,7 @@ def config_from_dict(d: dict[str, Any]) -> SimulationConfig:
     return SimulationConfig.model_validate(d)  # type: ignore[no-any-return]
 
 
-def save_config(config: SimulationConfig, path: Union[str, Path]) -> None:
+def save_config(config: SimulationConfig, path: str | Path) -> None:
     """Save a SimulationConfig to a YAML or JSON file.
 
     File format is determined by extension: ``.yaml``/``.yml`` for YAML, else JSON.
@@ -45,7 +45,7 @@ def save_config(config: SimulationConfig, path: Union[str, Path]) -> None:
             json.dump(data, f, indent=2)
 
 
-def load_config(path: Union[str, Path]) -> SimulationConfig:
+def load_config(path: str | Path) -> SimulationConfig:
     """Load a SimulationConfig from a YAML or JSON file.
 
     File format is determined by extension: ``.yaml``/``.yml`` for YAML, else JSON.

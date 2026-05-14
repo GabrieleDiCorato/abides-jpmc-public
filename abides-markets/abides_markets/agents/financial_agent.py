@@ -1,5 +1,3 @@
-from typing import Union
-
 import numpy as np
 
 from abides_core import Agent
@@ -30,7 +28,7 @@ class FinancialAgent(Agent):
         # Stamped by compile() from the agent-registry category.
         self.category: str = ""
 
-    def dollarize(self, cents: Union[list[int], int]) -> Union[list[str], str]:
+    def dollarize(self, cents: list[int] | int) -> list[str] | str:
         """
         Used by any subclass to dollarize an int-cents price for printing.
         """

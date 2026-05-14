@@ -27,7 +27,6 @@ ignore = [
     "B008",  # function call in default argument (pre-existing patterns)
     "B028",  # no explicit stacklevel in warnings.warn (minor quality improvement, not a bug)
     "B905",  # zip() without explicit strict= (not yet required by project style)
-    "UP007", # Use `X | Y` for union type annotations (project uses Optional consistently)
 ]
 
 [tool.ruff.lint.isort]

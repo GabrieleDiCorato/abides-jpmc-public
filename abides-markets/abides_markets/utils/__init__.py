@@ -1,7 +1,6 @@
 import datetime
 import warnings
 from contextlib import contextmanager
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -132,7 +131,7 @@ def restrictdict(d, keys):
     return subdict(d, inter)
 
 
-def dollarize(cents: Union[list[int], int]) -> Union[list[str], str]:
+def dollarize(cents: list[int] | int) -> list[str] | str:
     """Dollarizes int-cents prices for printing.
 
     Defined outside the class for utility access by non-agent classes.

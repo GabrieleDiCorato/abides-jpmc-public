@@ -18,7 +18,7 @@ replacement anywhere ABIDES expects an ``Oracle``.
 import logging
 from collections import OrderedDict
 from math import sqrt
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -122,7 +122,7 @@ class ExternalDataOracle(Oracle):
         mkt_open: NanosecondTime,
         mkt_close: NanosecondTime,
         symbols: list[str],
-        provider: Union[BatchDataProvider, PointDataProvider] | None = None,
+        provider: BatchDataProvider | PointDataProvider | None = None,
         data: dict[str, pd.Series] | None = None,
         interpolation: InterpolationStrategy = InterpolationStrategy.FORWARD_FILL,
         cache_size: int = 10_000,

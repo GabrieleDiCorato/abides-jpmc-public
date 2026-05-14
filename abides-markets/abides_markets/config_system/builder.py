@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import warnings
 from copy import deepcopy
-from typing import Any, Union
+from typing import Any
 
 from abides_markets.config_system.models import SimulationConfig
 from abides_markets.config_system.templates import get_template
@@ -170,7 +170,7 @@ class SimulationBuilder:
         infra["default_computation_delay"] = delay
         return self
 
-    def seed(self, seed: Union[int, str]) -> SimulationBuilder:
+    def seed(self, seed: int | str) -> SimulationBuilder:
         """Set the RNG seed. Use ``"random"`` for a fresh seed."""
         sim = self._data.setdefault("simulation", {})
         sim["seed"] = seed

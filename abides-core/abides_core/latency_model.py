@@ -1,5 +1,3 @@
-from typing import Union
-
 import numpy as np
 
 
@@ -144,7 +142,7 @@ class LatencyModel:
         else:  # self.latency_model == 'deterministic'
             return int(min_latency)
 
-    def _extract(self, param: Union[float, np.ndarray], sid: int, rid: int):
+    def _extract(self, param: float | np.ndarray, sid: int, rid: int):
         """Internal function to extract correct values for a sender->recipient
         pair from parameters that can be specified as scalar, 1-D ndarray, or 2-D ndarray.
 

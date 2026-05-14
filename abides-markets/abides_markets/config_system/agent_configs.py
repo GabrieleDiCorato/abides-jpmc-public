@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, Field, model_validator
@@ -750,7 +750,7 @@ class AdaptiveMarketMakerConfig(BaseAgentConfig):
         ge=1,
         description="Minimum order size in shares at any price level.",
     )
-    window_size: Union[int, str] = Field(
+    window_size: int | str = Field(
         default="adaptive",
         description=(
             "Spread window size. An integer sets a fixed spread in ticks "

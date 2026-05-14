@@ -5,7 +5,7 @@ import sys
 import warnings
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 
@@ -927,9 +927,7 @@ class TradingAgent(FinancialAgent):
         if self.log_orders:
             self.logEvent("STOP_ORDER_SUBMITTED", order.to_dict(), deepcopy_event=False)
 
-    def place_multiple_orders(
-        self, orders: list[Union[LimitOrder, MarketOrder]]
-    ) -> None:
+    def place_multiple_orders(self, orders: list[LimitOrder | MarketOrder]) -> None:
         """
         Used by any Trading Agent subclass to place multiple orders at the same time.
 

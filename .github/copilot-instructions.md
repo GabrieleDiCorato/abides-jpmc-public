@@ -48,6 +48,19 @@ Config fields map to constructor args by name; override `_prepare_constructor_kw
 `build()` eagerly validates agent params — unknown fields are rejected immediately.
 See: `docs/reference/config-system.md` and `notebooks/demo_Config_System.ipynb`
 
+## Python type annotation style
+This project targets Python 3.12+ and requires modern type annotation syntax. All code must comply with ruff rule `UP007`.
+
+**Never use `Optional` or `Union` from `typing`:**
+- `Optional[X]` → `X | None`
+- `Union[X, Y]` → `X | Y`
+- `Union[X, Y, Z]` → `X | Y | Z`
+- Type aliases: `MyAlias = X | Y` (no `Union[...]`)
+
+**Do not import** `Optional` or `Union` from `typing`. Use `|` in all annotations and type aliases.
+
+Acceptable `typing` imports: `Any`, `TYPE_CHECKING`, `TypeVar`, `Generic`, `Protocol`, `Literal`, `cast`, `runtime_checkable`, `TypeAlias`, `overload`.
+
 ## Full reference
 - `docs/reference/config-system.md` — declarative config system, builder, templates, per-agent delays
 - `docs/reference/llm-gotchas.md` — all None/NaN traps, safe patterns

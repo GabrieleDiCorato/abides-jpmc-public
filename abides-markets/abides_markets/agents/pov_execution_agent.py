@@ -9,7 +9,6 @@ proportional to the observed transacted volume over a lookback period.
 """
 
 import logging
-from typing import Union
 
 import numpy as np
 
@@ -50,7 +49,7 @@ class POVExecutionAgent(BaseSlicingExecutionAgent):
         start_time: NanosecondTime,
         end_time: NanosecondTime,
         freq: NanosecondTime = _DEFAULT_FREQ,
-        lookback_period: Union[NanosecondTime, str] | None = None,
+        lookback_period: NanosecondTime | str | None = None,
         pov: float = 0.1,
         direction: Side = Side.BID,
         quantity: int = 1000,

@@ -13,7 +13,7 @@ a ``SimulationConfig`` into the runtime dict that ``Kernel`` expects.
 from __future__ import annotations
 
 import re
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -169,11 +169,11 @@ class ExternalDataOracleConfig(BaseModel):
     type: Literal["external_data"] = "external_data"
 
 
-OracleConfig = Union[
-    SparseMeanRevertingOracleConfig,
-    MeanRevertingOracleConfig,
-    ExternalDataOracleConfig,
-]
+OracleConfig = (
+    SparseMeanRevertingOracleConfig
+    | MeanRevertingOracleConfig
+    | ExternalDataOracleConfig
+)
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +393,7 @@ class InfrastructureConfig(BaseModel):
 class SimulationMeta(BaseModel):
     """Simulation-level parameters: seed, logging."""
 
-    seed: Union[int, Literal["random"]] = Field(
+    seed: int | Literal["random"] = Field(
         default="random",
         description=(
             "RNG seed for reproducibility. Use an integer for deterministic "
