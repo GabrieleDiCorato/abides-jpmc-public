@@ -1,4 +1,4 @@
-# ABIDES-Hasufel — Research-Grade Market Microstructure Simulation for Strategy Research
+# ABIDES-NG — Research-Grade Market Microstructure Simulation for Strategy Research
 
 ---
 
@@ -12,13 +12,13 @@ Financial institutions need to test trading strategies, execution algorithms, an
 
 ABIDES (Byrd & Balch, 2019) was a promising academic simulator from Georgia Tech, later maintained by J.P. Morgan Chase, but its public release was archived with unresolved runtime bugs, no configuration system, and no analytics pipeline.
 
-## The Contribution: ABIDES-Hasufel
+## The Contribution: ABIDES-NG
 
-ABIDES-Hasufel **revives, modernises, and substantially extends** the ABIDES simulator into a research-ready platform where AI-driven strategies can be developed, tested, and measured under realistic market conditions — with full transparency and reproducibility.
+ABIDES-NG **revives, modernises, and substantially extends** the ABIDES simulator into a research-ready platform where AI-driven strategies can be developed, tested, and measured under realistic market conditions — with full transparency and reproducibility.
 
 ### What Makes It Novel
 
-| Capability | State of the Art | ABIDES-Hasufel |
+| Capability | State of the Art | ABIDES-NG |
 |:---|:---|:---|
 | **Declarative configuration** | Procedural scripts; hard to reproduce | YAML/JSON configs, fluent `SimulationBuilder`, immutable `SimulationConfig` — same config always yields same result |
 | **Composition-invariant RNG** | Sequential seed draws — adding an agent shifts all other agents' behaviour | SHA-256 identity hashing — inject a new strategy and *all other agents behave identically* to the baseline |
@@ -47,9 +47,9 @@ ABIDES-Hasufel **revives, modernises, and substantially extends** the ABIDES sim
 
 The original ABIDES produced a single opaque `end_state` dictionary. Extracting any useful information required manual log parsing, DataFrame archaeology, and intimate knowledge of agent internals. There was no structured result, no typed analytics, and no way to compare runs programmatically.
 
-ABIDES-Hasufel replaces this with a **layered, profile-gated output system** — from a lightweight summary to full per-order lifecycle tracking — all returned as immutable, typed Pydantic models.
+ABIDES-NG replaces this with a **layered, profile-gated output system** — from a lightweight summary to full per-order lifecycle tracking — all returned as immutable, typed Pydantic models.
 
-| What you get | Original ABIDES | ABIDES-Hasufel |
+| What you get | Original ABIDES | ABIDES-NG |
 |:---|:---|:---|
 | **Simulation result** | Raw dict; parse it yourself | `SimulationResult` — immutable, typed, with `.summary()` and `.summary_dict()` |
 | **Per-agent PnL** | Manually compute from `holdings` dict and `last_trade` | `AgentData.pnl_cents`, `pnl_pct`, `mark_to_market_cents` — mark-to-market, always present |
@@ -99,4 +99,4 @@ Built on Python 3.11+, Pydantic v2, NumPy, and Pandas. Managed with UV for repro
 
 ---
 
-> ABIDES-Hasufel bridges the gap between academic market simulation and institutional-grade strategy research tooling — providing the configurability, analytics, and rigour that quantitative teams require, in an open-source package designed for AI-era workflows.
+> ABIDES-NG bridges the gap between academic market simulation and institutional-grade strategy research tooling — providing the configurability, analytics, and rigour that quantitative teams require, in an open-source package designed for AI-era workflows.

@@ -5,7 +5,7 @@ Covers standalone compute functions, the `compute_rich_metrics()` convenience
 API, and the Pydantic models that carry the results.
 
 > **Audience:** LLM tool-calling agents, quantitative researchers, and
-> financial-industry practitioners building on ABIDES-Hasufel.
+> financial-industry practitioners building on ABIDES-NG.
 
 > **Data conventions:** All prices are **integer cents** (`$100.00 = 10_000`).
 > All timestamps are **nanoseconds since Unix epoch** (`int64`).

@@ -1,4 +1,4 @@
-# ABIDES-Hasufel — Improvement Priority List
+# ABIDES-NG — Improvement Priority List
 
 **Updated**: 2026-04-22
 **Baseline**: v2.5.8 — 1 140 tests, 9 agent types, rich metrics pipeline, composition-invariant RNG.

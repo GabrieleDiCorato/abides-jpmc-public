@@ -1,6 +1,6 @@
-# HASUFEL — LLM Integration Reference & Gotchas
+# ABIDES-NG - LLM Integration Reference & Gotchas
 
-Canonical reference for **AI coding assistants** building on ABIDES-Hasufel.
+Canonical reference for **AI coding assistants** building on ABIDES-NG.
 Covers the async agent model, every source of `None`/`NaN`/empty collections,
 safe-access patterns, and the simulation runner API.
 

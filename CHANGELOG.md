@@ -45,8 +45,7 @@ or ``from abides_gym import ...`` requires no changes.
 
 **Migration**:
 
-* Replace ``pip install abides-hasufel`` (which was never on PyPI)
-  with ``pip install abides-ng``.
+* Install via ``pip install abides-ng`` (the package was never published under the old name).
 * Source/dev installs use the new ``uv`` workspace layout — clone
   the repo and run ``uv sync --dev`` as before.
 

@@ -59,8 +59,7 @@ uv-based dependency management, a declarative configuration system,
 oracle redesign, kernel state machine, integer-cents pricing
 discipline, type-checked source, and numerous bug fixes.
 
-Released as ``abides-ng`` on PyPI starting with v2.6.0 (formerly
-distributed as ``abides-hasufel``). The ``abides-gym`` RL adapter is in this
+Released as ``abides-ng`` on PyPI starting with v2.6.0. The ``abides-gym`` RL adapter is in this
 repo but not yet bundled in the wheel — see the install section below. See
 [CHANGELOG.md](CHANGELOG.md) for full version history.
 
