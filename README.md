@@ -59,9 +59,9 @@ uv-based dependency management, a declarative configuration system,
 oracle redesign, kernel state machine, integer-cents pricing
 discipline, type-checked source, and numerous bug fixes.
 
-Released as `abides-markets` on PyPI starting with v2.6.0 (formerly
-distributed as `abides-hasufel`). The `abides-gym` adapter is in this
-repo but not yet on PyPI — see the install section below. See
+Released as ``abides-ng`` on PyPI starting with v2.6.0 (formerly
+distributed as ``abides-hasufel``). The ``abides-gym`` RL adapter is in this
+repo but not yet bundled in the wheel — see the install section below. See
 [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 <!-- CITING -->
@@ -104,35 +104,36 @@ or by using the following BibTeX:
 The kernel and market simulator are published as a single
 distribution:
 
-- **`abides-markets`** — kernel + market microstructure (covers
+- **`abides-ng`** — kernel + market microstructure (covers
   `abides_core` and `abides_markets`). Use this for simulation,
   research, and custom-agent development.
 
 ```bash
-pip install abides-markets
+pip install abides-ng
 ```
 
-The **`abides-gym`** Gymnasium / RLlib adapter is part of this
-repository but is **not yet published to PyPI**. It has not been
-re-validated against the new `SimulationConfig` system shipped in
-v2.6.x. To use it today, install from a clone:
+The **`abides-ng[gym]`** optional extra (Gymnasium / RLlib adapter)
+is declared in the package metadata but the `abides_gym` source is
+**not yet bundled**. The adapter has not been re-validated against
+the new `SimulationConfig` system shipped in v2.6.x. To use it
+today, install from a clone:
 
 ```bash
-git clone https://github.com/GabrieleDiCorato/abides
-cd abides
+git clone https://github.com/GabrieleDiCorato/abides-ng
+cd abides-ng
 pip install -e abides-gym/
 ```
 
-Import names are unchanged from earlier `abides-hasufel` releases:
-`abides_core`, `abides_markets`, `abides_gym` all keep working.
+Import names are unchanged: `abides_core`, `abides_markets`,
+`abides_gym` all keep working.
 
 ### Install from source (for contributors)
 
 1. Clone the repository:
 
     ```bash
-    git clone https://github.com/GabrieleDiCorato/abides
-    cd abides
+    git clone https://github.com/GabrieleDiCorato/abides-ng
+    cd abides-ng
     ```
 
 2. Install with [uv](https://docs.astral.sh/uv/) (recommended):

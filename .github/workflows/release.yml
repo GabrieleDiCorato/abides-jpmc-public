@@ -61,10 +61,10 @@ jobs:
       - name: Verify wheel version matches tag
         if: github.event_name == 'push'
         run: |
-          MARKETS_VER=$(grep -m1 '^version' abides-markets/pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          NG_VER=$(grep -m1 '^version' abides-markets/pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
           TAG_VER="${{ steps.meta.outputs.version }}"
-          if [[ "$MARKETS_VER" != "$TAG_VER" ]]; then
-            echo "Version mismatch: tag=$TAG_VER markets=$MARKETS_VER"
+          if [[ "$NG_VER" != "$TAG_VER" ]]; then
+            echo "Version mismatch: tag=$TAG_VER abides-ng=$NG_VER"
             exit 1
           fi
 
@@ -98,7 +98,7 @@ jobs:
     if: needs.build.outputs.is_prerelease == 'true'
     environment:
       name: testpypi
-      url: https://test.pypi.org/project/abides-markets/
+      url: https://test.pypi.org/project/abides-ng/
     permissions:
       id-token: write  # required for OIDC trusted publishing
     steps:
@@ -122,7 +122,7 @@ jobs:
     if: github.event_name == 'push' && needs.build.outputs.is_prerelease == 'false'
     environment:
       name: pypi
-      url: https://pypi.org/project/abides-markets/
+      url: https://pypi.org/project/abides-ng/
     permissions:
       id-token: write  # required for OIDC trusted publishing
     steps:

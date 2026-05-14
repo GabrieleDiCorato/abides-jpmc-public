@@ -1,20 +1,21 @@
 # Release Process
 
-How releases of `abides-markets` and `abides-gym` are produced and
+How releases of `abides-ng` (and eventually `abides-ng[gym]`) are produced and
 published. This document is the operational reference for the
 release workflow at
 [.github/workflows/release.yml](../../.github/workflows/release.yml).
 
 ## Distribution overview
 
-The monorepo defines two PyPI distributions, but **only `abides-markets`
+The monorepo defines two PyPI distributions, but **only `abides-ng`
 is published in the v2.6.x line**:
 
-- **`abides-markets`** — kernel + market microstructure. Bundles
-  `abides_core` source via hatchling `force-include` from
+- **`abides-ng`** — kernel + market microstructure. Source lives in
+  `abides-markets/` (directory keeps its original name). Bundles
+  `abides_core` via hatchling `force-include` from
   `abides-core/abides_core/`. **Published.**
 - **`abides-gym`** — Gymnasium and RLlib adapters. Depends on
-  `abides-markets==<same-version>`. **Deferred from v2.6.x** — the
+  `abides-ng==<same-version>`. **Deferred from v2.6.x** — the
   gym adapter has not been re-validated against the new
   `SimulationConfig` system and has no pytest coverage in this repo.
   It will ship as a separate `abides-gym` release once validated.
@@ -43,7 +44,7 @@ The leading `v` is the **git-tag convention** only; the
 `pyproject.toml` `version` field is bare PEP 440 (`2.6.0`).
 
 The release workflow strips the `v` and verifies that the tag
-version matches both wheel `pyproject.toml` files before publishing.
+version matches `abides-markets/pyproject.toml` before publishing.
 
 ## One-time setup: PyPI Trusted Publishing
 
@@ -53,9 +54,9 @@ upload. Long-lived API tokens are not used.
 ### TestPyPI
 
 1. Log in at <https://test.pypi.org/manage/account/publishing/>.
-2. Add a new "pending publisher" for `abides-markets`:
+2. Add a new "pending publisher" for `abides-ng`:
    - Owner: `GabrieleDiCorato`
-   - Repository: `abides`
+   - Repository: `abides-ng`
    - Workflow: `release.yml`
    - Environment: `testpypi`
 3. After the first successful TestPyPI upload, the publisher
@@ -63,7 +64,7 @@ upload. Long-lived API tokens are not used.
    publisher.
 
    When `abides-gym` is later cleared for release, repeat with
-   project name `abides-gym`.
+   project name `abides-ng` (same wheel, `[gym]` extra bundled in).
 
 ### PyPI
 
@@ -91,7 +92,7 @@ The workflow at `.github/workflows/release.yml` runs on tag pushes:
 
 ### Job graph
 
-1. **build** — checks out, builds the `abides-markets` wheel, runs
+1. **build** — checks out, builds the `abides-ng` wheel, runs
    `twine check`, uploads the wheel as a workflow artifact. Verifies
    tag-vs-pyproject version match.
 2. **publish-testpypi** — only on prerelease tags or manual dispatch.
@@ -110,9 +111,10 @@ The workflow at `.github/workflows/release.yml` runs on tag pushes:
 - Land all release content via PRs.
 - Update `CHANGELOG.md`: move the `Unreleased` section to a new
   dated `Release vX.Y.Z` heading, add new `Unreleased` placeholder.
-- Bump `version` in `abides-markets/pyproject.toml`. If/when
-  `abides-gym` is cleared for release, bump it too and update its
-  `abides-markets==<ver>` pin to match.
+- Bump `version` in `abides-markets/pyproject.toml` (the `abides-ng` wheel;
+  source dir is named `abides-markets/` but the distribution name is `abides-ng`).
+  If/when `abides-gym` is cleared for release, bump it too and update its
+  `abides-ng==<ver>` pin to match.
 - Run `uv sync` so `uv.lock` reflects the new versions; commit.
 - Run `uv run pre-commit run --all-files` until clean.
 
@@ -120,7 +122,7 @@ The workflow at `.github/workflows/release.yml` runs on tag pushes:
 
 ```bash
 rm -rf dist
-(cd abides-markets && uv build --wheel)
+(cd abides-markets && uv build --wheel)   # produces abides_ng-*.whl
 uv run twine check dist/*
 ```
 
@@ -142,7 +144,7 @@ Workflow runs → uploads to TestPyPI. In a fresh venv:
 ```bash
 pip install --index-url https://test.pypi.org/simple/ \
             --extra-index-url https://pypi.org/simple/ \
-            "abides-markets==2.6.0rc1"
+            "abides-ng==2.6.0rc1"
 abides --help
 python -c "import abides_core, abides_markets; print('ok')"
 ```
@@ -171,12 +173,12 @@ release notes from CHANGELOG.
 In a fresh venv:
 
 ```bash
-pip install abides-markets==2.6.0
+pip install abides-ng==2.6.0
 abides --help
 ```
 
 Verify the PyPI project page renders the README correctly:
-<https://pypi.org/project/abides-markets/2.6.0/>.
+<https://pypi.org/project/abides-ng/2.6.0/>.
 
 ## Hotfix releases
 
@@ -193,10 +195,10 @@ For an urgent fix on a released line:
 If a published version is broken, **yank** rather than delete (PyPI
 does not allow re-uploading the same version):
 
-1. Go to <https://pypi.org/manage/project/abides-markets/releases/>
+1. Go to <https://pypi.org/manage/project/abides-ng/releases/>
 2. Find the affected version → "Options" → "Yank release".
 3. Provide a brief reason. Yanked versions remain installable by
-   exact pin but are excluded from `pip install abides-markets`
+   exact pin but are excluded from `pip install abides-ng`
    resolution.
 4. Cut a fixed `2.6.x` patch as soon as possible.
 

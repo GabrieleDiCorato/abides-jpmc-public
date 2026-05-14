@@ -15,27 +15,29 @@ pluggable log-writer / gym-adapter protocols. Two intentional
 reproducibility breaks are documented under *Breaking Changes*.
 
 It also marks the **transition of the project to a public PyPI
-release** under two distribution names — see *Distribution
-Rename* below.
+release** as ``abides-ng`` — see *Distribution Name* below.
 
-Distribution Rename
--------------------
+Distribution Name
+-----------------
 
-This is the first release published to PyPI. The project transitions
-from the personal-fork name ``abides-hasufel`` to a public PyPI
-distribution:
+This is the first release published to PyPI. The project uses the
+name **``abides-ng``** (next-generation) to distinguish this
+community-maintained fork from the original ``abides-jpmc-public``
+repository (now archived), while remaining clearly discoverable
+alongside it. The name is deliberately humble — it signals an active
+continuation, not a claim of authority.
 
-* **``abides-markets``** — kernel and market microstructure
-  (contains the ``abides_core`` and ``abides_markets`` import
-  modules and the ``abides`` CLI script). **Published to PyPI in
-  v2.6.0.**
-* **``abides-gym``** — Gymnasium / RLlib adapters (contains the
-  ``abides_gym`` import module). The packaging is in place but the
-  adapter has **not been re-validated** against the new
-  ``SimulationConfig`` system shipped in this release line.
-  Publication to PyPI is **deferred** until validation lands. Until
-  then, install from source (``pip install -e abides-gym/`` from a
-  clone).
+Installation:
+
+* **Headless simulation**: ``pip install abides-ng``
+  (contains ``abides_core``, ``abides_markets``, and the ``abides``
+  CLI script).
+* **RL stack** (deferred): ``pip install abides-ng[gym]``.
+  The ``gymnasium`` and ``ray[rllib]`` optional extras are declared
+  in v2.6.0 metadata; ``abides_gym`` source will be bundled once
+  the adapter is re-validated against the new ``SimulationConfig``
+  system. Until then, install from source:
+  ``pip install -e abides-gym/`` from a clone.
 
 **Import names are unchanged**: existing user code that does
 ``from abides_core import ...``, ``from abides_markets import ...``,
@@ -44,9 +46,7 @@ or ``from abides_gym import ...`` requires no changes.
 **Migration**:
 
 * Replace ``pip install abides-hasufel`` (which was never on PyPI)
-  with ``pip install abides-markets`` for headless simulation work.
-* For the RL stack, install ``abides-gym`` from source pending its
-  separate PyPI release.
+  with ``pip install abides-ng``.
 * Source/dev installs use the new ``uv`` workspace layout — clone
   the repo and run ``uv sync --dev`` as before.
 

@@ -1,7 +1,7 @@
 [project]
-name = "abides-markets"
+name = "abides-ng"
 version = "2.6.0"
-description = "ABIDES: Agent-Based Interactive Discrete Event Simulation — kernel and market microstructure"
+description = "ABIDES-NG: next-generation Agent-Based Interactive Discrete Event Simulation for financial markets"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "BSD-3-Clause" }
@@ -47,6 +47,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+gym = [
+    # Runtime deps for abides_gym (Gymnasium / RLlib adapters).
+    # The abides_gym source will be bundled into this wheel once validated.
+    # Until then: pip install -e abides-gym/ from a clone.
+    "gymnasium>=1.0.0",
+    "ray[rllib]>=2.40.0",
+]
 test = [
     "pytest>=9.0.2",
     "pytest-cov>=6.0.0",
@@ -61,11 +68,11 @@ docs = [
 abides = "abides_core.abides:main"
 
 [project.urls]
-Homepage = "https://github.com/GabrieleDiCorato/abides"
-Repository = "https://github.com/GabrieleDiCorato/abides"
-Issues = "https://github.com/GabrieleDiCorato/abides/issues"
-Changelog = "https://github.com/GabrieleDiCorato/abides/blob/main/CHANGELOG.md"
-Documentation = "https://github.com/GabrieleDiCorato/abides/tree/main/docs"
+Homepage = "https://github.com/GabrieleDiCorato/abides-ng"
+Repository = "https://github.com/GabrieleDiCorato/abides-ng"
+Issues = "https://github.com/GabrieleDiCorato/abides-ng/issues"
+Changelog = "https://github.com/GabrieleDiCorato/abides-ng/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/GabrieleDiCorato/abides-ng/tree/main/docs"
 
 [build-system]
 requires = ["hatchling"]

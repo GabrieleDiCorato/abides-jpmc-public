@@ -31,17 +31,17 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "abides-markets==2.6.0",
+    "abides-ng==2.6.0",
     "gymnasium>=1.0.0",
     "ray[rllib]>=2.40.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/GabrieleDiCorato/abides"
-Repository = "https://github.com/GabrieleDiCorato/abides"
-Issues = "https://github.com/GabrieleDiCorato/abides/issues"
-Changelog = "https://github.com/GabrieleDiCorato/abides/blob/main/CHANGELOG.md"
-Documentation = "https://github.com/GabrieleDiCorato/abides/tree/main/docs"
+Homepage = "https://github.com/GabrieleDiCorato/abides-ng"
+Repository = "https://github.com/GabrieleDiCorato/abides-ng"
+Issues = "https://github.com/GabrieleDiCorato/abides-ng/issues"
+Changelog = "https://github.com/GabrieleDiCorato/abides-ng/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/GabrieleDiCorato/abides-ng/tree/main/docs"
 
 [build-system]
 requires = ["hatchling"]
