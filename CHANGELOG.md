@@ -22,15 +22,20 @@ Distribution Rename
 -------------------
 
 This is the first release published to PyPI. The project transitions
-from the personal-fork name ``abides-hasufel`` to two public
-distributions:
+from the personal-fork name ``abides-hasufel`` to a public PyPI
+distribution:
 
 * **``abides-markets``** — kernel and market microstructure
   (contains the ``abides_core`` and ``abides_markets`` import
-  modules and the ``abides`` CLI script).
+  modules and the ``abides`` CLI script). **Published to PyPI in
+  v2.6.0.**
 * **``abides-gym``** — Gymnasium / RLlib adapters (contains the
-  ``abides_gym`` import module). Depends on
-  ``abides-markets==2.6.0``.
+  ``abides_gym`` import module). The packaging is in place but the
+  adapter has **not been re-validated** against the new
+  ``SimulationConfig`` system shipped in this release line.
+  Publication to PyPI is **deferred** until validation lands. Until
+  then, install from source (``pip install -e abides-gym/`` from a
+  clone).
 
 **Import names are unchanged**: existing user code that does
 ``from abides_core import ...``, ``from abides_markets import ...``,
@@ -39,8 +44,9 @@ or ``from abides_gym import ...`` requires no changes.
 **Migration**:
 
 * Replace ``pip install abides-hasufel`` (which was never on PyPI)
-  with ``pip install abides-markets`` for headless simulation work,
-  or ``pip install abides-gym`` if you also need the RL stack.
+  with ``pip install abides-markets`` for headless simulation work.
+* For the RL stack, install ``abides-gym`` from source pending its
+  separate PyPI release.
 * Source/dev installs use the new ``uv`` workspace layout — clone
   the repo and run ``uv sync --dev`` as before.
 

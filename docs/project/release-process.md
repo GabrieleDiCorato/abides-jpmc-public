@@ -7,16 +7,20 @@ release workflow at
 
 ## Distribution overview
 
-Two PyPI distributions are published from a single monorepo:
+The monorepo defines two PyPI distributions, but **only `abides-markets`
+is published in the v2.6.x line**:
 
 - **`abides-markets`** — kernel + market microstructure. Bundles
   `abides_core` source via hatchling `force-include` from
-  `abides-core/abides_core/`.
+  `abides-core/abides_core/`. **Published.**
 - **`abides-gym`** — Gymnasium and RLlib adapters. Depends on
-  `abides-markets==<same-version>`.
+  `abides-markets==<same-version>`. **Deferred from v2.6.x** — the
+  gym adapter has not been re-validated against the new
+  `SimulationConfig` system and has no pytest coverage in this repo.
+  It will ship as a separate `abides-gym` release once validated.
+  Until then, install it from source: `pip install -e abides-gym/`.
 
-Both wheels share a single version number; bump them together. The
-release is **wheel-only**: no sdist is published. Source builds
+The release is **wheel-only**: no sdist is published. Source builds
 require cloning the repository (and are CI-tested via `uv build`).
 
 ## Versioning
@@ -49,16 +53,17 @@ upload. Long-lived API tokens are not used.
 ### TestPyPI
 
 1. Log in at <https://test.pypi.org/manage/account/publishing/>.
-2. Add a new "pending publisher" for **both** projects:
-   - **abides-markets**:
-     - Owner: `GabrieleDiCorato`
-     - Repository: `abides`
-     - Workflow: `release.yml`
-     - Environment: `testpypi`
-   - **abides-gym**: same fields with project name `abides-gym`.
+2. Add a new "pending publisher" for `abides-markets`:
+   - Owner: `GabrieleDiCorato`
+   - Repository: `abides`
+   - Workflow: `release.yml`
+   - Environment: `testpypi`
 3. After the first successful TestPyPI upload, the publisher
    becomes "active" and the project is owned by the trusted
    publisher.
+
+   When `abides-gym` is later cleared for release, repeat with
+   project name `abides-gym`.
 
 ### PyPI
 
@@ -86,9 +91,9 @@ The workflow at `.github/workflows/release.yml` runs on tag pushes:
 
 ### Job graph
 
-1. **build** — checks out, builds both wheels, runs `twine check`,
-   uploads wheels as a workflow artifact. Verifies tag-vs-pyproject
-   version match.
+1. **build** — checks out, builds the `abides-markets` wheel, runs
+   `twine check`, uploads the wheel as a workflow artifact. Verifies
+   tag-vs-pyproject version match.
 2. **publish-testpypi** — only on prerelease tags or manual dispatch.
    Uses OIDC trusted publishing.
 3. **publish-pypi** — only on stable tags. Uses OIDC trusted
@@ -96,7 +101,7 @@ The workflow at `.github/workflows/release.yml` runs on tag pushes:
    rule.
 4. **github-release** — only on stable tags, after `publish-pypi`
    succeeds. Extracts the matching CHANGELOG section, creates the
-   GitHub Release, attaches both wheels.
+   GitHub Release, attaches the wheel.
 
 ## Cutting a release
 
@@ -105,9 +110,9 @@ The workflow at `.github/workflows/release.yml` runs on tag pushes:
 - Land all release content via PRs.
 - Update `CHANGELOG.md`: move the `Unreleased` section to a new
   dated `Release vX.Y.Z` heading, add new `Unreleased` placeholder.
-- Bump `version` in **both** `abides-markets/pyproject.toml` and
-  `abides-gym/pyproject.toml`. Update the `abides-markets==<ver>`
-  pin in `abides-gym/pyproject.toml` to match.
+- Bump `version` in `abides-markets/pyproject.toml`. If/when
+  `abides-gym` is cleared for release, bump it too and update its
+  `abides-markets==<ver>` pin to match.
 - Run `uv sync` so `uv.lock` reflects the new versions; commit.
 - Run `uv run pre-commit run --all-files` until clean.
 
@@ -116,7 +121,6 @@ The workflow at `.github/workflows/release.yml` runs on tag pushes:
 ```bash
 rm -rf dist
 (cd abides-markets && uv build --wheel)
-(cd abides-gym && uv build --wheel)
 uv run twine check dist/*
 ```
 

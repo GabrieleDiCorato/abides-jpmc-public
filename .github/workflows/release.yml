@@ -58,14 +58,13 @@ jobs:
           echo "is_prerelease=$IS_PRE" >> "$GITHUB_OUTPUT"
           echo "Release version: $VERSION (prerelease: $IS_PRE)"
 
-      - name: Verify wheel versions match tag
+      - name: Verify wheel version matches tag
         if: github.event_name == 'push'
         run: |
           MARKETS_VER=$(grep -m1 '^version' abides-markets/pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
-          GYM_VER=$(grep -m1 '^version' abides-gym/pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
           TAG_VER="${{ steps.meta.outputs.version }}"
-          if [[ "$MARKETS_VER" != "$TAG_VER" || "$GYM_VER" != "$TAG_VER" ]]; then
-            echo "Version mismatch: tag=$TAG_VER markets=$MARKETS_VER gym=$GYM_VER"
+          if [[ "$MARKETS_VER" != "$TAG_VER" ]]; then
+            echo "Version mismatch: tag=$TAG_VER markets=$MARKETS_VER"
             exit 1
           fi
 
@@ -77,10 +76,10 @@ jobs:
           cd abides-markets
           uv build --wheel
 
-      - name: Build abides-gym wheel
-        run: |
-          cd abides-gym
-          uv build --wheel
+      # NOTE: abides-gym is intentionally NOT built or published in v2.6.x.
+      # The gym adapter has not been re-validated against the new
+      # SimulationConfig system and has zero pytest coverage in this repo.
+      # It will ship separately once validated. See docs/project/release-process.md.
 
       - name: Validate wheels
         run: uv run twine check dist/*
