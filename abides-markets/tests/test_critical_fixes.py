@@ -9,16 +9,23 @@ from abides_markets.oracles.sparse_mean_reverting_oracle import (
     SparseMeanRevertingOracle,
 )
 
-# --- Kernel has_run ---
+# --- Kernel lifecycle state ---
 
 
-def test_kernel_has_run_set_after_initialize():
-    """has_run should be True after initialize() completes."""
+def test_kernel_state_transitions_through_initialize():
+    """Kernel.state should advance from CREATED to INITIALIZED after initialize()."""
+    from abides_core.kernel import KernelState
+
     agents = []
-    kernel = Kernel(agents=agents, start_time=0, stop_time=1)
-    assert kernel.has_run is False
+    kernel = Kernel(
+        agents=agents,
+        start_time=0,
+        stop_time=1,
+        random_state=np.random.RandomState(seed=42),
+    )
+    assert kernel.state is KernelState.CONSTRUCTED
     kernel.initialize()
-    assert kernel.has_run is True
+    assert kernel.state is KernelState.INITIALIZED
 
 
 # --- TradingAgent get_known_bid_ask KeyError ---
@@ -158,7 +165,12 @@ def test_subscription_cancel_type_mapping():
 
 def test_kernel_set_wakeup_valueerror_is_string():
     """ValueError from set_wakeup should have a formatted string, not tuple args."""
-    kernel = Kernel(agents=[], start_time=0, stop_time=1)
+    kernel = Kernel(
+        agents=[],
+        start_time=0,
+        stop_time=1,
+        random_state=np.random.RandomState(seed=42),
+    )
     kernel.initialize()
     kernel.current_time = 100
     try:
@@ -178,7 +190,12 @@ def test_kernel_runner_works_with_start_time_zero():
     from abides_core.agent import Agent
 
     agent = Agent(id=0, name="test", random_state=np.random.RandomState(42))
-    kernel = Kernel(agents=[agent], start_time=0, stop_time=100)
+    kernel = Kernel(
+        agents=[agent],
+        start_time=0,
+        stop_time=100,
+        random_state=np.random.RandomState(seed=42),
+    )
     kernel.initialize()
     # Should not hang or skip — the runner loop condition should handle time=0
     kernel.runner()

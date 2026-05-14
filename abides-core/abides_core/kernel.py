@@ -1,7 +1,6 @@
 import heapq
 import logging
 import os
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -12,7 +11,7 @@ import pandas as pd
 from . import NanosecondTime
 from .agent import Agent
 from .gym_adapter import GymAdapter
-from .latency_model import LatencyModel, MatrixLatencyModel, UniformLatencyModel
+from .latency_model import LatencyModel, UniformLatencyModel
 from .lifecycle import KernelState, assert_transition
 from .log_writer import BZ2PickleLogWriter, LogWriter, NullLogWriter
 from .message import Message, MessageBatch, WakeupMsg
@@ -27,27 +26,6 @@ _DEFAULT_STOP_TIME: int = str_to_ns("16:00:00")
 # Single shared instance: WakeupMsg carries no data, so reusing one
 # instance saves an allocation per scheduled wakeup.
 _WAKEUP_SINGLETON = WakeupMsg()
-
-
-# Process-level set of deprecated kernel attribute names that have already
-# emitted a warning. Used by the property shims for ``agent_current_times``
-# and ``agent_computation_delays`` so each name warns at most once per
-# process (avoids logging spam in long-running gym training loops).
-_WARNED_DEPRECATED_ATTRS: set[str] = set()
-
-
-def _warn_deprecated_attr(name: str, new_name: str) -> None:
-    """Emit a one-shot ``DeprecationWarning`` for a renamed kernel attribute."""
-    if name in _WARNED_DEPRECATED_ATTRS:
-        return
-    _WARNED_DEPRECATED_ATTRS.add(name)
-    warnings.warn(
-        f"Kernel.{name} is deprecated; use Kernel.{new_name} (numpy int64 "
-        f"array) instead. The legacy attribute returns a read-only view and "
-        f"will be removed in a future release.",
-        DeprecationWarning,
-        stacklevel=3,
-    )
 
 
 @dataclass(order=True)
@@ -78,16 +56,11 @@ _KERNEL_RESERVED_ATTRS: frozenset[str] = frozenset(
         "start_time",
         "stop_time",
         "random_state",
-        "seed",
         "skip_log",
         "log_dir",
         "summary_log",
         "custom_state",
-        "has_run",
-        "gym_agents",
         "agent_latency_model",
-        "agent_current_times",
-        "agent_computation_delays",
         "current_agent_additional_delay",
         "event_queue_wall_clock_start",
         "ttl_messages",
@@ -103,16 +76,18 @@ class Kernel:
 
     Arguments:
         agents: List of agents to include in the simulation.
+        random_state: Required ``np.random.RandomState`` used for kernel-level
+            stochastic operations (latency jitter, message tie-breaking when
+            relevant). Callers must derive this from a master seed via the
+            config-system seed-derivation helpers; the kernel never
+            synthesizes one.
         start_time: Timestamp giving the start time of the simulation.
         stop_time: Timestamp giving the end time of the simulation.
         default_computation_delay: time penalty applied to an agent each time it is
             awakened (wakeup or recvMsg).
         default_latency: latency imposed on each computation, modeled physical latency in systems and avoid infinite loop of events happening at the same exact time (in ns)
-        agent_latency: legacy parameter, used when agent_latency_model is not defined
-        latency_noise:legacy parameter, used when agent_latency_model is not defined
         agent_latency_model: Model of latency used for the network of agents.
         skip_log: if True, no log saved on disk.
-        seed: seed of the simulation.
         log_dir: directory where data is store.
         custom_properties: Different attributes that can be added to the simulation
             (e.g., the oracle).
@@ -127,20 +102,17 @@ class Kernel:
         self,
         agents: list[Agent],
         *,
+        random_state: np.random.RandomState,
         start_time: NanosecondTime = _DEFAULT_START_TIME,
         stop_time: NanosecondTime = _DEFAULT_STOP_TIME,
         default_computation_delay: int = 1,
         default_latency: int = 1,
-        agent_latency: list[list[int]] | None = None,
-        latency_noise: list[float] | None = None,
         agent_latency_model: LatencyModel | None = None,
         skip_log: bool = True,
-        seed: int | None = None,
         log_dir: str | None = None,
         log_root: str | os.PathLike = "./log",
         log_writer: LogWriter | None = None,
         custom_properties: dict[str, Any] | None = None,
-        random_state: np.random.RandomState | None = None,
         per_agent_computation_delays: dict[int, int] | None = None,
         gym_adapter: GymAdapter | None = None,
     ) -> None:
@@ -165,19 +137,6 @@ class Kernel:
                 f"kernel itself."
             )
 
-        if random_state is None:
-            if seed is None:
-                warnings.warn(
-                    "Kernel constructed without an explicit seed or "
-                    "random_state. A non-reproducible random seed will be "
-                    "drawn from the OS entropy pool. Pass seed=<int> or "
-                    "random_state=np.random.RandomState(...) for "
-                    "reproducibility.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                seed = int(np.random.randint(low=0, high=2**32, dtype="uint64"))
-            random_state = np.random.RandomState(seed=seed)
         self.random_state: np.random.RandomState = random_state
 
         # A single message queue to keep everything organized by increasing
@@ -200,13 +159,11 @@ class Kernel:
         # logging should go only to the agent's individual log.  This
         # is for things like "final position value" and such.
         self.summary_log: list[dict[str, Any]] = []
-        # variable to say if has already run at least once or not (derived
-        # from ``self._state``; kept as a simple bool attribute for
-        # backwards compatibility with external readers).
-        self.has_run = False
 
         # Lifecycle state machine. Transitions are validated at the public
-        # method boundary (initialize / runner / terminate / reset).
+        # method boundary (initialize / runner / terminate / reset). The
+        # public ``Kernel.state`` property exposes this as the single source
+        # of truth for run progress.
         self._state: KernelState = KernelState.CONSTRUCTED
 
         for key, value in custom_properties.items():
@@ -216,36 +173,9 @@ class Kernel:
         #        based on class agent.Agent
         self.agents: list[Agent] = agents
 
-        # Resolve the gym adapter. Explicit ``gym_adapter=`` wins; otherwise
-        # fall back to scanning for legacy ``CoreGymAgent``-based agents and
-        # warn that auto-detection is deprecated.
-        if gym_adapter is None:
-            detected: list[Agent] = [
-                a
-                for a in agents
-                if "CoreGymAgent" in [c.__name__ for c in a.__class__.__bases__]
-            ]
-            if len(detected) > 1:
-                raise ValueError(
-                    "ABIDES-gym currently only supports using one gym agent"
-                )
-            if detected:
-                warnings.warn(
-                    "Auto-detection of gym agents from the `agents` list is "
-                    "deprecated. Pass gym_adapter=<your gym agent> to the "
-                    "Kernel constructor explicitly.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                gym_adapter = detected[0]
+        # Gym adapter slot. ``gym_adapter=`` is the only registration path;
+        # auto-detection of ``CoreGymAgent`` subclasses is gone.
         self._gym_adapter: GymAdapter | None = gym_adapter
-
-        # Back-compat: keep the legacy ``gym_agents`` list view so any
-        # external introspection still works. Single-element list when an
-        # adapter is registered, empty otherwise.
-        self.gym_agents: list[Agent] = (
-            [self._gym_adapter] if self._gym_adapter is not None else []  # type: ignore[list-item]
-        )
 
         logger.debug(
             "Gym adapter %s",
@@ -266,9 +196,6 @@ class Kernel:
 
         # This is a NanosecondTime that includes the date.
         self.current_time: NanosecondTime = start_time
-
-        # The global seed, NOT used for anything agent-related.
-        self.seed: int | None = seed
 
         # Should the Kernel skip writing agent logs?
         self.skip_log: bool = skip_log
@@ -296,8 +223,6 @@ class Kernel:
         # it is still "in the future")
         #
         # Stored as numpy int64 arrays for fast O(1) hot-loop access.
-        # External readers should use the ``agent_current_times`` /
-        # ``agent_computation_delays`` properties (deprecated, read-only).
         n = len(self.agents)
         self._agent_current_times: np.ndarray = np.full(
             n, self.start_time, dtype=np.int64
@@ -326,20 +251,12 @@ class Kernel:
             for cls in type(agent).__mro__:
                 self._agents_by_type.setdefault(cls, []).append(agent.id)
 
-        # Normalize legacy latency parameters into a LatencyModel. Always
-        # going through a model removes the dual code path inside
-        # send_message and lets PR 5b cleanly drop the noise list later.
-        # The new wrappers preserve the legacy default-noise RNG draw
-        # (one np.random.choice on [1.0]) for bit-for-bit reproducibility.
+        # All message dispatch goes through a LatencyModel. When the caller
+        # does not provide one explicitly we fall back to a uniform model
+        # built from ``default_latency``; matrix-shaped models must be
+        # constructed by the caller and passed via ``agent_latency_model=``.
         if agent_latency_model is None:
-            if agent_latency is not None:
-                agent_latency_model = MatrixLatencyModel(
-                    agent_latency, noise=latency_noise
-                )
-            else:
-                agent_latency_model = UniformLatencyModel(
-                    default_latency, noise=latency_noise
-                )
+            agent_latency_model = UniformLatencyModel(default_latency)
         self.agent_latency_model: LatencyModel = agent_latency_model
 
         # The kernel maintains an accumulating additional delay parameter
@@ -456,7 +373,6 @@ class Kernel:
         self.event_queue_wall_clock_start = datetime.now()
         self.ttl_messages = 0
 
-        self.has_run = True
         self._state = KernelState.INITIALIZED
 
     def runner(
@@ -890,28 +806,14 @@ class Kernel:
         return list(self._agents_by_type.get(agent_type, []))
 
     @property
-    def agent_current_times(self) -> np.ndarray:
-        """Deprecated read-only view of per-agent next-available times.
+    def state(self) -> KernelState:
+        """Current lifecycle state of the kernel.
 
-        Use :attr:`_agent_current_times` directly inside ``abides_core``.
-        External callers should treat this as a transitional accessor.
+        ``KernelState`` is the single source of truth for run progress.
+        Use ``kernel.state == KernelState.TERMINATED`` instead of any
+        legacy ``has_run`` flag.
         """
-        _warn_deprecated_attr("agent_current_times", "_agent_current_times")
-        view = self._agent_current_times.view()
-        view.flags.writeable = False
-        return view
-
-    @property
-    def agent_computation_delays(self) -> np.ndarray:
-        """Deprecated read-only view of per-agent computation delays.
-
-        Use :attr:`_agent_computation_delays` directly inside ``abides_core``.
-        External callers should treat this as a transitional accessor.
-        """
-        _warn_deprecated_attr("agent_computation_delays", "_agent_computation_delays")
-        view = self._agent_computation_delays.view()
-        view.flags.writeable = False
-        return view
+        return self._state
 
     def write_log(
         self, sender_id: int, df_log: pd.DataFrame, filename: str | None = None

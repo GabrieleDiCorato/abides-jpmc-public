@@ -47,7 +47,12 @@ class TestLatencyModelWiring:
         from abides_core.latency_model import UniformLatencyModel
 
         agents = [StubAgent(i) for i in range(3)]
-        kernel = Kernel(agents=agents, default_latency=42, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents,
+            default_latency=42,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+        )
         assert isinstance(kernel.agent_latency_model, UniformLatencyModel)
         assert (
             kernel.agent_latency_model.get_latency(
@@ -56,23 +61,13 @@ class TestLatencyModelWiring:
             == 42
         )
 
-    def test_legacy_agent_latency_param_wraps_into_matrix_model(self):
-        from abides_core.latency_model import MatrixLatencyModel
-
-        agents = [StubAgent(i) for i in range(3)]
-        matrix = [[10, 20, 30], [40, 50, 60], [70, 80, 90]]
-        kernel = Kernel(agents=agents, agent_latency=matrix, skip_log=True, seed=1)
-        assert isinstance(kernel.agent_latency_model, MatrixLatencyModel)
-        assert (
-            kernel.agent_latency_model.get_latency(
-                1, 2, random_state=kernel.random_state
-            )
-            == 60
-        )
-
     def test_no_longer_exposes_agent_latency_attr(self):
         agents = [StubAgent(i) for i in range(2)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+        )
         assert not hasattr(kernel, "agent_latency")
         assert not hasattr(kernel, "latency_noise")
 
@@ -93,7 +88,7 @@ class TestMessageBatchDelay:
             stop_time=str_to_ns("16:00:00"),
             default_computation_delay=comp_delay,
             skip_log=True,
-            seed=1,
+            random_state=np.random.RandomState(seed=1),
         )
         kernel.initialize()
         # Drain any wakeup messages queued during initialize
@@ -141,50 +136,25 @@ class TestMessageBatchDelay:
 # ---------------------------------------------------------------------------
 
 
-class _CoreGymAgentBase(Agent):
-    """Stand-in for the abides-gym CoreGymAgent base class.
-
-    The kernel detects gym agents by class name lookup, not by import,
-    so the simulated base just needs ``__name__ == 'CoreGymAgent'``.
-    """
-
-
-# Force the detection key without importing abides-gym.
-_CoreGymAgentBase.__name__ = "CoreGymAgent"
-
-
-class _FakeGymAgent(_CoreGymAgentBase):
-    def __init__(self, id: int) -> None:
-        super().__init__(
-            id=id,
-            name=f"Gym_{id}",
-            random_state=np.random.RandomState(seed=id),
-            log_events=False,
-        )
-
-
 class TestWriteSummaryLogRespectsSkipLog:
     def test_skip_log_creates_no_file(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+        )
         kernel.write_summary_log()
         assert not (tmp_path / "log").exists()
-
-
-class TestTooManyGymAgentsRaisesValueError:
-    def test_two_gym_agents_raises(self):
-        import pytest
-
-        agents = [_FakeGymAgent(0), _FakeGymAgent(1)]
-        with pytest.raises(ValueError, match="one gym agent"):
-            Kernel(agents=agents, skip_log=True, seed=1)
 
 
 class TestTerminateZeroCountDoesNotCrash:
     def test_metric_with_zero_count_does_not_divide_by_zero(self):
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
         kernel.initialize()
         # Inject a metric with count==0 — must be skipped, not crash.
         kernel.custom_state["agent_type_metrics"] = {
@@ -202,7 +172,9 @@ class TestAgentIdInvariantViolationRaises:
         # Swap their ids so agents[i].id != i.
         a.id, b.id = 1, 0
         with pytest.raises(ValueError, match="agents\\[i\\]\\.id"):
-            Kernel(agents=[a, b], skip_log=True, seed=1)
+            Kernel(
+                agents=[a, b], skip_log=True, random_state=np.random.RandomState(seed=1)
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +191,7 @@ class TestCustomPropertiesReservedKey:
             Kernel(
                 agents=agents,
                 skip_log=True,
-                seed=1,
+                random_state=np.random.RandomState(seed=1),
                 custom_properties={"agents": [1, 2, 3]},
             )
 
@@ -229,7 +201,7 @@ class TestCustomPropertiesReservedKey:
         kernel = Kernel(
             agents=agents,
             skip_log=True,
-            seed=1,
+            random_state=np.random.RandomState(seed=1),
             custom_properties={"oracle": sentinel, "my_thing": 42},
         )
         assert kernel.oracle is sentinel
@@ -244,7 +216,7 @@ class TestInitializeClearsState:
             start_time=str_to_ns("09:30:00"),
             stop_time=str_to_ns("16:00:00"),
             skip_log=True,
-            seed=1,
+            random_state=np.random.RandomState(seed=1),
         )
         kernel.initialize()
         # Mutate per-run state.
@@ -270,33 +242,14 @@ class TestInitializeClearsState:
         assert all(t == kernel.start_time for t in kernel._agent_current_times)
 
 
-class TestRandomStateDeprecationWarning:
-    def test_warns_when_neither_seed_nor_random_state(self):
-        import warnings as _w
+class TestRandomStateRequired:
+    def test_missing_random_state_raises_type_error(self):
+        import pytest as _pytest
 
         agents = [StubAgent(0)]
-        with _w.catch_warnings(record=True) as captured:
-            _w.simplefilter("always")
+        # ``random_state`` is a required keyword-only argument.
+        with _pytest.raises(TypeError):
             Kernel(agents=agents, skip_log=True)
-        msgs = [str(w.message) for w in captured]
-        assert any("explicit seed" in m for m in msgs), msgs
-
-    def test_no_warning_with_seed(self):
-        import warnings as _w
-
-        agents = [StubAgent(0)]
-        with _w.catch_warnings():
-            _w.simplefilter("error", DeprecationWarning)
-            Kernel(agents=agents, skip_log=True, seed=42)
-
-    def test_no_warning_with_random_state(self):
-        import warnings as _w
-
-        agents = [StubAgent(0)]
-        rs = np.random.RandomState(7)
-        with _w.catch_warnings():
-            _w.simplefilter("error", DeprecationWarning)
-            Kernel(agents=agents, skip_log=True, random_state=rs)
 
 
 # ---------------------------------------------------------------------------
@@ -327,7 +280,7 @@ class TestDispatchOrderingBug:
             stop_time=str_to_ns("16:00:00"),
             default_computation_delay=comp_delay,
             skip_log=True,
-            seed=1,
+            random_state=np.random.RandomState(seed=1),
         )
         kernel.initialize()
         kernel.runner()  # drain initial wakeups
@@ -351,7 +304,7 @@ class TestHeapSequenceCounter:
             start_time=str_to_ns("09:30:00"),
             stop_time=str_to_ns("16:00:00"),
             skip_log=True,
-            seed=1,
+            random_state=np.random.RandomState(seed=1),
         )
         kernel.initialize()
         baseline_first = kernel._next_seq
@@ -375,7 +328,9 @@ class TestHeapSequenceCounter:
         # Two entries with the same deliver_at: ordering must use seq,
         # never message.__lt__ (which no longer exists).
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
         kernel._enqueue(100, 0, 0, Message())
         kernel._enqueue(100, 0, 0, Message())
         # Pop both; must not raise even though Message has no __lt__.
@@ -389,7 +344,9 @@ class TestWakeupSingleton:
         from abides_core.kernel import _WAKEUP_SINGLETON
 
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
         kernel.current_time = 0
         kernel.set_wakeup(0, requested_time=10)
         kernel.set_wakeup(0, requested_time=20)
@@ -406,7 +363,7 @@ class TestMessageBatchDispatch:
             start_time=str_to_ns("09:30:00"),
             stop_time=str_to_ns("16:00:00"),
             skip_log=True,
-            seed=1,
+            random_state=np.random.RandomState(seed=1),
         )
         kernel.initialize()
         kernel.runner()
@@ -429,7 +386,9 @@ class TestMessageBatchDispatch:
 class TestReportMetricAggregation:
     def test_aggregates_by_type_and_key(self):
         agents = [StubAgent(0), StubAgent(1)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
         kernel.initialize()
 
         # Patch type so both stub agents report under the same type.
@@ -446,14 +405,18 @@ class TestReportMetricAggregation:
 
     def test_legacy_attrs_are_gone(self):
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
         assert not hasattr(kernel, "mean_result_by_agent_type")
         assert not hasattr(kernel, "agent_count_by_type")
 
     def test_terminate_handles_missing_metrics(self):
         # No agent ever reports — terminate() must not crash.
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
         kernel.initialize()
         kernel.terminate()
 
@@ -558,7 +521,9 @@ class TestLatencyModelSubclasses:
 class TestPerAgentStateNumpy:
     def test_per_agent_state_is_numpy_int64(self):
         agents = [StubAgent(0), StubAgent(1)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
         assert isinstance(kernel._agent_current_times, np.ndarray)
         assert kernel._agent_current_times.dtype == np.int64
         assert kernel._agent_current_times.shape == (2,)
@@ -571,7 +536,7 @@ class TestPerAgentStateNumpy:
         kernel = Kernel(
             agents=agents,
             skip_log=True,
-            seed=1,
+            random_state=np.random.RandomState(seed=1),
             default_computation_delay=10,
             per_agent_computation_delays={1: 100, 3: 300},
         )
@@ -581,56 +546,14 @@ class TestPerAgentStateNumpy:
         # The slice-assign reset must mutate the same numpy buffer (no realloc),
         # so callers holding a reference to the array see the reset.
         agents = [StubAgent(0), StubAgent(1)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
         buf_id = id(kernel._agent_current_times)
         kernel._agent_current_times[0] = 999_999
         kernel.initialize()
         assert id(kernel._agent_current_times) == buf_id
         assert (kernel._agent_current_times == kernel.start_time).all()
-
-
-class TestLegacyPerAgentAttrShims:
-    def test_legacy_attr_warns_and_is_readonly(self):
-        import warnings as _w
-
-        # Reset the process-level warned set so the warning fires here even
-        # if another test has already hit this attribute.
-        from abides_core.kernel import _WARNED_DEPRECATED_ATTRS
-
-        _WARNED_DEPRECATED_ATTRS.discard("agent_current_times")
-
-        agents = [StubAgent(0), StubAgent(1)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
-        with _w.catch_warnings(record=True) as captured:
-            _w.simplefilter("always", DeprecationWarning)
-            view = kernel.agent_current_times
-        assert any(
-            issubclass(w.category, DeprecationWarning)
-            and "agent_current_times" in str(w.message)
-            for w in captured
-        )
-        # Returned view must be read-only.
-        import pytest as _pytest
-
-        with _pytest.raises(ValueError):
-            view[0] = 0
-
-    def test_legacy_attr_warns_only_once(self):
-        import warnings as _w
-
-        from abides_core.kernel import _WARNED_DEPRECATED_ATTRS
-
-        _WARNED_DEPRECATED_ATTRS.discard("agent_computation_delays")
-
-        agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
-        with _w.catch_warnings(record=True) as captured:
-            _w.simplefilter("always", DeprecationWarning)
-            _ = kernel.agent_computation_delays
-            _ = kernel.agent_computation_delays
-            _ = kernel.agent_computation_delays
-        relevant = [w for w in captured if "agent_computation_delays" in str(w.message)]
-        assert len(relevant) == 1
 
 
 class _SpecialStub(StubAgent):
@@ -642,13 +565,17 @@ class TestFindAgentsByTypeIndex:
         # Indexing walks the MRO so passing the parent class returns
         # both parent-typed and subclass-typed agents.
         agents = [StubAgent(0), _SpecialStub(1), StubAgent(2), _SpecialStub(3)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
         assert kernel.find_agents_by_type(_SpecialStub) == [1, 3]
         assert kernel.find_agents_by_type(StubAgent) == [0, 1, 2, 3]
 
     def test_unknown_type_returns_empty(self):
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
 
         class _Other(Agent):
             pass
@@ -658,7 +585,9 @@ class TestFindAgentsByTypeIndex:
     def test_returned_list_is_a_copy(self):
         # Caller mutation of the returned list must not corrupt the index.
         agents = [StubAgent(0), StubAgent(1)]
-        kernel = Kernel(agents=agents, skip_log=True, seed=1)
+        kernel = Kernel(
+            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+        )
         result = kernel.find_agents_by_type(StubAgent)
         result.append(999)
         assert kernel.find_agents_by_type(StubAgent) == [0, 1]
@@ -718,7 +647,9 @@ class TestLogWriter:
 
         writer = _RecordingWriter()
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, seed=1, log_writer=writer)
+        kernel = Kernel(
+            agents=agents, random_state=np.random.RandomState(seed=1), log_writer=writer
+        )
         kernel.write_log(0, _pd.DataFrame({"a": [1]}))
         kernel.write_summary_log()
         assert writer.agent_calls == [(agents[0].name, None)]
@@ -730,7 +661,7 @@ class TestKernelLifecycle:
         import pytest as _pytest
 
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, seed=1)
+        kernel = Kernel(agents=agents, random_state=np.random.RandomState(seed=1))
         with _pytest.raises(RuntimeError, match="runner"):
             kernel.runner()
 
@@ -738,7 +669,7 @@ class TestKernelLifecycle:
         import pytest as _pytest
 
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, seed=1)
+        kernel = Kernel(agents=agents, random_state=np.random.RandomState(seed=1))
         kernel.initialize()
         with _pytest.raises(RuntimeError, match="initialize"):
             kernel.initialize()
@@ -747,7 +678,7 @@ class TestKernelLifecycle:
         import pytest as _pytest
 
         agents = [StubAgent(0)]
-        kernel = Kernel(agents=agents, seed=1)
+        kernel = Kernel(agents=agents, random_state=np.random.RandomState(seed=1))
         with _pytest.raises(RuntimeError, match="terminate"):
             kernel.terminate()
 
@@ -757,7 +688,7 @@ class TestKernelLifecycle:
             agents=agents,
             start_time=str_to_ns("09:30:00"),
             stop_time=str_to_ns("16:00:00"),
-            seed=1,
+            random_state=np.random.RandomState(seed=1),
         )
         kernel.initialize()
         kernel.runner()
@@ -791,23 +722,12 @@ class TestGymAdapter:
         agents = [StubAgent(0)]
         with _w.catch_warnings():
             _w.simplefilter("error", DeprecationWarning)
-            kernel = Kernel(agents=agents, seed=1, gym_adapter=adapter)
+            kernel = Kernel(
+                agents=agents,
+                random_state=np.random.RandomState(seed=1),
+                gym_adapter=adapter,
+            )
         assert kernel._gym_adapter is adapter
-        assert kernel.gym_agents == [adapter]
-
-    def test_auto_detection_emits_deprecation_warning(self):
-        import warnings as _w
-
-        agents = [_FakeGymAgent(0)]
-        with _w.catch_warnings(record=True) as captured:
-            _w.simplefilter("always", DeprecationWarning)
-            kernel = Kernel(agents=agents, seed=1)
-        assert any(
-            issubclass(w.category, DeprecationWarning)
-            and "gym" in str(w.message).lower()
-            for w in captured
-        )
-        assert kernel._gym_adapter is agents[0]
 
 
 class TestKernelInitKeywordOnly:

@@ -1009,6 +1009,7 @@ class TestPerAgentComputationDelay:
             agents=agents,
             default_computation_delay=50,
             per_agent_computation_delays={1: 100, 3: 200},
+            random_state=np.random.RandomState(seed=1),
         )
         assert kernel._agent_computation_delays[0] == 50
         assert kernel._agent_computation_delays[1] == 100
@@ -1021,7 +1022,11 @@ class TestPerAgentComputationDelay:
         from abides_core.kernel import Kernel
 
         agents = [type("FakeAgent", (), {"id": i, "type": "Test"})() for i in range(3)]
-        kernel = Kernel(agents=agents, default_computation_delay=75)
+        kernel = Kernel(
+            agents=agents,
+            default_computation_delay=75,
+            random_state=np.random.RandomState(seed=1),
+        )
         assert all(d == 75 for d in kernel._agent_computation_delays)
 
     def test_mixed_agents_with_and_without_delay(self):
@@ -1078,7 +1083,11 @@ class TestKernelGetComputeDelay:
         from abides_core.kernel import Kernel
 
         agents = [type("FakeAgent", (), {"id": i, "type": "Test"})() for i in range(3)]
-        kernel = Kernel(agents=agents, default_computation_delay=42)
+        kernel = Kernel(
+            agents=agents,
+            default_computation_delay=42,
+            random_state=np.random.RandomState(seed=1),
+        )
         assert kernel.get_agent_compute_delay(0) == 42
         assert kernel.get_agent_compute_delay(1) == 42
         assert kernel.get_agent_compute_delay(2) == 42
@@ -1088,7 +1097,11 @@ class TestKernelGetComputeDelay:
         from abides_core.kernel import Kernel
 
         agents = [type("FakeAgent", (), {"id": i, "type": "Test"})() for i in range(3)]
-        kernel = Kernel(agents=agents, default_computation_delay=50)
+        kernel = Kernel(
+            agents=agents,
+            default_computation_delay=50,
+            random_state=np.random.RandomState(seed=1),
+        )
         kernel.set_agent_compute_delay(1, 999)
         assert kernel.get_agent_compute_delay(1) == 999
         assert kernel.get_agent_compute_delay(0) == 50
