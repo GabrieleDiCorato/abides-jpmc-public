@@ -1,0 +1,52 @@
+[project]
+name = "abides-markets"
+version = "2.6.0"
+description = "ABIDES: Agent-Based Interactive Discrete Event Simulation — kernel and market microstructure"
+readme = { file = "../README.md", content-type = "text/markdown" }
+requires-python = ">=3.11"
+license = { text = "BSD-3-Clause" }
+dependencies = [
+    "coloredlogs>=15.0.1",
+    "matplotlib>=3.9.0",
+    "numpy>=2.0.0",
+    "pandas>=2.2.0,<3.0.0",
+    "pandera>=0.20.0",
+    "psutil>=6.0.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "scipy>=1.14.0",
+    "tqdm>=4.67.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=9.0.2",
+    "pytest-cov>=6.0.0",
+]
+docs = [
+    "sphinx>=8.0.0",
+    "sphinx-autodoc-typehints>=2.5.0",
+    "sphinx-book-theme>=1.1.0",
+]
+
+[project.scripts]
+abides = "abides_core.abides:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["abides_markets"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"../abides-core/abides_core" = "abides_core"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "abides_markets",
+    "../abides-core/abides_core",
+    "../README.md",
+    "../LICENSE",
+    "../LICENSE-ORIGINAL.txt",
+]

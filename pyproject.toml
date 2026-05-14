@@ -1,44 +1,9 @@
-[project]
-name = "abides-hasufel"
-version = "2.6.0"
-description = "ABIDES: Agent-Based Interactive Discrete Event Simulation environment"
-readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    "coloredlogs>=15.0.1",
-    "gymnasium>=1.0.0",
-    "matplotlib>=3.9.0",
-    "numpy>=2.0.0",
-    "pandas>=2.2.0,<3.0.0",
-    "pandera>=0.20.0",
-    "psutil>=6.0.0",
-    "pydantic>=2.0.0",
-    "pyyaml>=6.0",
-    "ray[rllib]>=2.40.0",
-    "scipy>=1.14.0",
-    "tqdm>=4.67.0",
-]
+[tool.uv.workspace]
+members = ["abides-markets", "abides-gym"]
 
-[project.optional-dependencies]
-test = [
-    "pytest>=9.0.2",
-    "pytest-cov>=6.0.0",
-]
-docs = [
-    "sphinx>=8.0.0",
-    "sphinx-autodoc-typehints>=2.5.0",
-    "sphinx-book-theme>=1.1.0",
-]
-
-[project.scripts]
-abides = "abides_core.abides:main"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["abides-core/abides_core", "abides-markets/abides_markets", "abides-gym/abides_gym"]
+[tool.uv.sources]
+abides-markets = { workspace = true }
+abides-gym = { workspace = true }
 
 [tool.black]
 target-version = ["py312"]
@@ -84,11 +49,14 @@ fail_under = 0
 
 [dependency-groups]
 dev = [
+    "abides-markets[test,docs]",
+    "abides-gym",
     "black>=24.10.0",
+    "build>=1.2.0",
     "ipykernel>=7.1.0",
     "mypy>=1.13.0",
     "nb-clean>=4.0.1",
     "pre-commit>=4.5.1",
     "ruff>=0.8.0",
-    "abides-hasufel[test,docs]",
+    "twine>=5.1.0",
 ]
