@@ -258,7 +258,7 @@ class ExchangeAgent(FinancialAgent):
 
         assert self.kernel is not None
 
-        self.oracle = getattr(self.kernel, "oracle", None)
+        self.oracle = self.kernel.oracle
 
         # Obtain opening prices (in integer cents).  These are not noisy right now.
         for symbol in self.order_books:

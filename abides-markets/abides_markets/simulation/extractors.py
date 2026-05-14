@@ -12,7 +12,7 @@ Using a function::
 
     my_extractor = FunctionExtractor(
         key="exchange_stream",
-        fn=lambda end_state: end_state["agents"][0].stream_history,
+        fn=lambda result, agents: agents[0].stream_history,
     )
     result = run_simulation(config, extractors=[my_extractor])
     data = result.extensions["exchange_stream"]
@@ -24,8 +24,7 @@ Subclassing for more complex logic::
     class MyExtractor(BaseResultExtractor):
         key = "my_metric"
 
-        def extract(self, end_state: dict) -> float:
-            agents = end_state["agents"]
+        def extract(self, result, agents):
             # ... compute something ...
             return 42.0
 """
@@ -38,6 +37,9 @@ from typing import Any, runtime_checkable
 
 from typing_extensions import Protocol
 
+from abides_core.agent import Agent
+from abides_core.run_result import KernelRunResult
+
 
 @runtime_checkable
 class ResultExtractor(Protocol):
@@ -49,14 +51,18 @@ class ResultExtractor(Protocol):
     key: str
     """Unique key under which the extracted value is stored in ``SimulationResult.extensions``."""
 
-    def extract(self, end_state: dict[str, Any]) -> Any:
-        """Extract a value from the raw ABIDES ``end_state`` dict.
+    def extract(self, result: KernelRunResult, agents: list[Agent]) -> Any:
+        """Extract a value from the kernel run output.
 
         Parameters
         ----------
-        end_state:
-            The dictionary returned by ``Kernel.terminate()`` — contains the
-            ``"agents"`` list plus any entries added via ``Kernel.custom_state``.
+        result:
+            Scheduling facts (elapsed wall clock, message count,
+            slowest agent finish time) returned by
+            ``Kernel.terminate()``.
+        agents:
+            The kernel's agent list, in id order, with all log buffers
+            populated.
 
         Returns
         -------
@@ -77,7 +83,7 @@ class BaseResultExtractor(ABC):
     key: str
 
     @abstractmethod
-    def extract(self, end_state: dict[str, Any]) -> Any:
+    def extract(self, result: KernelRunResult, agents: list[Agent]) -> Any:
         """See :class:`ResultExtractor.extract`."""
 
 
@@ -89,18 +95,22 @@ class FunctionExtractor:
     key:
         The key under which the result is stored in ``SimulationResult.extensions``.
     fn:
-        A callable ``(end_state: dict) -> Any``.
+        A callable ``(result, agents) -> Any``.
 
     Example
     -------
     ::
 
-        FunctionExtractor("n_messages", lambda e: e.get("ttl_messages", 0))
+        FunctionExtractor("n_messages", lambda r, a: r.messages_processed)
     """
 
-    def __init__(self, key: str, fn: Callable[[dict[str, Any]], Any]) -> None:
+    def __init__(
+        self,
+        key: str,
+        fn: Callable[[KernelRunResult, list[Agent]], Any],
+    ) -> None:
         self.key = key
         self._fn = fn
 
-    def extract(self, end_state: dict[str, Any]) -> Any:
-        return self._fn(end_state)
+    def extract(self, result: KernelRunResult, agents: list[Agent]) -> Any:
+        return self._fn(result, agents)

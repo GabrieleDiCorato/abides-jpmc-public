@@ -55,9 +55,9 @@ class TestRmsc03EndToEnd:
             end_time="09:35:00",  # very short for speed
         )
         config["skip_log"] = True
-        end_state = abides.run(config)
-        assert end_state is not None
-        assert "agents" in end_state
+        result, agents = abides.run(config)
+        assert result is not None
+        assert len(agents) > 0
 
 
 # ============================================================================
@@ -72,10 +72,10 @@ class TestOrderBookDataFrameOps:
 
         config = build_config(seed=42)
         config["skip_log"] = True
-        end_state = abides.run(config)
+        _, agents = abides.run(config)
         # Find the exchange agent
         exchange = None
-        for agent in end_state["agents"]:
+        for agent in agents:
             if hasattr(agent, "order_books"):
                 exchange = agent
                 break
@@ -188,8 +188,8 @@ class TestParseLogsDf:
 
         config = build_config(seed=42)
         config["skip_log"] = True
-        end_state = abides.run(config)
-        df = parse_logs_df(end_state)
+        _, agents = abides.run(config)
+        df = parse_logs_df(agents)
         assert isinstance(df, pd.DataFrame)
         assert len(df) > 0
         assert "EventTime" in df.columns
@@ -201,8 +201,8 @@ class TestParseLogsDf:
 
         config = build_config(seed=42)
         config["skip_log"] = True
-        end_state = abides.run(config)
-        df = parse_logs_df(end_state)
+        _, agents = abides.run(config)
+        df = parse_logs_df(agents)
         # EventTime should be integer nanoseconds, not Timestamps
         assert df["EventTime"].dtype in (np.int64, np.int32, int, object)
 

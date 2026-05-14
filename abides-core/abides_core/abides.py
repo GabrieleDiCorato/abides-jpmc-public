@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from .kernel import Kernel
+from .run_result import KernelRunResult
 from .utils import subdict
 
 logger = logging.getLogger("abides")
@@ -22,17 +23,18 @@ def run(
     log_dir: str = "",
     kernel_seed: int = 0,
     kernel_random_state: np.random.RandomState | None = None,
-) -> dict[str, Any]:
+) -> tuple[KernelRunResult, list[Any]]:
     """
     Wrapper function that enables to run one simulation.
     It does the following steps:
     - instantiation of the kernel
     - running of the simulation
-    - return the end_state object
+    - return ``(KernelRunResult, agents)``
 
-    The runtime dict is consumed by the simulation — agent and oracle objects
-    accumulate state during execution and cannot be reused.  To run again,
-    rebuild the config (call ``build_config()`` or ``compile()`` again).
+    The runtime dict is consumed by the simulation — agent and oracle
+    objects accumulate state during execution and cannot be reused. To
+    run again, rebuild the config (call ``build_config()`` or
+    ``compile()`` again).
 
     For a higher-level API that handles compilation automatically, see
     ``abides_markets.simulation.run_simulation()``.
@@ -57,7 +59,8 @@ def run(
             "agents",
             "agent_latency_model",
             "default_computation_delay",
-            "custom_properties",
+            "oracle",
+            "observers",
             "per_agent_computation_delays",
             "skip_log",
         ],
@@ -73,13 +76,13 @@ def run(
 
     logger.info(f"Simulation Start Time: {sim_start_time}")
 
-    end_state = kernel.run()
+    result = kernel.run()
 
     sim_end_time = dt.datetime.now()
     logger.info(f"Simulation End Time: {sim_end_time}")
     logger.info(f"Time taken to run simulation: {sim_end_time - sim_start_time}")
 
-    return end_state
+    return result, kernel.agents
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +167,7 @@ def main() -> None:
                 "agents",
                 "agent_latency_model",
                 "default_computation_delay",
-                "custom_properties",
+                "oracle",
             ],
         ),
     )

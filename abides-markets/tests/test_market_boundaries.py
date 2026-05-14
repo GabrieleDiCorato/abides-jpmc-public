@@ -438,9 +438,25 @@ class TestTradingAgentKernelStopping:
         agent.holdings[SYMBOL] = 100
         agent.last_trade[SYMBOL] = 10_000  # $100/share → 100 * 10000 = 1_000_000
 
-        # Need kernel mock with custom_state for report_metric().
+        # Need kernel mock that satisfies the observer dispatch in report_metric().
+        class _RecordingObserver:
+            def __init__(self) -> None:
+                self.metrics: dict[str, dict[str, dict[str, float]]] = {}
+
+            def on_metric(self, agent_id, agent_type, key, value):
+                self.metrics.setdefault(agent_type, {}).setdefault(
+                    key, {"sum": 0.0, "count": 0.0}
+                )
+                self.metrics[agent_type][key]["sum"] += float(value)
+                self.metrics[agent_type][key]["count"] += 1.0
+
+            def on_terminate(self, kernel):
+                pass
+
+        observer = _RecordingObserver()
+
         class FakeKernel:
-            custom_state: dict = {}
+            _observers: tuple = (observer,)
 
         agent.kernel = FakeKernel()
         agent.type = "TestAgent"
@@ -458,8 +474,7 @@ class TestTradingAgentKernelStopping:
 
         # The gain should be recorded via report_metric().
         gain = 6_000_000 - 5_000_000
-        type_metrics = FakeKernel.custom_state["agent_type_metrics"]
-        assert type_metrics["TestAgent"]["ending_value"] == {
+        assert observer.metrics["TestAgent"]["ending_value"] == {
             "sum": float(gain),
             "count": 1,
         }
@@ -472,7 +487,7 @@ class TestTradingAgentKernelStopping:
         agent.last_trade[SYMBOL] = 10_000
 
         class FakeKernel:
-            custom_state: dict = {}
+            _observers: tuple = ()
 
         agent.kernel = FakeKernel()
         agent.type = "TestAgent"

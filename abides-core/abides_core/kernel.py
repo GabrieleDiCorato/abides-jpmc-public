@@ -1,6 +1,7 @@
 import heapq
 import logging
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -14,6 +15,9 @@ from .latency_model import LatencyModel, UniformLatencyModel
 from .lifecycle import KernelState, assert_transition
 from .log_writer import BZ2PickleLogWriter, LogWriter, NullLogWriter
 from .message import Message, MessageBatch, WakeupMsg
+from .observers import KernelObserver
+from .oracle import Oracle
+from .run_result import KernelRunResult
 from .runner_hook import RunnerHook
 from .utils import fmt_ts, str_to_ns
 
@@ -46,30 +50,6 @@ class _HeapEntry:
     message: Message = field(compare=False)
 
 
-# Attribute names that the kernel manages itself. ``custom_properties`` may
-# not shadow these because doing so silently corrupts simulation state.
-_KERNEL_RESERVED_ATTRS: frozenset[str] = frozenset(
-    {
-        "agents",
-        "messages",
-        "current_time",
-        "start_time",
-        "stop_time",
-        "random_state",
-        "skip_log",
-        "log_dir",
-        "summary_log",
-        "custom_state",
-        "agent_latency_model",
-        "current_agent_additional_delay",
-        "event_queue_wall_clock_start",
-        "ttl_messages",
-        "kernel_wall_clock_start",
-        "show_trace_messages",
-    }
-)
-
-
 class Kernel:
     """
     ABIDES Kernel
@@ -89,8 +69,12 @@ class Kernel:
         agent_latency_model: Model of latency used for the network of agents.
         skip_log: if True, no log saved on disk.
         log_dir: directory where data is store.
-        custom_properties: Different attributes that can be added to the simulation
-            (e.g., the oracle).
+        oracle: Optional market-data oracle. The kernel does not call
+            it directly; agents read ``self.kernel.oracle`` when they
+            need fundamental prices.
+        observers: Sequence of :class:`KernelObserver` instances that
+            receive ``on_metric`` and ``on_terminate`` callbacks. The
+            kernel never aggregates metrics itself.
 
     Invariant:
         ``agents[i].id == i`` for every agent. The kernel relies on this to
@@ -112,7 +96,8 @@ class Kernel:
         log_dir: str | None = None,
         log_root: str | os.PathLike = "./log",
         log_writer: LogWriter | None = None,
-        custom_properties: dict[str, Any] | None = None,
+        oracle: Oracle | None = None,
+        observers: Sequence[KernelObserver] = (),
         per_agent_computation_delays: dict[int, int] | None = None,
         runner_hook: RunnerHook | None = None,
     ) -> None:
@@ -125,17 +110,11 @@ class Kernel:
                     f"agents[{idx}].id == {agent.id}"
                 )
 
-        custom_properties = custom_properties or {}
-
-        # Reject custom_properties keys that would shadow kernel-managed
-        # attributes. Silent shadowing has caused subtle reset/state bugs.
-        bad = set(custom_properties).intersection(_KERNEL_RESERVED_ATTRS)
-        if bad:
-            raise ValueError(
-                f"custom_properties may not contain reserved kernel attribute "
-                f"names: {sorted(bad)}. Reserved names are managed by the "
-                f"kernel itself."
-            )
+        # Typed first-class slots replace the v2 ``custom_properties``
+        # bag. Oracle is consumed by exchange / value agents directly;
+        # observers receive metric and terminate events.
+        self.oracle: Oracle | None = oracle
+        self._observers: tuple[KernelObserver, ...] = tuple(observers)
 
         self.random_state: np.random.RandomState = random_state
 
@@ -166,9 +145,6 @@ class Kernel:
         # of truth for run progress.
         self._state: KernelState = KernelState.CONSTRUCTED
 
-        for key, value in custom_properties.items():
-            setattr(self, key, value)
-
         # agents must be a list of agents for the simulation,
         #        based on class agent.Agent
         self.agents: list[Agent] = agents
@@ -181,13 +157,6 @@ class Kernel:
             "Runner hook %s",
             "registered" if self._runner_hook is not None else "not present",
         )
-
-        # Simulation custom state in a freeform dictionary.  Allows config files
-        # that drive multiple simulations, or require the ability to generate
-        # special logs after simulation, to obtain needed output without special
-        # case code in the Kernel.  Per-agent state should be handled using the
-        # provided update_agent_state() method.
-        self.custom_state: dict[str, Any] = {}
 
         # The kernel start and stop time (first and last timestamp in
         # the simulation, separate from anything like exchange open/close).
@@ -275,7 +244,7 @@ class Kernel:
 
         logger.debug("Kernel initialized")
 
-    def run(self) -> dict[str, Any]:
+    def run(self) -> KernelRunResult:
         """
         Wrapper to run the entire simulation (when not running in ABIDES-Gym mode).
 
@@ -285,7 +254,9 @@ class Kernel:
           - Simulation Termination
 
         Returns:
-            An object that contains all the objects at the end of the simulation.
+            :class:`KernelRunResult` with scheduling facts. Agents are
+            still accessible via ``self.agents``; domain metrics are
+            delivered to registered observers during ``terminate()``.
         """
         self.initialize()
 
@@ -319,7 +290,6 @@ class Kernel:
         # persist across resets.
         self._agent_current_times[:] = self.start_time
         self.ttl_messages = 0
-        self.custom_state.clear()
         self.summary_log.clear()
         self.messages.clear()
         self._next_seq = 0
@@ -513,15 +483,18 @@ class Kernel:
         else:
             return {"done": True, "result": None}
 
-    def terminate(self) -> dict[str, Any]:
+    def terminate(self) -> KernelRunResult:
         """
         Termination of the simulation. Called once the queue is empty, or the gym environement is done, or the simulation
         reached kernel stop time:
           - Calls the kernel_stopping of the agents
           - Calls the kernel_terminating of the agents
+          - Dispatches ``on_terminate`` to every registered observer
 
         Returns:
-            custom_state: it is an object that contains everything in the simulation. In particular it is useful to retrieve agents and/or logs after the simulation to proceed to analysis.
+            :class:`KernelRunResult` — scheduling facts only. Domain
+            metrics are delivered to observers; agents are accessible
+            via ``self.agents``.
         """
         assert_transition(
             self._state,
@@ -555,43 +528,23 @@ class Kernel:
             f"Event Queue elapsed: {event_queue_wall_clock_elapsed}, messages: {self.ttl_messages:,}, messages per second: {self.ttl_messages / elapsed_seconds if elapsed_seconds > 0 else 0:0.1f}"
         )
 
-        # The Kernel adds a handful of custom state results for all simulations,
-        # which configurations may use, print, log, or discard.
-        self.custom_state["kernel_event_queue_elapsed_wallclock"] = (
-            event_queue_wall_clock_elapsed
-        )
-        # Cast to Python int so downstream consumers (notebooks, log parsers)
-        # never see a numpy int64 inside custom_state.
-        self.custom_state["kernel_slowest_agent_finish_time"] = int(
-            self._agent_current_times.max()
-        )
-        self.custom_state["agents"] = self.agents
-
         # Agents will request the Kernel to serialize their agent logs, usually
         # during kernel_terminating, but the Kernel must write out the summary
         # log itself.
         self.write_summary_log()
 
-        # Print any aggregated agent-type metrics that were reported via
-        # Agent.report_metric() during the simulation. Stored under
-        # self.custom_state["agent_type_metrics"][type][key] = {sum, count}.
-        type_metrics: dict[str, dict[str, dict[str, float]]] = self.custom_state.get(
-            "agent_type_metrics", {}
-        )
-        if type_metrics:
-            logger.info("Mean reported metrics by agent type:")
-            for agent_type, metrics in type_metrics.items():
-                for key, agg in metrics.items():
-                    count = agg.get("count", 0)
-                    if not count:
-                        continue
-                    mean = agg["sum"] / count
-                    logger.info(f"{agent_type}.{key}: {mean:.6g} (n={count})")
+        # Notify observers last so they see fully-terminated agent state.
+        for observer in self._observers:
+            observer.on_terminate(self)
 
         logger.info("Simulation ending!")
 
         self._state = KernelState.TERMINATED
-        return self.custom_state
+        return KernelRunResult(
+            elapsed=event_queue_wall_clock_elapsed,
+            slowest_agent_finish_time=int(self._agent_current_times.max()),
+            messages_processed=self.ttl_messages,
+        )
 
     def reset(self) -> None:
         """
@@ -892,22 +845,3 @@ class Kernel:
     def write_summary_log(self) -> None:
         df_log = pd.DataFrame(self.summary_log)
         self._log_writer.write_summary_log(df_log)
-
-    def update_agent_state(self, agent_id: int, state: Any) -> None:
-        """
-        Called by an agent that wishes to replace its custom state in the dictionary the
-        Kernel will return at the end of simulation. Shared state must be set directly,
-        and agents should coordinate that non-destructively.
-
-        Note that it is never necessary to use this kernel state dictionary for an agent
-        to remember information about itself, only to report it back to the config file.
-
-        Arguments:
-            agent_id: The agent to update state for.
-            state: The new state.
-        """
-
-        if "agent_state" not in self.custom_state:
-            self.custom_state["agent_state"] = {}
-
-        self.custom_state["agent_state"][agent_id] = state

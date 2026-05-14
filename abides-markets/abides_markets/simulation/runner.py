@@ -33,6 +33,8 @@ import numpy as np
 import pandas as pd
 
 from abides_core.abides import run as abides_run
+from abides_core.agent import Agent
+from abides_core.run_result import KernelRunResult
 from abides_core.utils import parse_logs_df
 from abides_markets.agents.exchange_agent import ExchangeAgent
 from abides_markets.agents.trading_agent import TradingAgent
@@ -146,13 +148,13 @@ def run_simulation(
 
     effective_log_dir = log_dir if log_dir is not None else uuid4().hex
 
-    end_state = abides_run(
+    result, agents = abides_run(
         runtime,
         log_dir=effective_log_dir,
         kernel_random_state=runtime["random_state_kernel"],
     )
 
-    return _extract_result(end_state, config, runtime, profile, extractors or [])
+    return _extract_result(result, agents, config, runtime, profile, extractors or [])
 
 
 def run_batch(
@@ -239,12 +241,12 @@ def _worker(
     ``RandomState`` objects across the process boundary.
     """
     runtime = compile_config(config)
-    end_state = abides_run(
+    result, agents = abides_run(
         runtime,
         log_dir=log_dir,
         kernel_random_state=runtime["random_state_kernel"],
     )
-    return _extract_result(end_state, config, runtime, profile, extractors)
+    return _extract_result(result, agents, config, runtime, profile, extractors)
 
 
 # ---------------------------------------------------------------------------
@@ -253,18 +255,17 @@ def _worker(
 
 
 def _extract_result(
-    end_state: dict[str, Any],
+    result: KernelRunResult,
+    agents_list: list[Agent],
     config: SimulationConfig,
     runtime: dict[str, Any],
     profile: ResultProfile,
     extractors: list[ResultExtractor],
 ) -> SimulationResult:
-    """Build a :class:`SimulationResult` from a raw ABIDES ``end_state`` dict."""
-
-    agents_list = end_state["agents"]
+    """Build a :class:`SimulationResult` from kernel run output."""
 
     # -- Identify exchange and trading agents ---------------------------------
-    exchange: ExchangeAgent = agents_list[0]  # ExchangeAgent is always id=0
+    exchange = agents_list[0]  # ExchangeAgent is always id=0
     if not isinstance(exchange, ExchangeAgent):
         raise RuntimeError(
             f"Expected agents[0] to be ExchangeAgent but got {type(exchange).__name__}"
@@ -280,9 +281,7 @@ def _extract_result(
     seed = runtime["seed"]
     sim_start_ns = int(runtime["start_time"])
     sim_end_ns = int(runtime["stop_time"])
-    wall_clock_s = (
-        end_state.get("kernel_event_queue_elapsed_wallclock") or pd.Timedelta(0)
-    ).total_seconds()
+    wall_clock_s = result.elapsed.total_seconds()
 
     config_snapshot = _safe_config_snapshot(config)
 
@@ -346,7 +345,7 @@ def _extract_result(
     # -- Agent logs -----------------------------------------------------------
     logs_df: pd.DataFrame | None = None
     if ResultProfile.AGENT_LOGS in profile:
-        raw_df = parse_logs_df(end_state)
+        raw_df = parse_logs_df(agents_list)
         # Ensure the four guaranteed base columns are correctly typed
         raw_df["EventTime"] = pd.array(raw_df["EventTime"], dtype="Int64")
         raw_df["agent_id"] = pd.array(raw_df["agent_id"], dtype="Int64")
@@ -357,7 +356,7 @@ def _extract_result(
     # -- Custom extractors ----------------------------------------------------
     extensions: dict[str, Any] = {}
     for extractor in extractors:
-        extensions[extractor.key] = extractor.extract(end_state)
+        extensions[extractor.key] = extractor.extract(result, agents_list)
 
     return SimulationResult(
         metadata=metadata,

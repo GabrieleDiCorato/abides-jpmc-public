@@ -151,15 +151,19 @@ class TestWriteSummaryLogRespectsSkipLog:
 
 class TestTerminateZeroCountDoesNotCrash:
     def test_metric_with_zero_count_does_not_divide_by_zero(self):
+        from abides_core.observers import DefaultMetricsObserver
+
         agents = [StubAgent(0)]
+        observer = DefaultMetricsObserver()
         kernel = Kernel(
-            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+            agents=agents,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+            observers=[observer],
         )
         kernel.initialize()
         # Inject a metric with count==0 — must be skipped, not crash.
-        kernel.custom_state["agent_type_metrics"] = {
-            "Foo": {"ending_value": {"sum": 100.0, "count": 0}}
-        }
+        observer._aggregates["Foo"] = {"ending_value": {"sum": 100.0, "count": 0}}
         kernel.terminate()
 
 
@@ -182,30 +186,35 @@ class TestAgentIdInvariantViolationRaises:
 # ---------------------------------------------------------------------------
 
 
-class TestCustomPropertiesReservedKey:
-    def test_reserved_key_raises(self):
-        import pytest
-
+class TestOracleAndObserverSlots:
+    def test_oracle_slot_defaults_to_none(self):
         agents = [StubAgent(0)]
-        with pytest.raises(ValueError, match="reserved kernel attribute"):
-            Kernel(
-                agents=agents,
-                skip_log=True,
-                random_state=np.random.RandomState(seed=1),
-                custom_properties={"agents": [1, 2, 3]},
-            )
+        kernel = Kernel(
+            agents=agents,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+        )
+        assert kernel.oracle is None
 
-    def test_user_keys_allowed(self):
+    def test_oracle_slot_accepts_instance(self):
         agents = [StubAgent(0)]
         sentinel = object()
         kernel = Kernel(
             agents=agents,
             skip_log=True,
             random_state=np.random.RandomState(seed=1),
-            custom_properties={"oracle": sentinel, "my_thing": 42},
+            oracle=sentinel,
         )
         assert kernel.oracle is sentinel
-        assert kernel.my_thing == 42
+
+    def test_observers_default_empty(self):
+        agents = [StubAgent(0)]
+        kernel = Kernel(
+            agents=agents,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+        )
+        assert kernel._observers == ()
 
 
 class TestInitializeClearsState:
@@ -220,7 +229,6 @@ class TestInitializeClearsState:
         )
         kernel.initialize()
         # Mutate per-run state.
-        kernel.custom_state["x"] = 1
         kernel.summary_log.append({"AgentID": 0})
         kernel.ttl_messages = 99
         kernel.current_agent_additional_delay = 500
@@ -232,7 +240,6 @@ class TestInitializeClearsState:
         # PR 7: terminate() must precede a second initialize().
         kernel.terminate()
         kernel.initialize()
-        assert kernel.custom_state == {}
         assert kernel.summary_log == []
         assert kernel.ttl_messages == 0
         assert kernel.current_agent_additional_delay == 0
@@ -385,9 +392,15 @@ class TestMessageBatchDispatch:
 
 class TestReportMetricAggregation:
     def test_aggregates_by_type_and_key(self):
+        from abides_core.observers import DefaultMetricsObserver
+
         agents = [StubAgent(0), StubAgent(1)]
+        observer = DefaultMetricsObserver()
         kernel = Kernel(
-            agents=agents, skip_log=True, random_state=np.random.RandomState(seed=1)
+            agents=agents,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+            observers=[observer],
         )
         kernel.initialize()
 
@@ -399,7 +412,7 @@ class TestReportMetricAggregation:
         agents[1].report_metric("ending_value", 300)
         agents[0].report_metric("trades", 5)
 
-        metrics = kernel.custom_state["agent_type_metrics"]["StubAgent"]
+        metrics = observer.aggregates["StubAgent"]
         assert metrics["ending_value"] == {"sum": 400.0, "count": 2}
         assert metrics["trades"] == {"sum": 5.0, "count": 1}
 

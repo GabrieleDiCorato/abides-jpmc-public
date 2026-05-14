@@ -325,25 +325,17 @@ class Agent:
 
     def report_metric(self, key: str, value: float) -> None:
         """
-        Aggregate a numeric metric for this agent's type into the kernel's
-        ``custom_state``. Used by ``Kernel.terminate()`` to print mean
-        values by agent type at the end of the simulation.
-
-        Storage layout::
-
-            kernel.custom_state["agent_type_metrics"][self.type][key] =
-                {"sum": float, "count": int}
+        Dispatch a numeric metric to every :class:`KernelObserver`
+        registered on the kernel. The kernel itself never aggregates;
+        observers decide what to do with the value.
 
         Arguments:
             key: short metric name (e.g. ``"ending_value"``).
-            value: numeric value to accumulate. Cast to ``float``.
+            value: numeric value, cast to ``float`` by each observer.
         """
         assert self.kernel is not None
-        type_metrics = self.kernel.custom_state.setdefault("agent_type_metrics", {})
-        agent_metrics = type_metrics.setdefault(self.type, {})
-        agg = agent_metrics.setdefault(key, {"sum": 0.0, "count": 0})
-        agg["sum"] += float(value)
-        agg["count"] += 1
+        for observer in self.kernel._observers:
+            observer.on_metric(self.id, self.type, key, float(value))
 
     def write_log(self, df_log: pd.DataFrame, filename: str | None = None) -> None:
         """
@@ -367,23 +359,6 @@ class Agent:
         assert self.kernel is not None
 
         self.kernel.write_log(self.id, df_log, filename)
-
-    def update_agent_state(self, state: Any) -> None:
-        """
-        Agents should use this method to replace their custom state in the dictionary
-        the Kernel will return to the experimental config file at the end of the
-        simulation.
-
-        This is intended to be write-only, and agents should not use it to store
-        information for their own later use.
-
-        Arguments:
-            state: The new state.
-        """
-
-        assert self.kernel is not None
-
-        self.kernel.update_agent_state(self.id, state)
 
     ### Internal methods that should not be modified without a very good reason.
 

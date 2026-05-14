@@ -70,7 +70,7 @@ def compile(
             "agents": List[Agent],
             "agent_latency_model": LatencyModel,
             "default_computation_delay": int,
-            "custom_properties": {"oracle": Oracle} | {},
+            "oracle": Oracle | None,
             "random_state_kernel": np.random.RandomState,
             "stdout_log_level": str,
         }
@@ -211,10 +211,6 @@ def compile(
     kernel_start = date_ns
     kernel_stop = mkt_close + str_to_ns("1s")
 
-    custom_properties: dict[str, Any] = {}
-    if oracle is not None:
-        custom_properties["oracle"] = oracle
-
     runtime: dict[str, Any] = {
         "seed": seed,
         "start_time": kernel_start,
@@ -222,7 +218,7 @@ def compile(
         "agents": agents,
         "agent_latency_model": latency_model,
         "default_computation_delay": config.infrastructure.default_computation_delay,
-        "custom_properties": custom_properties,
+        "oracle": oracle,
         "random_state_kernel": random_state_kernel,
         "stdout_log_level": config.simulation.log_level,
     }

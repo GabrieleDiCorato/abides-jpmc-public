@@ -27,7 +27,7 @@ def test_rmsc04():
                 "agents",
                 "agent_latency_model",
                 "default_computation_delay",
-                "custom_properties",
+                "oracle",
             ],
         ),
         skip_log=True,

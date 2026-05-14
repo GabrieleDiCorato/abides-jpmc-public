@@ -180,7 +180,7 @@ class TestCompiler:
         assert "agents" in runtime
         assert "agent_latency_model" in runtime
         assert "default_computation_delay" in runtime
-        assert "custom_properties" in runtime
+        assert "oracle" in runtime
         assert "random_state_kernel" in runtime
         assert "stdout_log_level" in runtime
 
@@ -253,7 +253,7 @@ class TestCompiler:
         # Run 2: inject a pre-built oracle (compile still consumes oracle seed slot)
         config2 = SimulationBuilder().from_template("rmsc04").seed(42).build()
         # Build the oracle identically so we can inject it
-        oracle_from_run1 = runtime1["custom_properties"]["oracle"]
+        oracle_from_run1 = runtime1["oracle"]
         runtime2 = compile(config2, oracle_instance=oracle_from_run1)
 
         # All agent random states must match
@@ -403,7 +403,7 @@ class TestCompiler:
     def test_compile_oracle_is_set(self):
         config = SimulationBuilder().from_template("rmsc04").seed(42).build()
         runtime = compile(config)
-        oracle = runtime["custom_properties"]["oracle"]
+        oracle = runtime["oracle"]
         assert oracle is not None
 
     def test_compile_empty_agents_with_oracle(self):
@@ -425,8 +425,8 @@ class TestCompiler:
         runtime = compile(config)
         assert len(runtime["agents"]) == 1  # just exchange
         assert runtime["agents"][0].type == "ExchangeAgent"
-        # Oracle should not be in custom_properties
-        assert "oracle" not in runtime["custom_properties"]
+        # Oracle should be None at the runtime level
+        assert runtime["oracle"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -1687,7 +1687,7 @@ class TestOracleOptional:
             simulation={"seed": 42},
         )
         runtime = compile(config)
-        assert "oracle" not in runtime["custom_properties"]
+        assert runtime["oracle"] is None
         assert len(runtime["agents"]) == 1  # just exchange
 
     def test_compile_no_oracle_exchange_has_opening_prices(self):
@@ -1738,7 +1738,7 @@ class TestOracleOptional:
             simulation={"seed": 42},
         )
         runtime = compile(config)
-        assert "oracle" not in runtime["custom_properties"]
+        assert runtime["oracle"] is None
         # 1 exchange + 50 noise + 5 momentum = 56
         assert len(runtime["agents"]) == 56
 
@@ -1955,7 +1955,7 @@ class TestBuilderOracleDesign:
 
         # Compile with oracle_instance
         runtime = builder.build_and_compile()
-        assert runtime["custom_properties"]["oracle"] is oracle
+        assert runtime["oracle"] is oracle
 
 
 # ---------------------------------------------------------------------------
@@ -2366,7 +2366,7 @@ class TestOracleRawParameters:
             .build()
         )
         runtime = compile(config)
-        oracle = runtime["custom_properties"]["oracle"]
+        oracle = runtime["oracle"]
         assert oracle is not None
         # Verify the config stored the kappa we provided
         assert config.market.oracle.kappa == pytest.approx(kappa_val)

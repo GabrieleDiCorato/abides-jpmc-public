@@ -23,7 +23,7 @@ def capture_simulation_state(config):
         order_book_snapshots (list of order book states)
     """
     # Get oracle and exchange from config
-    oracle = config["custom_properties"]["oracle"]
+    oracle = config["oracle"]
     exchange = config["agents"][0]  # First agent is the exchange
 
     # Capture oracle fundamental values at regular intervals
@@ -60,7 +60,7 @@ def capture_simulation_state(config):
         agents=config["agents"],
         agent_latency_model=config["agent_latency_model"],
         default_computation_delay=config["default_computation_delay"],
-        custom_properties=config["custom_properties"],
+        oracle=config["oracle"],
         skip_log=True,  # Don't generate log files during tests
     )
 
@@ -264,8 +264,8 @@ def test_oracle_isolation_from_agent_count_change():
         num_momentum_agents=3,
     )
 
-    oracle_a = config_a["custom_properties"]["oracle"]
-    oracle_b = config_b["custom_properties"]["oracle"]
+    oracle_a = config_a["oracle"]
+    oracle_b = config_b["oracle"]
 
     ticker = list(oracle_a.symbols.keys())[0]
     mkt_open = config_a["start_time"] + str_to_ns("09:30:00")

@@ -118,7 +118,7 @@ class AbidesGymCoreEnv(gym.Env, ABC):
                     "agents",
                     "agent_latency_model",
                     "default_computation_delay",
-                    "custom_properties",
+                    "oracle",
                 ],
             ),
         )

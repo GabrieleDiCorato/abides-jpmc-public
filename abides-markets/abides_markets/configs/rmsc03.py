@@ -313,7 +313,7 @@ def build_config(
         "agents": agents,
         "agent_latency_model": latency_model,
         "default_computation_delay": default_computation_delay,
-        "custom_properties": {"oracle": oracle},
+        "oracle": oracle,
         "random_state_kernel": random_state_kernel,
         "stdout_log_level": stdout_log_level,
     }

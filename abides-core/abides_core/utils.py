@@ -151,14 +151,12 @@ def ns_date(ns_datetime: NanosecondTime) -> NanosecondTime:
     return ns_datetime - (ns_datetime % (24 * 3600 * int(1e9)))
 
 
-def parse_logs_df(end_state: dict) -> pd.DataFrame:
+def parse_logs_df(agents: list) -> pd.DataFrame:
     """
-    Takes the end_state dictionnary returned by an ABIDES simulation goes through all
-    the agents, extracts their log, and un-nest them returns a single dataframe with the
-    logs from all the agents warning: this is meant to be used for debugging and
-    exploration.
+    Takes a list of agents from a finished ABIDES simulation, walks each
+    agent's ``log`` attribute, and returns a single dataframe with the
+    logs from all agents.  Intended for debugging / exploration.
     """
-    agents = end_state["agents"]
     dfs = []
     for agent in agents:
         messages = []
