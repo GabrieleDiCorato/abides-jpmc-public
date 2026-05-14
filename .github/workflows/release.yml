@@ -1,0 +1,179 @@
+name: Release
+
+# Triggers on tag pushes:
+#   v2.6.0          → publish to PyPI + GitHub Release
+#   v2.6.0-rc1      → publish to TestPyPI only (no GitHub Release)
+#   workflow_dispatch (manual) → TestPyPI only
+#
+# Trusted-publishing setup is REQUIRED on both PyPI and TestPyPI before
+# the first run. See docs/project/release-process.md for one-time setup.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build wheels
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Determine release metadata
+        id: meta
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="manual-$(date -u +%Y%m%d%H%M%S)"
+            IS_PRE="true"
+          else
+            # Strip leading 'v' from tag name → version
+            VERSION="${GITHUB_REF_NAME#v}"
+            if [[ "$VERSION" =~ -(rc|a|b|alpha|beta|dev)[0-9]*$ ]]; then
+              IS_PRE="true"
+            else
+              IS_PRE="false"
+            fi
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRE" >> "$GITHUB_OUTPUT"
+          echo "Release version: $VERSION (prerelease: $IS_PRE)"
+
+      - name: Verify wheel versions match tag
+        if: github.event_name == 'push'
+        run: |
+          MARKETS_VER=$(grep -m1 '^version' abides-markets/pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          GYM_VER=$(grep -m1 '^version' abides-gym/pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          TAG_VER="${{ steps.meta.outputs.version }}"
+          if [[ "$MARKETS_VER" != "$TAG_VER" || "$GYM_VER" != "$TAG_VER" ]]; then
+            echo "Version mismatch: tag=$TAG_VER markets=$MARKETS_VER gym=$GYM_VER"
+            exit 1
+          fi
+
+      - name: Install build tools
+        run: uv sync --dev
+
+      - name: Build abides-markets wheel
+        run: |
+          cd abides-markets
+          uv build --wheel
+
+      - name: Build abides-gym wheel
+        run: |
+          cd abides-gym
+          uv build --wheel
+
+      - name: Validate wheels
+        run: uv run twine check dist/*
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels
+          path: dist/*.whl
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # Run on prereleases (rc/a/b tags) or manual dispatch.
+    if: needs.build.outputs.is_prerelease == 'true'
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/abides-markets/
+    permissions:
+      id-token: write  # required for OIDC trusted publishing
+    steps:
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # Only run on stable tags (no -rc/-a/-b suffix), never manual.
+    if: github.event_name == 'push' && needs.build.outputs.is_prerelease == 'false'
+    environment:
+      name: pypi
+      url: https://pypi.org/project/abides-markets/
+    permissions:
+      id-token: write  # required for OIDC trusted publishing
+    steps:
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # No repository-url → defaults to PyPI.
+        # No skip-existing → fail loudly on accidental re-upload.
+
+  github-release:
+    name: Create GitHub Release
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && needs.build.outputs.is_prerelease == 'false'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: dist/
+
+      - name: Extract changelog section for this version
+        id: changelog
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          # Extract the section from CHANGELOG.md between the v$VERSION
+          # heading and the next top-level heading (===== underline).
+          awk -v ver="$VERSION" '
+            /^[0-9]{4}-/ && match($0, ver) { found=1; next }
+            found && /^={4,}/ { next }
+            found && /^[0-9]{4}-/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          echo "Extracted notes:"
+          cat release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "v${{ needs.build.outputs.version }}"
+          body_path: release-notes.md
+          files: dist/*.whl
+          fail_on_unmatched_files: true
+          generate_release_notes: false

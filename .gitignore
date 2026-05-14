@@ -167,8 +167,10 @@ cython_debug/
 .vscode/
 .idea/
 
-# Personal Copilot configuration
-.github/
+# Personal Copilot agent customization (workflows / CODEOWNERS /
+# copilot-instructions are tracked; only the agents/ directory is
+# personal scratch space)
+.github/agents/
 
 # macOS
 .DS_Store
