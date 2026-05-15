@@ -22,9 +22,11 @@ format is one implementation among many.
 
 Three real problems today:
 
-1. **Memory is unbounded.** `agent.log` grows linearly for the whole run;
-   nothing flushes mid-simulation. Hard ceiling for long sims and for
-   `abides-gym` training loops.
+1. **Memory is unbounded.** `agent.log` grows linearly for the whole
+   run; nothing flushes mid-simulation. The same applies to
+   `OrderBook.book_log2` and `OrderBook.history`, which the exchange
+   accumulates in-process and the runner reads at terminate. Hard
+   ceiling for long sims and for `abides-gym` training loops.
 2. **End-of-run cost is high.** `to_pickle(compression="bz2")` is the
    slowest pickle path in pandas; `parse_logs_df` is **O(N²)** because it
    does `pd.concat([pd.DataFrame([row]) for row in ...])`.
@@ -117,38 +119,91 @@ is what guarantees reproducibility across drain modes.
 
 ### 3.2 Record types
 
-Two concrete value objects flow through the bus. Both are immutable
-dataclasses with `slots=True` to keep producer cost low.
+Four concrete value objects flow through the bus. All are immutable
+dataclasses with `slots=True` to keep producer cost low. The bus
+treats them uniformly; only the *kind* differs (used by the filter
+machinery in §3.3).
 
 - `EventRecord(agent_id, agent_type, sim_time_ns, event_type, payload, seq)`
   — replaces the current `(time, event_type, event)` tuple stored on
-  `agent.log`. `seq` is a monotonically increasing per-bus counter used
-  to break ties when several events share `sim_time_ns` and to make
-  ordering checks trivial in tests.
-- `MetricRecord(agent_id, agent_type, key, value, seq)` — replaces the
-  direct `KernelObserver.on_metric` fan-out. `report_metric` becomes a
-  publish on the same bus; the existing `DefaultMetricsObserver` is
-  adapted into a sink (see §3.4).
+  `agent.log`. `seq` is a monotonically increasing per-bus counter
+  used to break ties when several records share `sim_time_ns` and to
+  make ordering checks trivial in tests.
+- `MetricRecord(agent_id, agent_type, key, value, seq)` — replaces
+  the direct `KernelObserver.on_metric` fan-out. `report_metric`
+  becomes a publish on the same bus; the existing
+  `DefaultMetricsObserver` is adapted into a sink (see §3.4).
+- `BookSnapshotRecord(symbol, sim_time_ns, bids, asks, depth, seq)`
+  — replaces direct mutation of `OrderBook.book_log2`. `bids` and
+  `asks` are the same list-of-(price, qty) shape that `book_log2`
+  carries today, so existing readers keep working unchanged. Emitted
+  by `OrderBook.append_book_log2()` after each top-of-book mutation.
+- `OrderBookEventRecord(symbol, sim_time_ns, kind, order_id, price, qty, side, payload, seq)`
+  — replaces `OrderBook.history` appends (`LIMIT`, `EXEC`, `CANCEL`,
+  `MODIFY`, `REPLACE`, etc.). `kind` is the same string today's
+  `entry["type"]` carries; `payload` holds the type-specific extras
+  that don't fit the common columns.
 
-`EventRecord.payload` stays `Any` for backward compatibility, but new
-sinks (Parquet) MAY require a typed schema per `event_type`; the bus
-itself does not enforce typing.
+`EventRecord.payload` and `OrderBookEventRecord.payload` stay `Any`
+for backward compatibility, but new sinks (Parquet) MAY require a
+typed schema per `event_type` / `kind`; the bus itself does not
+enforce typing.
 
-### 3.3 The `EventSink` Protocol
+### 3.3 The `EventSink` Protocol and generalized filtering
+
+A sink declares **(a)** which *record kinds* it wants and **(b)** for
+each kind, an optional fine-grained selector. The bus computes the
+union per kind once at simulation start and exposes a fast
+`is_*_wanted(...)` lookup so producers can short-circuit before
+allocating any payload-related state.
 
 ```text
+RecordKind = Literal["event", "metric", "book_snapshot", "orderbook_event"]
+
+# Selector is a Container (allowlist) OR a callable predicate, OR None
+# (= accept all of this kind), OR False (= reject all of this kind).
+EventSelector       = Container[str] | Callable[[EventRecord], bool] | None | Literal[False]
+BookSymbolSelector  = Container[str] | Callable[[BookSnapshotRecord], bool] | None | Literal[False]
+OBEventSelector     = Container[str] | Callable[[OrderBookEventRecord], bool] | None | Literal[False]
+MetricSelector      = Container[str] | Callable[[MetricRecord], bool] | None | Literal[False]
+
 class EventSink(Protocol):
-    # Filter declared once at registration; bus uses it to compute the
-    # union of wanted event types.
-    wanted_events: Container[str] | None   # None = all
-    wanted_metrics: bool                    # False if sink ignores metrics
+    # Per-kind selectors; default-False means "this sink ignores that kind".
+    wants_events:           EventSelector       = False
+    wants_metrics:          MetricSelector      = False
+    wants_book_snapshots:   BookSymbolSelector  = False  # filters on symbol
+    wants_orderbook_events: OBEventSelector     = False  # filters on kind
 
     def on_simulation_start(self, meta: SimulationMeta) -> None: ...
     def on_event(self, record: EventRecord) -> None: ...
     def on_metric(self, record: MetricRecord) -> None: ...
+    def on_book_snapshot(self, record: BookSnapshotRecord) -> None: ...
+    def on_orderbook_event(self, record: OrderBookEventRecord) -> None: ...
     def flush(self) -> None: ...
     def on_simulation_end(self, meta: SimulationMeta) -> None: ...
 ```
+
+Filter resolution rules (uniform across all four kinds):
+
+- `False` (default) — sink does not want this kind. The bus does not
+  even register it for that kind; producers see this in the union and
+  short-circuit if no other sink wants it either.
+- `None` — accept every record of this kind.
+- `Container[str]` (set, frozenset, list, tuple) — accept iff the
+  record's discriminator is in the container. Discriminator is
+  `event_type` for events, `key` for metrics, `symbol` for book
+  snapshots, `kind` for order-book events.
+- `Callable[[Record], bool]` — arbitrary predicate. Evaluated on the
+  drainer thread (or producer thread in inline mode). Predicates that
+  raise are treated as sink failures (§3.6).
+
+The bus precomputes, for each kind, three things: (i) `is_kind_wanted`
+— "any sink at all wants this kind", (ii) per-kind union of
+allowlists (used by Container-style selectors as a single membership
+check), (iii) the list of sinks that need per-record evaluation
+(callable selectors). The hot-path producer cost when nothing wants a
+record is **one dict lookup plus an early return**, matching
+`logger.isEnabledFor(DEBUG)`.
 
 All hooks are synchronous from the sink's point of view. In threaded
 mode, all hooks run on the drainer thread — sinks must not assume the
@@ -161,26 +216,44 @@ transactions) buffer internally and flush on `flush()` /
 ### 3.4 Concrete sinks shipped in this repository
 
 - **`InMemorySink`** — Reproduces today's `agent.log` shape. Default
-  registration. Required for `parse_logs_df` and for any in-process
-  consumer (notebooks, metrics pipeline) that reads `SimulationResult.logs`.
-- **`BZ2PickleSink`** — Wraps the existing `BZ2PickleLogWriter`. Drains
-  `InMemorySink` at `on_simulation_end()` and writes the legacy
-  `<run_id>/<AgentName>.bz2` artifact. **Marked deprecated from Phase
-  5; removed two minor releases later.**
-- **`ParquetSink`** (the recommended new sink) — Columnar; one parquet
-  file per `event_type`, struct-of-arrays schema. Snappy or Zstd
-  compression. Writes one row group per `flush()`. Solves the memory
-  ceiling, serialization speed, and untyped-payload friction
-  simultaneously. Uses `pyarrow`, import-guarded; absence yields a
-  clear error at sink construction, not at first write.
+  registration. `wants_events=None`, everything else `False`.
+  Required for `parse_logs_df` and for any in-process consumer
+  (notebooks, metrics pipeline) that reads `SimulationResult.logs`.
+- **`BZ2PickleSink`** — Wraps the existing `BZ2PickleLogWriter`.
+  Drains `InMemorySink` at `on_simulation_end()` and writes the
+  legacy `<run_id>/<AgentName>.bz2` artifact. **Marked deprecated
+  from Phase 5; removed two minor releases later.**
+- **`ParquetSink`** (the recommended new sink) — Columnar; one
+  parquet file per `event_type` (and per book-record kind), struct-
+  of-arrays schema. Snappy or Zstd compression. Writes one row group
+  per `flush()`. Solves the memory ceiling, serialization speed, and
+  untyped-payload friction simultaneously. Uses `pyarrow`,
+  import-guarded; absence yields a clear error at sink construction,
+  not at first write.
 - **`MetricsObserverSink`** — Adapter that exposes the existing
   `KernelObserver` Protocol on top of the bus. The shipped
-  `DefaultMetricsObserver` continues to work unchanged, registered as a
-  metrics-only sink. Removes the dual dispatch path inside `Agent`.
+  `DefaultMetricsObserver` continues to work unchanged, registered
+  as a metrics-only sink (`wants_metrics=None`). Removes the dual
+  dispatch path inside `Agent`.
+- **`OrderBookSnapshotMemorySink`** — In-memory capture of
+  `BookSnapshotRecord`s, indexed by symbol. `wants_book_snapshots`
+  defaults to `None` (all symbols) but accepts a symbol allowlist or
+  predicate so a user can request "only ABM, only depth ≤ 5". This
+  is the **"book-only fast access" sink**: register it standalone
+  (without `InMemorySink` / `BZ2PickleSink`) when the only thing the
+  caller needs after the run is the L1/L2 history. Today's
+  `runner._extract_l1_series` / `_extract_l2_series` consume this
+  sink instead of reading `OrderBook.book_log2` directly.
+- **`OrderBookHistoryMemorySink`** — In-memory capture of
+  `OrderBookEventRecord`s, indexed by symbol. `wants_orderbook_events`
+  defaults to `None` but is typically narrowed (e.g.
+  `frozenset({"EXEC"})`) to capture only fills. Today's
+  `runner._extract_trades` and the VWAP path in `_extract_liquidity`
+  consume this sink instead of walking `OrderBook.history`.
 
-Out-of-tree sinks (JSONL, SQLite, DB drop-copy, message brokers) are
-documented as a supported extension point; the library does not ship
-them.
+Out-of-tree sinks (JSONL, SQLite, DB drop-copy, message brokers,
+custom book aggregators) are documented as a supported extension
+point; the library does not ship them.
 
 ### 3.5 Async drainer
 
@@ -250,15 +323,42 @@ This is a high-level map, not a final code review.
 - `abides_core/observers.py`
   - Unchanged externally. Internally re-implemented as a sink adapter.
 - `abides_core/event_bus.py` (new) — `EventBus`, drainer thread,
-  bounded queue.
+  bounded queue, per-kind filter union.
 - `abides_core/event_sinks.py` (new) — `EventSink` Protocol,
   `InMemorySink`, `BZ2PickleSink`, `MetricsObserverSink`.
 - `abides_core/parquet_sink.py` (new, optional import) — `ParquetSink`.
+- `abides_markets/abides_markets/order_book.py`
+  - Each existing `self.book_log2.append(...)` site
+    (`order_book.py:391, 461, 539, 587, 639, 682`) becomes a
+    `bus.publish_book_snapshot(...)` after the
+    `is_book_snapshot_wanted(symbol)` check. The cost when no sink
+    wants snapshots collapses to one dict lookup, which is what
+    today's `if self.owner.book_logging:` branch wishes it could be.
+  - Each `self.history.append(...)` site (LIMIT/EXEC/CANCEL/MODIFY/
+    REPLACE) becomes a `bus.publish_orderbook_event(...)` after the
+    same kind of guard.
+  - `book_log2` and `history` become deprecated read-through
+    properties backed by the auto-registered
+    `OrderBookSnapshotMemorySink` / `OrderBookHistoryMemorySink` for
+    one release, then are removed alongside the legacy pickle path
+    in Phase 5+2. A `DeprecationWarning` fires on first access.
+- `abides_markets/abides_markets/agents/exchange_agent.py`
+  - `book_logging` and `book_log_depth` constructor args become hints
+    that translate to auto-registration of the two book memory sinks
+    at config-build time (preserves backward-compatible defaults).
+    Once `event_sinks` is set explicitly in config, the hints are
+    ignored with a one-line info log.
 - `abides_markets/abides_markets/simulation/runner.py`
   - `parse_logs_df` rewritten to a single `pd.DataFrame.from_records`
     call (Phase 1 — independent of the rest).
   - `SimulationResult.logs` is sourced from `InMemorySink` instead of
     walking `end_state["agents"]`.
+  - `_extract_l1_close`, `_extract_l1_series`, `_extract_l2_series`
+    read from `OrderBookSnapshotMemorySink` (still the same
+    `book_log2`-shaped row dicts so `compute_l1_*` / `compute_l2_*`
+    are unchanged).
+  - `_extract_trades` and the VWAP path in `_extract_liquidity` read
+    from `OrderBookHistoryMemorySink`.
 - `abides_markets/abides_markets/config_system/models.py`
   - New fields described in §6.
 
@@ -303,11 +403,21 @@ Promoted to `SimulationConfig.simulation`:
 
 - `event_sinks: list[SinkConfig]` — declarative sink registry.
   Examples:
-  - `[{kind: "memory"}]` — the default (today's behaviour).
-  - `[{kind: "memory"}, {kind: "bz2_pickle", root: "./log"}]` — the
-    backward-compatible default during the deprecation window.
-  - `[{kind: "parquet", root: "./log", events: ["ORDER_*"], compression: "zstd"}]`
-    — production analytics setup.
+  - `[{kind: "memory"}]` — today's behaviour for agent events.
+  - `[{kind: "memory"}, {kind: "orderbook_snapshot_memory"},
+    {kind: "orderbook_history_memory"}, {kind: "bz2_pickle", root: "./log"}]`
+    — the backward-compatible default during the deprecation window
+    (book sinks auto-registered to keep `runner._extract_*` working).
+  - `[{kind: "orderbook_snapshot_memory", symbols: ["ABM"]}]` — the
+    **"book-only fast access"** setup: nothing else is captured, no
+    `agent.log` is built, no pickle is written, and producers
+    short-circuit every event/metric publish. The post-sim caller
+    reads `SimulationResult.l2_snapshots["ABM"]` and that's it.
+  - `[{kind: "parquet", root: "./log", events: ["ORDER_*"],
+    book_snapshots: {symbols: ["ABM"]}, compression: "zstd"}]` —
+    production analytics setup. The selector keys (`events`,
+    `metrics`, `book_snapshots`, `orderbook_events`) map 1:1 to the
+    Protocol fields in §3.3.
 - `event_buffer_size: int` — bounded queue size for the threaded
   drainer (default 16384).
 - `event_drain_mode: "inline" | "thread"` — default `inline` in tests
@@ -363,11 +473,36 @@ Each phase is independently mergeable. No breaking change before Phase
 ### Phase 3 — Ship `ParquetSink` and event-type allowlist
 
 - Optional `pyarrow` import.
-- Add `wanted_events` filter plumbing through the bus.
+- Add the generalized per-kind selector plumbing through the bus
+  (`Container | Callable | None | False` per §3.3).
 - Add Parquet schema-per-event-type design doc; ship one schema per
   event type emitted by core agents.
 - Decision needed before merge: per-event-type files vs single file
   with `payload_json` column (see §9).
+
+### Phase 3a — Move order-book capture onto the bus
+
+Independently mergeable from the rest of Phase 3 (only depends on
+Phase 2's bus + the §3.3 generalized filter).
+
+- Add `BookSnapshotRecord` and `OrderBookEventRecord` to the bus.
+- Replace each `OrderBook.book_log2.append(...)` and
+  `OrderBook.history.append(...)` site with the corresponding
+  `bus.publish_*` call, guarded by `is_*_wanted(...)`.
+- Ship `OrderBookSnapshotMemorySink` and
+  `OrderBookHistoryMemorySink`. Auto-register them when
+  `ExchangeAgent.book_logging=True` and the user has not provided
+  an explicit `event_sinks` list — preserves the default `runner`
+  output byte-for-byte.
+- Rewire `runner._extract_l1_close`, `_extract_l1_series`,
+  `_extract_l2_series`, `_extract_trades`, and the VWAP path in
+  `_extract_liquidity` to read from the two book sinks.
+- Turn `OrderBook.book_log2` and `OrderBook.history` into
+  deprecated read-through properties; add a
+  `DeprecationWarning`-on-first-access test.
+- Reproducibility test: `SimulationResult.l1_snapshots`,
+  `.l2_snapshots`, `.trades`, and `.liquidity` byte-identical to
+  the previous release for a fixed seed.
 
 ### Phase 4 — Threaded drainer with bounded queue
 
@@ -415,9 +550,24 @@ their assertions.
 - **Backpressure correctness (Phase 4).** With a deliberately tiny
   `event_buffer_size`, no events may be lost; producer must block
   rather than drop.
-- **Filter short-circuit (Phase 3).** Agents emitting an event type
-  no sink wants must not allocate the payload (verified via a sentinel
-  callable in the test that raises if invoked).
+- **Filter short-circuit (Phase 3 / 3a).** Agents emitting an event
+  type — or an order book mutating — when no sink wants the
+  resulting record must not allocate the payload (verified via a
+  sentinel callable in the test that raises if invoked). Covers all
+  four record kinds.
+- **Book-only sink isolation (Phase 3a).** A run configured with
+  *only* `OrderBookSnapshotMemorySink` produces correct
+  `SimulationResult.l2_snapshots`, builds no `agent.log`, writes no
+  pickle, and (asserted via patched `Agent.logEvent`) does not even
+  call into the event publish path.
+- **Book sink equivalence (Phase 3a).** A small fixed-seed sim
+  produces byte-identical `SimulationResult.l1_snapshots`,
+  `.l2_snapshots`, `.trades`, and `.liquidity` between the legacy
+  `book_log2`/`history` path and the new sink-backed path.
+- **Selector forms (Phase 3).** A sink with a `Container` selector,
+  a sink with a `Callable` selector, and a sink with `None` produce
+  the records expected for each — and a `False` (default) selector
+  on every sink for a kind makes `is_kind_wanted` return `False`.
 - **Sink failure isolation (Phase 2 onward).** A sink that raises in
   `on_event` does not crash the simulation when the configured policy
   is "best-effort warn"; it does crash at terminate when the policy is
@@ -478,5 +628,9 @@ in the implementation PR for the phase noted.
 - The `SimulationResult.logs` shape returned by `run_simulation`. It
   remains a `DataFrame` produced by `parse_logs_df` (now over the
   `InMemorySink` contents).
+- The `SimulationResult.l1_snapshots` / `.l2_snapshots` / `.trades`
+  / `.liquidity` shape. They remain identical; only the source of
+  truth moves from `OrderBook.book_log2` / `OrderBook.history` to
+  the two book sinks.
 - Reproducibility guarantees. The drain-mode-equivalence test pins
   this.
