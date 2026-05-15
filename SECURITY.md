@@ -7,8 +7,6 @@ open a public issue.** Instead, report it privately via one of:
 
 - **GitHub Security Advisories** (preferred):
   <https://github.com/GabrieleDiCorato/abides-ng/security/advisories/new>
-- **Email**: gabriele.dicorato@gmail.com — please include
-  `[abides-security]` in the subject line.
 
 ## What to include
 
