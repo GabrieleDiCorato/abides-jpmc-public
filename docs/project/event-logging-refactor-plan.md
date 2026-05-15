@@ -49,10 +49,32 @@ and the analytics layer. This plan adds that seam in a way that is
 **lighter than the current implementation on the hot path** — not just a
 clean abstraction layered on top.
 
+**Business framing — gym throughput is the headline.** The ultimate
+consumer of `abides-ng` is reinforcement-learning training in
+`abides-gym`. The gym today already mutes log subsystems by hand
+(`abides-gym/abides_gym/envs/markets_environment.py:54-56` sets
+`book_logging=False`, `exchange_log_orders=False`) because the current
+hot path is too expensive for inner training loops. Even with those
+muted, every agent still pays an attribute load + truthiness test +
+tuple build + `list.append` per `logEvent` — for data the gym throws
+away on `env.reset()`. The §3.4 pre-bound no-op publish is the single
+biggest *business* win in this refactor: a gym episode with no sinks
+configured pays one C-level call into a `lambda *a, **k: None` per
+publish. Across millions of training steps that is the dominant
+compute saving.
+
 ---
 
 ## 1. Goals (in priority order)
 
+0. **Gym training throughput.** `abides-gym` episodes with no sinks
+   configured must pay one C-level call into a pre-bound no-op per
+   publish — strictly cheaper than today's `if self.log_events:`
+   guard. Headline target: ≥1.5× episode throughput on the existing
+   `markets_environment` benchmark with default sinks disabled, vs. the
+   current release. This is goal #0 because it is the only goal whose
+   delta is visible to end users (the RL researchers training on this
+   simulator).
 1. **Lower per-event hot-path cost** versus the current
    `if owner.book_logging: book_log2.append({...})` and
    `agent.log.append((time, type, payload))` paths. The new path must
@@ -99,6 +121,26 @@ enforce them where possible.
   release, validated by an end-to-end test.
 - **Reproducibility contracts in `docs/project/reproducibility.md`
   remain intact.**
+- **Payloads carry no live references.** No event payload may retain a
+  reference to a live `Agent`, `Message`, `OrderBook`, or mutable
+  collection owned by a producer. Permitted payload shapes are:
+  scalars (`int`/`float`/`str`/`bool`/enum value), tuples of scalars,
+  and lists/tuples of tuples-of-scalars. Today
+  `abides-markets/abides_markets/agents/exchange_agent.py:406, 414, 420`
+  publishes raw `Message` objects as payloads — these pin sender,
+  recipient, the order they wrap, and (for some message types) book
+  snapshots, for the lifetime of the agent log. This is the most
+  likely root cause of long-sim OOM. A debug-mode `isinstance` check
+  in the bus enforces this invariant; release builds skip the check.
+- **No formatted-string payloads.** Payloads must be structured data,
+  not human-readable strings. Today `BEST_BID` / `BEST_ASK` /
+  `LAST_TRADE` / `MARK_TO_MARKET` / `STOP_ORDER_ACCEPTED` /
+  `FINAL_HOLDINGS` allocate f-strings on the hot path
+  (`order_book.py:212, 218, 234`; `trading_agent.py:253, 1552`;
+  `exchange_agent.py:722`). Replaced by tuple schemas (`QUOTE`, etc.;
+  see §3.9). The schema-validator unit test (§3.9) AST-walks every
+  `publish_event` callsite and rejects `f"..."` and `str(x)` payload
+  literals.
 
 ---
 
@@ -282,6 +324,26 @@ the bus.
   single biggest memory win available and the reason the snapshot
   sink can be enabled by default without reintroducing the unbounded
   memory problem.
+
+  **Snapshot construction is deferred into the sink.** Today
+  `OrderBook.append_book_log2` (`order_book.py:684-691`) runs on
+  every L2 mutation (5 callsites: `order_book.py:391, 461, 539, 587,
+  639, 682`) and unconditionally allocates two list comprehensions of
+  depth `book_log_depth`, two `np.array` headers + buffers, a 3-key
+  dict, and an append — *before* anyone has decided whether the
+  snapshot will be retained. The bus instead carries a **deferred
+  snapshot token**: `(symbol, time_ns, order_book_ref, depth)`. The
+  sink calls `get_l2_bid_data` / `get_l2_ask_data` only after the
+  sampling decision says "record." For the default
+  `on_top_of_book_change` mode the sink first calls cheap
+  `get_l1_bid_data()` / `get_l1_ask_data()`; the L2 walk happens
+  only on actual L1 movement. Net effect for analytics workloads:
+  L1 lookup on every mutation, L2 walk on the (much rarer) L1
+  changes, instead of full L2 walk on every mutation. The
+  `order_book_ref` in the token is a back-reference held only for
+  the duration of the drain — never retained past the sink's
+  decision — and is therefore exempt from the §2 "no live
+  references in payloads" invariant by construction.
 - **`OrderBookHistoryMemorySink`** — In-memory capture of order book
   events, indexed by symbol, in parallel columns. `accept_orderbook_kinds`
   defaults to `frozenset({"EXEC"})` (fills only) — the dominant use
@@ -380,10 +442,14 @@ ORDER_EVENT = PayloadSchema(
     arrow_types=(pa.int64(), pa.string(), pa.int8(), pa.int64(),
                  pa.int64(), pa.int8(), pa.bool_(), pa.bool_(), ...),
 )
-HOLDINGS    = PayloadSchema("HOLDINGS", 1, ("cash_cents", "positions"),
-                            (pa.int64(), pa.map_(pa.string(), pa.int64())))
+HOLDINGS    = PayloadSchema("HOLDINGS", 1,
+                            ("symbol", "delta_qty", "qty_after", "cash_after_cents"),
+                            (pa.string(), pa.int64(), pa.int64(), pa.int64()))
 CASH        = PayloadSchema("CASH",     1, ("cents",),  (pa.int64(),))
 DEPTH       = PayloadSchema("DEPTH",    1, ("levels",), (pa.list_(pa.list_(pa.int64())),))
+QUOTE       = PayloadSchema("QUOTE",    1,
+                            ("symbol", "price_cents", "qty"),
+                            (pa.string(), pa.int64(), pa.int64()))
 AGENT_TYPE_ = PayloadSchema("AGENT_TYPE", 1, ("name",), (pa.string(),))
 EMPTY       = PayloadSchema("EMPTY",    1, (),         ())
 
@@ -403,6 +469,9 @@ EVENT_TYPE_SCHEMA: dict[str, PayloadSchema] = {
     "MARKED_TO_MARKET":   CASH,
     "FINAL_VALUATION":    CASH,
     "HOLDINGS_UPDATED":   HOLDINGS,
+    "BEST_BID":           QUOTE,
+    "BEST_ASK":           QUOTE,
+    "LAST_TRADE":         QUOTE,
     "BID_DEPTH":          DEPTH,
     "ASK_DEPTH":          DEPTH,
     "AGENT_TYPE":         AGENT_TYPE_,
@@ -411,15 +480,45 @@ EVENT_TYPE_SCHEMA: dict[str, PayloadSchema] = {
 }
 ```
 
-**Producer side: tuples replace dicts. No new allocations.**
+**Producer side: tuples replace dicts. Allocation count drops ~5×, not just "tuple is cheaper than dict."**
 
-Today's `ORDER_SUBMITTED` path allocates a `dict` from
-`order.to_dict()`. After this change, `Order` grows a single
+Today's `ORDER_SUBMITTED` path allocates more than a single dict. The
+call chain is:
+
+```python
+# abides-markets/abides_markets/orders.py:101-104
+def to_dict(self) -> dict[str, Any]:
+    as_dict = deepcopy(self).__dict__   # invokes LimitOrder.__deepcopy__
+    as_dict["time_placed"] = fmt_ts(self.time_placed)
+    return as_dict
+```
+
+`deepcopy(self)` invokes the subclass `__deepcopy__` (e.g.
+`orders.py:176-197` for `LimitOrder`), which constructs a fresh
+`LimitOrder` instance plus a `deepcopy(self.tag)`. So every
+`ORDER_SUBMITTED` / `ORDER_ACCEPTED` / `ORDER_EXECUTED` /
+`ORDER_CANCELLED` / `MODIFY_ORDER` / `REPLACE_ORDER` /
+`CANCEL_SUBMITTED` / `CANCEL_PARTIAL_ORDER` / `PARTIAL_CANCELLED` /
+`ORDER_MODIFIED` / `ORDER_REPLACED` / `STOP_ORDER_SUBMITTED` event
+today allocates roughly **five distinct objects**:
+
+1. A new `LimitOrder` instance (no `__slots__` → dict-backed,
+   ~280 B header + dict).
+2. A recursive `deepcopy(self.tag)`.
+3. The `__dict__` snapshot returned by `deepcopy(self).__dict__`.
+4. The `fmt_ts(...)` string for `time_placed`.
+5. The outer `(time, type, payload)` tuple in `Agent.logEvent` plus
+   the `list.append`.
+
+After this change, `Order` grows a single
 `to_payload_tuple(self) -> tuple` method that reads its `__slots__`
-into a positional tuple matching `ORDER_EVENT.fields`. A tuple of N
-ints is **strictly cheaper** in CPython than a dict of N items: no
-hash table, no key strings, smaller object header. Net per-event
-allocation count goes **down** vs. today.
+into a positional tuple matching `ORDER_EVENT.fields`. The chain
+collapses to **one tuple allocation** (the wire payload) plus the
+ring-buffer append. That is a ~5× reduction in per-order-event
+allocation count, not the marginal "tuple vs dict" win the prior
+revision implied. Slotting `Order` (see §4) is a precondition: it
+both shrinks per-instance memory and lets `to_payload_tuple()` read
+slots positionally instead of doing N attribute lookups by name.
 
 ```python
 # Before
@@ -430,10 +529,17 @@ bus.publish_event(self.id, "TradingAgent", t,
                   "ORDER_SUBMITTED", order.to_payload_tuple())
 ```
 
-`HOLDINGS_UPDATED` already builds a small dict (~2–10 keys) once per
-trade — keep it as a frozen mapping or convert to
-`(cash_cents, tuple(positions.items()))`; this fires infrequently and
-allocation cost is irrelevant compared to its semantic stability.
+`HOLDINGS_UPDATED` today fires from five sites in
+`abides-markets/abides_markets/agents/trading_agent.py` (lines 287,
+1145, 1238, 1265, 1295), each with `deepcopy_event=True` against the
+*entire* `self.holdings` dict. That cost scales with portfolio
+breadth — fine for toy single-symbol configs, expensive the moment a
+strategy spans many symbols. The new schema is the **per-fill delta**,
+not the snapshot: `(symbol, delta_qty, qty_after, cash_after_cents)`,
+one 4-int tuple (~64 B) per fill. Readers that want a holdings
+snapshot reconstruct by replaying — `InMemorySink` exposes a
+convenience method that materializes a snapshot at a given
+`sim_time_ns` if a notebook asks. Eliminates the deepcopy entirely.
 
 `MKT_CLOSED` and other empty payloads use the **module-level singleton**
 `EMPTY_PAYLOAD = ()` — zero allocation per event.
@@ -443,6 +549,15 @@ scalar**, not a 1-tuple. The schema's `fields=("cents",)` tells the
 consumer "interpret the raw payload as the named scalar `cents`." This
 keeps the today-shape (`logEvent("STARTING_CASH", 10_000)`) and avoids
 even one tuple allocation per event.
+
+**Enums are stored as `int8`, not as Python enum objects.** `Order.side`
+is `Side` and `LimitOrder.time_in_force` is `TimeInForce`
+(`orders.py:14, 25`). Parquet has no native enum type and pickled
+enums are not portable across schema versions. Producers call `.value`
+when building the payload tuple (or, after slotting, store an `int8`
+slot directly). The schema records the enum class so the read-side
+`EventRecord.from_tuple` rehydrates to a typed enum on demand. Hot
+path stays at zero added cost.
 
 So the rule is: **payload arity matches schema arity**. Arity 0 → the
 shared `()` singleton. Arity 1 → the bare scalar. Arity ≥ 2 → a
@@ -476,11 +591,15 @@ public contract.
 
 A debug-mode bus (`ABIDES_BUS_VALIDATE=1`) wraps `publish_event` with
 an arity check (`len(payload) == len(schema.fields)` for arity ≥ 2;
-type check for arity 1). Off by default — production runs pay zero.
-A unit test (`test_event_payload_schema.py`) `ast.parse`s every call
-site of `publish_event` / `logEvent`, extracts the literal
-`event_type`, and asserts it appears in `EVENT_TYPE_SCHEMA`. New
-event types cannot land without a schema entry.
+type check for arity 1) **and** an `isinstance` check enforcing the
+§2 invariant (no `Message`/`Agent`/`OrderBook` references in
+payloads). Off by default — production runs pay zero. A unit test
+(`test_event_payload_schema.py`) `ast.parse`s every call site of
+`publish_event` / `logEvent`, extracts the literal `event_type`,
+asserts it appears in `EVENT_TYPE_SCHEMA`, and rejects payload
+expressions that are f-strings (`ast.JoinedStr`) or `str(x)` calls.
+New event types cannot land without a schema entry; no callsite can
+silently regress to a stringified payload.
 
 **Schema evolution.**
 
@@ -495,11 +614,14 @@ payload schemas to allow independent evolution.
 
 | | Today | After §3.9 |
 |---|---|---|
-| Per `ORDER_SUBMITTED` allocations | 1 dict (8+ str keys) | 1 tuple (no keys) |
+| Per `ORDER_*` allocations | ~5 (deepcopy chain: new `LimitOrder` + tag deepcopy + `__dict__` snapshot + `fmt_ts` string + outer 3-tuple) | 1 tuple |
+| Per `BEST_BID`/`BEST_ASK`/`LAST_TRADE` allocations | 1 f-string (parse spec, intermediates, concat) | 1 tuple of 3 ints |
+| Per `HOLDINGS_UPDATED` allocations | 1 deepcopy of full `self.holdings` dict (scales w/ portfolio breadth) | 1 tuple of 4 ints |
 | Per `MKT_CLOSED` allocations | 1 `None` ref | 1 `()` ref (shared) |
 | Per `STARTING_CASH` allocations | 1 int ref | 1 int ref |
 | Schema lookups on hot path | 0 | 0 (debug mode only) |
 | Reified payload objects per event | 0 (dict counts as raw) | 0 |
+| Live references retained in payload | unbounded (raw `Message` objects from `exchange_agent.py:406, 414, 420`) | none (§2 invariant, debug-checked) |
 
 The schema registry is **pure metadata**, allocated once at module
 import, with no per-event cost. Consumers gain a versioned, typed,
@@ -541,6 +663,52 @@ semver going forward.
 This boundary is documented in `docs/reference/logging-architecture.md`
 when Phase 2 ships, and pinned by an `__all__` audit test.
 
+### 3.11 Event vocabulary — final list (gating Phase 2)
+
+Today there are **51 unique `logEvent` callsites across 8 files** with
+inconsistent payload shapes for semantically related events — for
+example `STOP_ORDER_ACCEPTED` publishes `str(order)`
+(`exchange_agent.py:722`) while `STOP_ORDER_SUBMITTED` publishes
+`order.to_dict()`. The schema registry in §3.9 needs one row per
+surviving event type, and Phase 2 cannot ship until that table is
+finalized. This refactor is the right time to **delete dead event
+types and standardize the survivors**; doing it later is a breaking
+change to the public schema contract.
+
+The deliverable is a table in `docs/reference/logging-architecture.md`
+with one row per surviving `event_type`, each row carrying:
+
+| Column | Notes |
+|---|---|
+| `event_type` | Stable string identifier; the registry key. |
+| `producer` | File and class that publishes it. |
+| `frequency tier` | `per-tick` / `per-quote` / `per-fill` / `per-order` / `per-run`. Drives the perf budget. |
+| `schema` | One of the §3.9 `PayloadSchema` instances. |
+| `consumers` | Which sinks/notebooks/runner extractors read it today. |
+| `disposition` | `keep` / `rename → X` / `merge with Y` / `delete (no consumer)`. |
+
+The table is built bottom-up by walking every `logEvent` call site
+(8 files: `agent.py`, `kernel.py`, `trading_agent.py`,
+`exchange_agent.py`, `noise_agent.py`, `value_agent.py`,
+`market_maker_agent.py`, `order_book.py`). Standardization rules:
+
+- Every `ORDER_*` event uses `ORDER_EVENT` schema. No mix of
+  `order.to_dict()` and `str(order)` survives.
+- Every quote event (`BEST_BID`, `BEST_ASK`, `LAST_TRADE`) uses
+  `QUOTE` schema. No f-string payloads survive.
+- Every `*_CASH` / `MARKED_TO_MARKET` / `FINAL_VALUATION` event uses
+  `CASH` schema; the `MARK_TO_MARKET` f-string at
+  `trading_agent.py:1552` is split into a structured payload plus an
+  optional human-readable summary line at `INFO` log level.
+- Event types with no observed consumer — neither `runner._extract_*`,
+  nor a notebook in `notebooks/`, nor an out-of-tree caller surfaced
+  during Phase 0 — are deleted, not migrated.
+
+**Acceptance:** Phase 2 cannot merge until the table is reviewed
+and every surviving `event_type` has a `PayloadSchema` row in
+`EVENT_TYPE_SCHEMA`. The AST-walking validator test fails the build
+on any callsite whose `event_type` is not in the registry.
+
 ---
 
 ## 4. Concrete changes by module
@@ -557,6 +725,39 @@ This is a high-level map, not a final code review.
     "important events" set becomes a sink-side allowlist (see §5).
   - `self.log` is removed from `Agent` itself; the deprecated
     cached property in `SimulationResult` covers existing readers.
+  - `Agent.log_events` (`agent.py:161`) becomes a **deprecated no-op**
+    in Phase 4. Subsumed by sink-side declarative filters
+    (`accept_event_types`) and the §3.4 no-op rebind. Configs that
+    set it get a `DeprecationWarning` pointing at the equivalent
+    sink config. Removed in Phase 5+2. Without this deprecation the
+    system has *four* overlapping mute switches after the refactor
+    (`log_events`, `log_orders`, `book_logging`, sink filters) and
+    every publish pays for both the new declarative gate and the
+    legacy `if self.log_events:` check — strictly worse than today.
+- `abides_markets/abides_markets/orders.py`
+  - Convert `Order`, `LimitOrder`, `MarketOrder`, `StopOrder` to
+    `__slots__`. **Precondition** for cheap `to_payload_tuple()`
+    (slot-tuple read instead of N attribute lookups by name) and a
+    ~280 B/order RSS reduction (no per-instance `__dict__`). The
+    existing custom `__deepcopy__` makes pickle compatibility
+    painless.
+  - Add `to_payload_tuple(self) -> tuple` on each subclass returning
+    a positional tuple matching `ORDER_EVENT.fields` (with `Side` and
+    `TimeInForce` stored as `int8` via `.value`; see §3.9 enum rule).
+  - Drop the `deepcopy(self).__dict__` antipattern in
+    `to_dict()` (`orders.py:101-104`). Its only purpose was guarding
+    against later mutation of the published dict; the new sink
+    contract — sinks must not mutate received tuples — makes the
+    guard unnecessary. `to_dict()` is retained only for the
+    deprecation window as a thin wrapper around `to_payload_tuple()`
+    for any out-of-tree code that depends on it; removed in Phase
+    5+2.
+- `abides_markets/abides_markets/agents/trading_agent.py`
+  - `TradingAgent.log_orders` becomes a **deprecated no-op** in
+    Phase 4 (same reasoning as `log_events`). It guards 25+ order-
+    related callsites today; after Phase 2 those callsites publish
+    unconditionally and the sink filters decide. Removed in Phase
+    5+2.
 - `abides_core/kernel.py`
   - Kernel owns an `EventBus`. Sinks are constructed from
     `SimulationConfig` (see §6) at `Kernel.__init__` or injected
@@ -608,7 +809,20 @@ This is a high-level map, not a final code review.
     that translate to auto-registration of the two book memory sinks
     at config-build time (preserves backward-compatible defaults).
     Once `event_sinks` is set explicitly in config, the hints are
-    ignored with a one-line info log.
+    ignored with a one-line info log. The `book_logging` flag itself
+    becomes a **deprecated no-op** in Phase 4 (subsumed by the
+    snapshot sink's `accept_book_symbols`); removed in Phase 5+2.
+  - Replace the three `self.logEvent(message.type(), message)` sites
+    (`exchange_agent.py:406, 414, 420`) with payload tuples derived
+    from the message's public fields. Today these publish raw
+    `Message` objects, which pin sender, recipient, the wrapped
+    `Order`, and (for some message types) book snapshots for the
+    lifetime of the per-agent log — the most likely root cause of
+    long-sim OOM. Each gets a dedicated schema entry in §3.9.
+  - Replace the `STOP_ORDER_ACCEPTED` payload `str(order)`
+    (`exchange_agent.py:722`) with `order.to_payload_tuple()`
+    matching the `ORDER_EVENT` schema, harmonizing with
+    `STOP_ORDER_SUBMITTED`.
 - `abides_markets/abides_markets/simulation/runner.py`
   - `parse_logs_df` reads from `InMemorySink`'s parallel column
     arrays via a single `pd.DataFrame({col: arr, ...})` call
@@ -721,9 +935,22 @@ representative `rmsc04`-class config for:
 - `if owner.book_logging: book_log2.append({...})`
 - `parse_logs_df` end-to-end on a 1M-row capture
 
-These numbers become the **acceptance gate** for Phase 2 and Phase 3a:
-the new path must be at least as fast as the old one on every
-configuration. Numbers, not priors, pin the design defaults.
+There is no existing `benchmarks/` tree in the repo; Phase 0 ships
+one, alongside a CI job that runs it on every PR touching a publisher
+or sink. The four numbers below are **named acceptance gates** for
+subsequent phases. No phase merges if its corresponding gate
+regresses.
+
+| Benchmark | Phase that gates on it | Target |
+|---|---|---|
+| `gym_episode_throughput_no_sinks` — `markets_environment` episode wall-clock with all sinks unconfigured | Phase 2 | **≥ 1.5×** today's release. Headline gym-throughput goal #0 from §1. |
+| `single_agent_run_with_default_sinks` — full default-config simulation | Phase 2, Phase 3a | **≤ 1.0×** today (no regression with the new path under the default sink set). |
+| `peak_rss_long_sim` — long-horizon synthetic sim | Phase 3 | Bounded by `O(sink_buffer_high_watermark)`, **not** by event count. Peak in-memory event store is `Θ(M)` columnar arrays in one `InMemorySink`, not `Θ(N·M)` per-agent Python lists. |
+| `parse_logs_df_p99` — `parse_logs_df` on a 1M-row capture | Phase 1 | **Linear** in row count; the current O(N²) `pd.concat` loop is gone. |
+
+These numbers, not priors, pin the design defaults. The Phase 2 / 3a
+acceptance gates further down ("at least as fast as the old path")
+are tied to these named benchmarks.
 
 ### Phase 1 — Quick wins (no architecture)
 
@@ -957,6 +1184,12 @@ design must be revisited rather than the constraint relaxed.
   of dicts. Snapshot sink defaults to `on_top_of_book_change`
   sampling. Async-I/O sinks spill to disk at the high watermark
   rather than block or drop.
+- **Peak in-memory event store:** `Θ(M)` columnar arrays in one
+  shared `InMemorySink`, not `Θ(N·M)` per-agent Python lists like
+  today's `agent.log`. For typical constant-`M`-per-agent workloads
+  this is a `~agent_count×` memory reduction *before* any per-record
+  encoding wins. This is a structural improvement that the
+  per-event allocation work (§3.9) compounds, not duplicates.
 - **Determinism:** true by construction (single-threaded dispatch);
   pinned by byte-equality regression tests on every reproducibility-
   sensitive sink.
