@@ -346,6 +346,201 @@ either silent stall or hard failure on a multi-hour run.
 The cache prevents notebooks (which often hot-loop on these
 attributes) from triggering O(N) sink walks per access.
 
+### 3.9 Payload schema registry — zero per-event allocation
+
+The wire format (§3.2) is positional tuples. That gives consumers a
+shape but not a *contract*: today an `ORDER_SUBMITTED` payload is
+"whatever `order.to_dict()` happens to return," which makes any
+downstream sink (Parquet, drop-copy, third-party) brittle and turns
+implicit dict keys into a load-bearing public API the first time
+someone writes a SQL query on the result.
+
+We fix this without paying any per-event allocation cost.
+
+**Core idea: schema is metadata, registered once at import time;
+records on the wire stay tuples.**
+
+```text
+abides_core/event_payloads.py
+
+# Constructed once at import. Never allocated per event.
+@dataclass(frozen=True, slots=True)
+class PayloadSchema:
+    name:       str                         # e.g. "ORDER_EVENT"
+    version:    int                         # bump on field rename/remove/reorder
+    fields:     tuple[str, ...]             # positional field names
+    arrow_types: tuple[pa.DataType, ...]    # for ParquetSink; lazy-built
+
+# Schemas (one instance per logical payload shape, shared across
+# many event_types).
+ORDER_EVENT = PayloadSchema(
+    "ORDER_EVENT", version=1,
+    fields=("order_id", "symbol", "side", "qty", "limit_cents",
+            "tif", "is_hidden", "is_price_to_comply", ...),
+    arrow_types=(pa.int64(), pa.string(), pa.int8(), pa.int64(),
+                 pa.int64(), pa.int8(), pa.bool_(), pa.bool_(), ...),
+)
+HOLDINGS    = PayloadSchema("HOLDINGS", 1, ("cash_cents", "positions"),
+                            (pa.int64(), pa.map_(pa.string(), pa.int64())))
+CASH        = PayloadSchema("CASH",     1, ("cents",),  (pa.int64(),))
+DEPTH       = PayloadSchema("DEPTH",    1, ("levels",), (pa.list_(pa.list_(pa.int64())),))
+AGENT_TYPE_ = PayloadSchema("AGENT_TYPE", 1, ("name",), (pa.string(),))
+EMPTY       = PayloadSchema("EMPTY",    1, (),         ())
+
+# Single source of truth: event_type → schema.
+EVENT_TYPE_SCHEMA: dict[str, PayloadSchema] = {
+    "ORDER_SUBMITTED":    ORDER_EVENT,
+    "ORDER_ACCEPTED":     ORDER_EVENT,
+    "ORDER_EXECUTED":     ORDER_EVENT,
+    "ORDER_CANCELLED":    ORDER_EVENT,
+    "STOP_TRIGGERED":     ORDER_EVENT,
+    "MODIFY_ORDER":       ORDER_EVENT,
+    "REPLACE_ORDER":      ORDER_EVENT,
+    "CANCEL_SUBMITTED":   ORDER_EVENT,
+    "CANCEL_PARTIAL_ORDER": ORDER_EVENT,
+    "STARTING_CASH":      CASH,
+    "ENDING_CASH":        CASH,
+    "MARKED_TO_MARKET":   CASH,
+    "FINAL_VALUATION":    CASH,
+    "HOLDINGS_UPDATED":   HOLDINGS,
+    "BID_DEPTH":          DEPTH,
+    "ASK_DEPTH":          DEPTH,
+    "AGENT_TYPE":         AGENT_TYPE_,
+    "MKT_CLOSED":         EMPTY,
+    ...
+}
+```
+
+**Producer side: tuples replace dicts. No new allocations.**
+
+Today's `ORDER_SUBMITTED` path allocates a `dict` from
+`order.to_dict()`. After this change, `Order` grows a single
+`to_payload_tuple(self) -> tuple` method that reads its `__slots__`
+into a positional tuple matching `ORDER_EVENT.fields`. A tuple of N
+ints is **strictly cheaper** in CPython than a dict of N items: no
+hash table, no key strings, smaller object header. Net per-event
+allocation count goes **down** vs. today.
+
+```python
+# Before
+self.logEvent("ORDER_SUBMITTED", order.to_dict(), deepcopy_event=False)
+
+# After
+bus.publish_event(self.id, "TradingAgent", t,
+                  "ORDER_SUBMITTED", order.to_payload_tuple())
+```
+
+`HOLDINGS_UPDATED` already builds a small dict (~2–10 keys) once per
+trade — keep it as a frozen mapping or convert to
+`(cash_cents, tuple(positions.items()))`; this fires infrequently and
+allocation cost is irrelevant compared to its semantic stability.
+
+`MKT_CLOSED` and other empty payloads use the **module-level singleton**
+`EMPTY_PAYLOAD = ()` — zero allocation per event.
+
+For scalar payloads (`STARTING_CASH`, etc.) the payload **is the
+scalar**, not a 1-tuple. The schema's `fields=("cents",)` tells the
+consumer "interpret the raw payload as the named scalar `cents`." This
+keeps the today-shape (`logEvent("STARTING_CASH", 10_000)`) and avoids
+even one tuple allocation per event.
+
+So the rule is: **payload arity matches schema arity**. Arity 0 → the
+shared `()` singleton. Arity 1 → the bare scalar. Arity ≥ 2 → a
+tuple. The schema records this and consumers honor it via a tiny
+`unwrap(schema, payload)` helper that always returns a tuple-shaped
+view (constructing a 1-tuple lazily *only* when a consumer asks; the
+hot path never does).
+
+**Consumer side: vectorized projection from columns. No per-record
+reification.**
+
+`InMemorySink` is already columnar (parallel arrays per kind). Add a
+*per-event-type* sub-bucketing inside its event store: when an event
+arrives whose `event_type` is in the schema registry and whose schema
+has arity ≥ 2, the sink splits the payload tuple into per-field
+columns *for that event_type*. End-of-run materialization is one
+`pd.DataFrame({field: arr for field, arr in zip(schema.fields, cols)})`
+call per event_type — same cost model as today's `parse_logs_df`,
+done once, not per record.
+
+`ParquetSink` reads `EVENT_TYPE_SCHEMA` at `start()`, derives one
+Arrow schema per `event_type` from `(fields, arrow_types)`, and
+opens one writer per type. Per event: one `append` to a typed array
+buffer; flush on watermark. No `payload_json` column, no
+per-event reification, no JSON encode.
+
+Out-of-tree sinks read the registry the same way. The schema *is* the
+public contract.
+
+**Validation, opt-in only.**
+
+A debug-mode bus (`ABIDES_BUS_VALIDATE=1`) wraps `publish_event` with
+an arity check (`len(payload) == len(schema.fields)` for arity ≥ 2;
+type check for arity 1). Off by default — production runs pay zero.
+A unit test (`test_event_payload_schema.py`) `ast.parse`s every call
+site of `publish_event` / `logEvent`, extracts the literal
+`event_type`, and asserts it appears in `EVENT_TYPE_SCHEMA`. New
+event types cannot land without a schema entry.
+
+**Schema evolution.**
+
+Each `PayloadSchema` carries a `version: int`. Renaming or
+reordering fields bumps it. `ParquetSink` writes
+`{schema_name: version}` into file metadata; `read_parquet_logs`
+checks it. The `EventBus` bumps a `bus_format_version` constant
+covering the tuple wire format itself, kept separate from individual
+payload schemas to allow independent evolution.
+
+**Net cost vs. today.**
+
+| | Today | After §3.9 |
+|---|---|---|
+| Per `ORDER_SUBMITTED` allocations | 1 dict (8+ str keys) | 1 tuple (no keys) |
+| Per `MKT_CLOSED` allocations | 1 `None` ref | 1 `()` ref (shared) |
+| Per `STARTING_CASH` allocations | 1 int ref | 1 int ref |
+| Schema lookups on hot path | 0 | 0 (debug mode only) |
+| Reified payload objects per event | 0 (dict counts as raw) | 0 |
+
+The schema registry is **pure metadata**, allocated once at module
+import, with no per-event cost. Consumers gain a versioned, typed,
+discoverable contract. Producers shed dict construction in favor of
+cheaper tuple construction.
+
+### 3.10 Public vs. internal API boundary
+
+After this refactor, the new modules split cleanly into a small
+public surface and a larger internal one. This split is binding for
+semver going forward.
+
+**Public (semver-stable, breaking changes require a major bump):**
+
+- `abides_core.event_payloads` — `PayloadSchema`, `EVENT_TYPE_SCHEMA`,
+  the named schema instances (`ORDER_EVENT`, `HOLDINGS`, …),
+  `unwrap(schema, payload)`. This is the consumer contract.
+- `abides_core.event_records` — `EventRecord`, `MetricRecord`,
+  `BookSnapshotRecord`, `OrderBookEventRecord` and their
+  `from_tuple(...)` classmethods. The read-side reification helpers.
+- `abides_core.event_sinks.EventSink` Protocol — the extension point
+  for out-of-tree sinks.
+- `read_parquet_logs(...)` once Phase 3 lands.
+- `SimulationResult.logs` / `.l1_snapshots` / `.l2_snapshots` /
+  `.trades` / `.liquidity` shapes (already public; reaffirmed here).
+
+**Internal (may change at any time without notice):**
+
+- `EventBus` itself, including `publish_*` signatures, drain cadence,
+  ring-buffer sizing, the no-op rebind trick, `bus_format_version`,
+  intra-tick counter mechanics.
+- The on-the-wire tuple positions — consumers must read via the
+  schema registry (`EVENT_TYPE_SCHEMA[event_type].fields`) or via
+  `EventRecord.from_tuple`, never by hard-coded index.
+- All concrete sink implementations *except* the `EventSink`
+  Protocol surface. `InMemorySink` internals (column splitting,
+  bucketing strategy) are free to change.
+
+This boundary is documented in `docs/reference/logging-architecture.md`
+when Phase 2 ships, and pinned by an `__all__` audit test.
+
 ---
 
 ## 4. Concrete changes by module
@@ -708,6 +903,12 @@ in the implementation PR for the phase noted.
 7. **Deprecation timeline.** This plan says Phase 5 + 2 for removal.
    Confirm the absolute timeline in
    `docs/project/release-process.md` when Phase 5 is scheduled.
+8. **Schema registry phasing (§3.9).** Land the registry and tuple
+   payloads in Phase 2 alongside the bus (so `InMemorySink` can be
+   columnar from day one), or land in Phase 3 just-in-time for
+   `ParquetSink` (smaller blast radius)? Recommendation: Phase 2 —
+   the producer-side dict→tuple swap is the disruptive part and
+   should ride with the agent-API change, not be a follow-up.
 
 ---
 
@@ -759,3 +960,8 @@ design must be revisited rather than the constraint relaxed.
 - **Determinism:** true by construction (single-threaded dispatch);
   pinned by byte-equality regression tests on every reproducibility-
   sensitive sink.
+- **Payload schema:** metadata-only, registered once at import (§3.9).
+  No per-event class allocation, no per-event registry lookup on the
+  hot path. Producer payloads are bare scalars (arity 1), the shared
+  `()` singleton (arity 0), or a tuple (arity ≥ 2) — strictly cheaper
+  than today's per-event `dict`.
