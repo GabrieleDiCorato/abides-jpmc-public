@@ -1035,35 +1035,6 @@ class TestPerAgentComputationDelay:
         target = next(a for a in runtime["agents"] if a.name == target_name)
         assert delays[target.id] == 777
 
-    def test_kernel_applies_per_agent_delays(self):
-        """Kernel should apply agent_computation_delays array when provided."""
-        from abides_core.kernel import Kernel
-
-        agents = [type("FakeAgent", (), {"id": i, "type": "Test"})() for i in range(5)]
-        kernel = Kernel(
-            agents=agents,
-            default_computation_delay=50,
-            agent_computation_delays=np.array([50, 100, 50, 200, 50], dtype=np.int64),
-            random_state=np.random.RandomState(seed=1),
-        )
-        assert kernel._agent_computation_delays[0] == 50
-        assert kernel._agent_computation_delays[1] == 100
-        assert kernel._agent_computation_delays[2] == 50
-        assert kernel._agent_computation_delays[3] == 200
-        assert kernel._agent_computation_delays[4] == 50
-
-    def test_kernel_without_per_agent_delays(self):
-        """Kernel should use default_computation_delay for all agents when no overrides."""
-        from abides_core.kernel import Kernel
-
-        agents = [type("FakeAgent", (), {"id": i, "type": "Test"})() for i in range(3)]
-        kernel = Kernel(
-            agents=agents,
-            default_computation_delay=75,
-            random_state=np.random.RandomState(seed=1),
-        )
-        assert all(d == 75 for d in kernel._agent_computation_delays)
-
     def test_mixed_agents_with_and_without_delay(self):
         """Only agents with explicit computation_delay should appear in overrides."""
         config = (
@@ -1106,41 +1077,6 @@ class TestPerAgentComputationDelay:
             assert loaded.agents["noise"].params["computation_delay"] == 200
         finally:
             path.unlink(missing_ok=True)
-
-
-# ---------------------------------------------------------------------------
-# Kernel get_agent_compute_delay bug fix test
-# ---------------------------------------------------------------------------
-
-
-class TestKernelGetComputeDelay:
-    def test_get_agent_compute_delay_exists(self):
-        """Kernel.get_agent_compute_delay should exist and work."""
-        from abides_core.kernel import Kernel
-
-        agents = [type("FakeAgent", (), {"id": i, "type": "Test"})() for i in range(3)]
-        kernel = Kernel(
-            agents=agents,
-            default_computation_delay=42,
-            random_state=np.random.RandomState(seed=1),
-        )
-        assert kernel.get_agent_compute_delay(0) == 42
-        assert kernel.get_agent_compute_delay(1) == 42
-        assert kernel.get_agent_compute_delay(2) == 42
-
-    def test_get_after_set(self):
-        """get_agent_compute_delay should reflect set_agent_compute_delay changes."""
-        from abides_core.kernel import Kernel
-
-        agents = [type("FakeAgent", (), {"id": i, "type": "Test"})() for i in range(3)]
-        kernel = Kernel(
-            agents=agents,
-            default_computation_delay=50,
-            random_state=np.random.RandomState(seed=1),
-        )
-        kernel.set_agent_compute_delay(1, 999)
-        assert kernel.get_agent_compute_delay(1) == 999
-        assert kernel.get_agent_compute_delay(0) == 50
 
 
 # ---------------------------------------------------------------------------

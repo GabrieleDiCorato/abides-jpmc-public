@@ -36,7 +36,7 @@ class StubAgent(Agent):
 
 
 # ---------------------------------------------------------------------------
-# Step 1.1: Latency model wiring (PR 5a)
+# Latency model wiring
 # ---------------------------------------------------------------------------
 
 
@@ -73,7 +73,7 @@ class TestLatencyModelWiring:
 
 
 # ---------------------------------------------------------------------------
-# Step 1.2: MessageBatch delay
+# MessageBatch delivery delay
 # ---------------------------------------------------------------------------
 
 
@@ -132,7 +132,7 @@ class TestMessageBatchDelay:
 
 
 # ---------------------------------------------------------------------------
-# PR 1: Hygiene fixes
+# Hygiene fixes
 # ---------------------------------------------------------------------------
 
 
@@ -182,7 +182,7 @@ class TestAgentIdInvariantViolationRaises:
 
 
 # ---------------------------------------------------------------------------
-# PR 2: State validation & reset hygiene
+# State validation and reset hygiene
 # ---------------------------------------------------------------------------
 
 
@@ -237,7 +237,7 @@ class TestInitializeClearsState:
         kernel.messages.append((kernel.start_time, (0, 0, object())))
         stale = kernel.messages[-1]
         # Re-initialize and verify the slate is clean.
-        # PR 7: terminate() must precede a second initialize().
+        # terminate() must precede a second initialize() per the lifecycle contract.
         kernel.terminate()
         kernel.initialize()
         assert kernel.summary_log == []
@@ -260,7 +260,7 @@ class TestRandomStateRequired:
 
 
 # ---------------------------------------------------------------------------
-# PR 3: Dispatch ordering bug + heap refactor
+# Dispatch ordering and heap sequencing
 # ---------------------------------------------------------------------------
 
 
@@ -319,7 +319,7 @@ class TestHeapSequenceCounter:
             kernel._enqueue(kernel.start_time + 1, 0, 1, Message())
         delta_first = kernel._next_seq - baseline_first
 
-        # PR 7: terminate() must precede a second initialize().
+        # terminate() must precede a second initialize() per the lifecycle contract.
         kernel.terminate()
         kernel.initialize()
         baseline_second = kernel._next_seq
@@ -386,7 +386,7 @@ class TestMessageBatchDispatch:
 
 
 # ---------------------------------------------------------------------------
-# PR 4: report_metric() and removal of financial fields from kernel core
+# Metric reporting
 # ---------------------------------------------------------------------------
 
 
@@ -435,7 +435,7 @@ class TestReportMetricAggregation:
 
 
 # ---------------------------------------------------------------------------
-# PR 5a: Concrete LatencyModel subclasses
+# Concrete LatencyModel subclasses
 # ---------------------------------------------------------------------------
 
 
@@ -558,7 +558,7 @@ class TestLatencyModelSubclasses:
 
 
 # ---------------------------------------------------------------------------
-# PR 6: Per-agent state to numpy arrays + agent type index
+# Per-agent numpy arrays and type index
 # ---------------------------------------------------------------------------
 
 
@@ -666,7 +666,7 @@ class TestFindAgentsByTypeIndex:
 
 
 # ---------------------------------------------------------------------------
-# PR 7: LogWriter, KernelState lifecycle, RunnerHook, keyword-only __init__
+# LogWriter, KernelState lifecycle, RunnerHook, keyword-only __init__
 # ---------------------------------------------------------------------------
 
 
@@ -807,3 +807,134 @@ class TestKernelInitKeywordOnly:
             # start_time passed positionally should fail with the
             # keyword-only signature.
             Kernel(agents, str_to_ns("09:30:00"))
+
+
+# ---------------------------------------------------------------------------
+# _UninitializedKernel sentinel and Agent.computation_delay property
+# ---------------------------------------------------------------------------
+
+
+class TestUninitializedKernelSentinel:
+    """Agent.kernel must raise RuntimeError before kernel_initializing()."""
+
+    def test_kernel_attr_access_before_attach_raises(self):
+        import pytest as _pytest
+
+        from abides_core.agent import _UNINITIALIZED_KERNEL
+
+        with _pytest.raises(RuntimeError, match="Agent.kernel accessed before"):
+            _ = _UNINITIALIZED_KERNEL.oracle
+
+    def test_arbitrary_attr_access_raises(self):
+        import pytest as _pytest
+
+        from abides_core.agent import _UNINITIALIZED_KERNEL
+
+        with _pytest.raises(RuntimeError, match="attribute='nonexistent'"):
+            _ = _UNINITIALIZED_KERNEL.nonexistent
+
+    def test_agent_kernel_default_is_sentinel(self):
+        from abides_core.agent import _UninitializedKernel
+
+        agent = StubAgent(0)
+        assert isinstance(agent.kernel, _UninitializedKernel)
+
+    def test_agent_kernel_attached_after_initialize(self):
+        from abides_core.agent import _UninitializedKernel
+
+        agents = [StubAgent(0)]
+        kernel = Kernel(
+            agents=agents,
+            start_time=str_to_ns("09:30:00"),
+            stop_time=str_to_ns("16:00:00"),
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+        )
+        # Before initialize: still the sentinel.
+        assert isinstance(agents[0].kernel, _UninitializedKernel)
+        kernel.initialize()
+        # After initialize: real kernel object.
+        assert agents[0].kernel is kernel
+
+
+class TestAgentComputationDelayProperty:
+    """Agent.computation_delay property reads from and writes to the kernel array."""
+
+    def _make_kernel(self, *extra_agents):
+        all_agents = [StubAgent(0), *extra_agents]
+        for i, a in enumerate(all_agents):
+            a.id = i
+        kernel = Kernel(
+            agents=all_agents,
+            start_time=str_to_ns("09:30:00"),
+            stop_time=str_to_ns("16:00:00"),
+            default_computation_delay=50,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+        )
+        kernel.initialize()
+        return kernel, all_agents
+
+    def test_property_reads_default(self):
+        kernel, (agent,) = self._make_kernel()
+        assert agent.computation_delay == 50
+
+    def test_property_setter_updates_kernel_array(self):
+        kernel, (agent,) = self._make_kernel()
+        agent.computation_delay = 999
+        assert kernel._agent_computation_delays[0] == 999
+
+    def test_getter_reflects_setter(self):
+        kernel, (agent,) = self._make_kernel()
+        agent.computation_delay = 777
+        assert agent.computation_delay == 777
+
+    def test_per_agent_overrides_visible_through_property(self):
+        a0, a1, a2 = StubAgent(0), StubAgent(1), StubAgent(2)
+        delays = np.array([10, 200, 10], dtype=np.int64)
+        kernel = Kernel(
+            agents=[a0, a1, a2],
+            start_time=str_to_ns("09:30:00"),
+            stop_time=str_to_ns("16:00:00"),
+            agent_computation_delays=delays,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+        )
+        kernel.initialize()
+        assert a0.computation_delay == 10
+        assert a1.computation_delay == 200
+        assert a2.computation_delay == 10
+
+
+# ---------------------------------------------------------------------------
+# Kernel get/set agent compute delay
+# ---------------------------------------------------------------------------
+
+
+class TestKernelGetComputeDelay:
+    """Kernel.get_agent_compute_delay / set_agent_compute_delay round-trip."""
+
+    def test_get_returns_default(self):
+        agents = [StubAgent(i) for i in range(3)]
+        kernel = Kernel(
+            agents=agents,
+            default_computation_delay=42,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+        )
+        for i in range(3):
+            assert kernel.get_agent_compute_delay(i) == 42
+
+    def test_get_after_set(self):
+        agents = [StubAgent(i) for i in range(3)]
+        kernel = Kernel(
+            agents=agents,
+            default_computation_delay=50,
+            skip_log=True,
+            random_state=np.random.RandomState(seed=1),
+        )
+        kernel.set_agent_compute_delay(1, 999)
+        assert kernel.get_agent_compute_delay(1) == 999
+        # Neighbours unchanged.
+        assert kernel.get_agent_compute_delay(0) == 50
+        assert kernel.get_agent_compute_delay(2) == 50
