@@ -1,6 +1,7 @@
 import heapq
 import logging
 import os
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -48,6 +49,14 @@ class _HeapEntry:
     sender_id: int = field(compare=False)
     recipient_id: int = field(compare=False)
     message: Message = field(compare=False)
+
+
+@dataclass
+class _RunStats:
+    """Per-run scheduling stats. Reset on each ``initialize()`` call."""
+
+    event_queue_wall_clock_start: datetime = field(default_factory=datetime.now)
+    ttl_messages: int = 0
 
 
 class Kernel:
@@ -127,10 +136,10 @@ class Kernel:
         # kernel.reset() and across parallel workers in the same process.
         self._next_seq: int = 0
 
-        # Timestamp at which the Kernel was created.  Primarily used to
-        # create a unique log directory for this run.  Also used to
-        # print some elapsed time and messages per second statistics.
-        self.kernel_wall_clock_start: datetime = datetime.now()
+        # Per-run scheduling stats. Populated by initialize(); a fresh
+        # instance is created per run so the kernel never holds an
+        # ``Optional[datetime]`` between runs.
+        self._run_stats: _RunStats = _RunStats()
 
         # The Kernel maintains a summary log to which agents can write
         # information that should be centralized for very fast access
@@ -169,10 +178,9 @@ class Kernel:
         # Should the Kernel skip writing agent logs?
         self.skip_log: bool = skip_log
 
-        # If a log directory was not specified, use the initial wallclock.
-        self.log_dir: str = log_dir or str(
-            int(self.kernel_wall_clock_start.timestamp())
-        )
+        # If a log directory was not specified, default to a uuid4 hex.
+        # Avoids the prior wall-clock collision under multiprocessing.
+        self.log_dir: str = log_dir or uuid.uuid4().hex
 
         # Resolve the log writer. Explicit ``log_writer=`` wins; otherwise
         # build the default disk writer or a no-op based on ``skip_log``.
@@ -243,12 +251,6 @@ class Kernel:
         # staggering of sent messages.
         self.current_agent_additional_delay: int = 0
 
-        self.show_trace_messages: bool = False
-
-        # Wall-clock anchor and message counter, set in initialize().
-        self.event_queue_wall_clock_start: datetime | None = None
-        self.ttl_messages: int = 0
-
         logger.debug("Kernel initialized")
 
     def run(self) -> KernelRunResult:
@@ -296,7 +298,7 @@ class Kernel:
         # it carries per-agent overrides from the constructor that must
         # persist across resets.
         self._agent_current_times[:] = self.start_time
-        self.ttl_messages = 0
+        self._run_stats = _RunStats()
         self.summary_log.clear()
         self.messages.clear()
         self._next_seq = 0
@@ -347,8 +349,8 @@ class Kernel:
         )
 
         # Track starting wall clock time and total message count for stats at the end.
-        self.event_queue_wall_clock_start = datetime.now()
-        self.ttl_messages = 0
+        self._run_stats.event_queue_wall_clock_start = datetime.now()
+        self._run_stats.ttl_messages = 0
 
         self._state = KernelState.INITIALIZED
 
@@ -388,11 +390,9 @@ class Kernel:
         # Process messages until there aren't any (at which point there never can
         # be again, because agents only "wake" in response to messages), or until
         # the kernel stop time is reached.
-        while (
-            self.messages
-            and self.current_time is not None
-            and (self.current_time <= self.stop_time)
-        ):
+        trace = logger.isEnabledFor(logging.DEBUG)
+        stats = self._run_stats
+        while self.messages and (self.current_time <= self.stop_time):
             # Get the next message in timestamp order (delivery time) and extract it.
             entry = heapq.heappop(self.messages)
             self.current_time = entry.deliver_at
@@ -401,17 +401,17 @@ class Kernel:
             message = entry.message
 
             # Periodically print the simulation time and total messages, even if muted.
-            if self.ttl_messages % 100000 == 0:
+            if stats.ttl_messages % 100000 == 0:
                 logger.info(
                     "--- Simulation time: %s, messages processed: %s, wallclock elapsed: %.2fs ---",
                     fmt_ts(self.current_time),
-                    f"{self.ttl_messages:,}",
+                    f"{stats.ttl_messages:,}",
                     (
-                        datetime.now() - self.event_queue_wall_clock_start
+                        datetime.now() - stats.event_queue_wall_clock_start
                     ).total_seconds(),
                 )
 
-            if self.show_trace_messages:
+            if trace:
                 logger.debug("--- Kernel Event Queue pop ---")
                 logger.debug(
                     "Kernel handling %s message for agent %d at time %s",
@@ -420,7 +420,7 @@ class Kernel:
                     self.current_time,
                 )
 
-            self.ttl_messages += 1
+            stats.ttl_messages += 1
 
             # In between messages, always reset the current_agent_additional_delay.
             self.current_agent_additional_delay = 0
@@ -433,7 +433,7 @@ class Kernel:
                     recipient_id,
                     message,
                 )
-                if self.show_trace_messages:
+                if trace:
                     logger.debug(
                         "Agent in future: requeued for %s",
                         fmt_ts(int(self._agent_current_times[recipient_id])),
@@ -465,7 +465,7 @@ class Kernel:
                 + self.current_agent_additional_delay
             )
 
-            if self.show_trace_messages:
+            if trace:
                 logger.debug(
                     "After dispatch, agent %d delayed from %s to %s",
                     recipient_id,
@@ -509,9 +509,10 @@ class Kernel:
             "terminate",
         )
         event_queue_wall_clock_stop = datetime.now()
+        stats = self._run_stats
 
         event_queue_wall_clock_elapsed = (
-            event_queue_wall_clock_stop - self.event_queue_wall_clock_start
+            event_queue_wall_clock_stop - stats.event_queue_wall_clock_start
         )
 
         # Event notification for kernel end (agents may communicate with
@@ -532,7 +533,7 @@ class Kernel:
 
         elapsed_seconds = event_queue_wall_clock_elapsed.total_seconds()
         logger.info(
-            f"Event Queue elapsed: {event_queue_wall_clock_elapsed}, messages: {self.ttl_messages:,}, messages per second: {self.ttl_messages / elapsed_seconds if elapsed_seconds > 0 else 0:0.1f}"
+            f"Event Queue elapsed: {event_queue_wall_clock_elapsed}, messages: {stats.ttl_messages:,}, messages per second: {stats.ttl_messages / elapsed_seconds if elapsed_seconds > 0 else 0:0.1f}"
         )
 
         # Agents will request the Kernel to serialize their agent logs, usually
@@ -550,7 +551,7 @@ class Kernel:
         return KernelRunResult(
             elapsed=event_queue_wall_clock_elapsed,
             slowest_agent_finish_time=int(self._agent_current_times.max()),
-            messages_processed=self.ttl_messages,
+            messages_processed=stats.ttl_messages,
         )
 
     def reset(self) -> None:
@@ -606,7 +607,7 @@ class Kernel:
         # Apply communication delay via the (always-present) latency model.
         latency = self._latency(sender_id, recipient_id, message)
         deliver_at = sent_time + latency
-        if self.show_trace_messages:
+        if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Kernel applied latency {latency}, accumulated delay {self.current_agent_additional_delay}, one-time delay {delay} on send_message from: {self.agents[sender_id].name} to {self.agents[recipient_id].name}, scheduled for {fmt_ts(deliver_at)}"
             )
@@ -614,7 +615,7 @@ class Kernel:
         # Finally drop the message in the queue with priority == delivery time.
         self._enqueue(deliver_at, sender_id, recipient_id, message)
 
-        if self.show_trace_messages:
+        if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Sent time: {sent_time}, current time {fmt_ts(self.current_time)}, computation delay {int(self._agent_computation_delays[sender_id])}"
             )
@@ -696,7 +697,7 @@ class Kernel:
                 f"current_time: {self.current_time}, requested_time: {requested_time}"
             )
 
-        if self.show_trace_messages:
+        if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Kernel adding wakeup for agent {sender_id} at time {fmt_ts(requested_time)}"
             )

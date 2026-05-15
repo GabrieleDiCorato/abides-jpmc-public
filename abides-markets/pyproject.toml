@@ -64,9 +64,6 @@ docs = [
     "sphinx-book-theme>=1.1.0",
 ]
 
-[project.scripts]
-abides = "abides_core.abides:main"
-
 [project.urls]
 Homepage = "https://github.com/GabrieleDiCorato/abides-ng"
 Repository = "https://github.com/GabrieleDiCorato/abides-ng"

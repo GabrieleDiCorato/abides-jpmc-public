@@ -230,7 +230,7 @@ class TestInitializeClearsState:
         kernel.initialize()
         # Mutate per-run state.
         kernel.summary_log.append({"AgentID": 0})
-        kernel.ttl_messages = 99
+        kernel._run_stats.ttl_messages = 99
         kernel.current_agent_additional_delay = 500
         # Stuff a stale message that would survive across a re-init if
         # initialize() did not clear ``messages``.
@@ -241,7 +241,7 @@ class TestInitializeClearsState:
         kernel.terminate()
         kernel.initialize()
         assert kernel.summary_log == []
-        assert kernel.ttl_messages == 0
+        assert kernel._run_stats.ttl_messages == 0
         assert kernel.current_agent_additional_delay == 0
         # The stale message must not survive; only fresh wakeups enqueued
         # by ``kernel_starting`` may now be present.
