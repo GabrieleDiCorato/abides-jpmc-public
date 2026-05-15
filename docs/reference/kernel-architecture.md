@@ -134,19 +134,16 @@ Kernel(
     start_time=DEFAULT,
     stop_time=DEFAULT,
     default_computation_delay=1,
-    default_latency=1,
-    agent_latency=None,            # legacy; wrapped into MatrixLatencyModel
-    latency_noise=None,            # legacy; forwarded to wrapped model
     agent_latency_model=None,      # explicit LatencyModel instance
     skip_log=True,
-    seed=None,                     # ValueError-then-deprecation if no RNG provided
-    log_dir=None,
-    log_root="./log",              # PR 7
-    log_writer=None,               # PR 7
+    log_dir=None,                  # defaults to uuid4().hex
+    log_writer=None,
     custom_properties=None,
-    random_state=None,
-    per_agent_computation_delays=None,
-    gym_adapter=None,              # PR 7
+    random_state,                  # required
+    agent_computation_delays=None, # numpy int64 array, shape (n_agents,)
+    runner_hook=None,
+    oracle=None,
+    observers=(),
 )
 ```
 

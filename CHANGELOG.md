@@ -1,7 +1,56 @@
 Unreleased
 ==========
 
-(no changes yet)
+abides-core v3 foundation refactor
+----------------------------------
+
+Breaking, internal-API-only refactor of ``abides-core``. No external
+``abides-ng`` user code change is required when using
+``SimulationBuilder`` + ``run_simulation()``; only callers that build a
+``Kernel`` directly or use the ``abides`` console script are affected.
+
+- **Modernised type annotations.** All ``Optional[X]`` / ``Union[X, Y]``
+  rewritten as ``X | None`` / ``X | Y`` (PEP 604), enforced via ruff
+  ``UP007``.
+- **Wheel rebrand.** Package name is now ``abides-ng`` (was
+  ``abides-markets``); import paths (``abides_core``, ``abides_markets``,
+  ``abides_gym``) are unchanged.
+- **Required ``random_state``.** ``Kernel.__init__`` now requires
+  ``random_state`` as a keyword argument; the implicit default is gone.
+- **Typed oracle slot + observers.** ``Kernel`` accepts a typed
+  ``oracle: Oracle | None`` and an ``observers: Sequence[KernelObserver]``
+  iterable; the metrics surface lives behind the ``KernelObserver``
+  protocol.
+- **Latency model rename.** ``MessageTypeAwareLatencyModel`` replaces
+  the prior latency-model entry point. Hook protocol renamed
+  ``GymAdapter`` → ``RunnerHook``.
+- **``KernelRunResult`` dataclass.** ``Kernel.run()`` returns a typed
+  ``KernelRunResult(elapsed, slowest_agent_finish_time, messages_processed)``;
+  domain metrics are delivered via observers, not a free-form dict.
+- **Per-agent computation delays as a typed numpy array.** Kernel
+  kwarg renamed ``per_agent_computation_delays: dict[int, int]`` →
+  ``agent_computation_delays: np.ndarray`` (``dtype=int64``, shape
+  ``(n_agents,)``). Builder gains
+  ``agent_computation_delay_by_type(agent_type, delay)`` and
+  ``agent_computation_delay_by_name(agent_name, delay)``; the by-name
+  override wins. ``Agent.computation_delay`` is now a property backed by
+  the kernel's array.
+- **Kernel slimming.**
+  - ``Kernel.log_dir`` defaults to ``uuid.uuid4().hex`` (no more
+    wall-clock collisions under multiprocessing).
+  - ``kernel_wall_clock_start`` removed.
+  - ``ttl_messages`` and ``event_queue_wall_clock_start`` moved into a
+    private ``_RunStats`` dataclass.
+  - ``show_trace_messages`` flag removed; trace logs are now standard
+    ``logger.debug()`` calls gated by
+    ``logger.isEnabledFor(logging.DEBUG)``.
+  - Legacy ``abides`` console script and ``abides_core.abides:main``
+    CLI removed; use ``run_simulation()`` (or ``abides.run()``)
+    programmatically.
+- **``Agent.kernel`` non-Optional.** Initialised to a sentinel that
+  raises ``RuntimeError`` on attribute access before
+  ``kernel_initializing()``. All ``assert self.kernel is not None``
+  assertions removed.
 
 ---
 

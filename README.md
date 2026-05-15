@@ -26,7 +26,6 @@
     <ul>
       <li><a href="#using-the-declarative-config-system-recommended">Using the Declarative Config System (recommended)</a></li>
       <li><a href="#using-procedural-build_config-legacy">Using procedural build_config (legacy)</a></li>
-      <li><a href="#using-the-abides-command">Using the `abides` Command (legacy)</a></li>
     </ul>
   </li>
   <li><a href="#usage-gym">Usage (Gym)</a></li>
@@ -205,27 +204,8 @@ from abides_markets.configs import rmsc04
 from abides_core import abides
 
 config_state = rmsc04.build_config(seed = 0, end_time = '10:00:00')
-end_state = abides.run(config_state)
+end_state, agents = abides.run(config_state)
 ```
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-### Using the abides Command:
-
-> **Legacy:** This interface loads a `build_config()` function directly from a Python config
-> file. It is not the recommended path. Prefer `SimulationBuilder` + `run_simulation()`.
-
-The config can be loaded and the simulation run using the `abides`
-command in the terminal (from directory root):
-
-```
-$ abides abides-markets/abides_markets/configs/rmsc04.py --end_time "10:00:00"
-```
-
-The first argument is a path to a valid ABIDES configuration file.
-
-Any further arguments are optional and can be used to overwrite any parameters
-in the config file.
-
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Usage (Gym)

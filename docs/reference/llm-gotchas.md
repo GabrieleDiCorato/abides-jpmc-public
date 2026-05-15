@@ -657,7 +657,7 @@ state is reset to a clean slate every call:
 - `messages` (event heap)
 - `custom_state` (the dict returned by `terminate()`)
 - `summary_log`
-- `ttl_messages`
+- `_run_stats` (per-run scheduling stats: wall-clock anchor + message counter)
 - `current_agent_additional_delay`
 - `agent_current_times` (reset to `start_time`)
 
@@ -796,8 +796,9 @@ Implications:
   are inside `abides_core`.
 - External *writers* will fail loudly: the returned view rejects
   item assignment. Use `kernel.set_agent_compute_delay(agent_id, ns)`
-  for runtime delay updates, or pass `per_agent_computation_delays`
-  to the `Kernel` constructor for static overrides.
+  for runtime delay updates, or pass `agent_computation_delays` (an
+  `np.ndarray` with `dtype=int64`, shape `(n_agents,)`) to the
+  `Kernel` constructor for static overrides.
 - `numpy.int64` arithmetic does not auto-promote to Python `int`
   inside f-strings and JSON serialisers. Cast at the boundary if
   you read these arrays directly:

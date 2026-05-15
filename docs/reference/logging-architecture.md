@@ -79,21 +79,27 @@ Categorized by purpose ([kernel.py](../../abides-core/abides_core/kernel.py)):
   `--- Simulation time: ..., messages processed: ..., wallclock elapsed: ...s ---`.
   This is the only INFO output during the hot loop. For a 7-million
   message sim this fires ~70 times.
-- **Trace (DEBUG, gated by `show_trace_messages`):** Per-pop, per-dispatch,
-  per-requeue debug lines. ~6 sites in `runner()` and `_enqueue()`. Off
-  by default. Very expensive when on.
+- **Trace (DEBUG):** Per-pop, per-dispatch, per-requeue debug lines.
+  ~6 sites in `runner()` and `_enqueue()`. Gated by
+  `logger.isEnabledFor(logging.DEBUG)` so the cost is one cheap branch
+  when DEBUG is off. Very expensive when on.
 - **Termination summary (INFO):** Event-queue elapsed, msgs/sec,
   per-agent-type mean ending value (the financial leak — see system C),
   `Simulation ending!`.
 
-### 1.4 The `show_trace_messages` flag
+### 1.4 Trace logging
 
-[kernel.py L202](../../abides-core/abides_core/kernel.py#L202) initializes
-it to `False`. It is read in 6 places inside the hot loop. **It is set
-nowhere in the codebase** — not by any config, not by any test. Users
-who want trace output have to do
-`kernel.show_trace_messages = True` manually after constructing the
-kernel. There is no path from `SimulationConfig` to this flag.
+Trace lines inside the hot loop are emitted via standard
+`logger.debug()` calls, gated by
+`logger.isEnabledFor(logging.DEBUG)`. To enable them, set the
+`abides_core.kernel` logger to `DEBUG`:
+
+```python
+import logging
+logging.getLogger("abides_core.kernel").setLevel(logging.DEBUG)
+```
+
+There is no Kernel attribute toggle.
 
 ### 1.5 Verdict on system A
 
@@ -104,7 +110,6 @@ gaps:
   files. Documentation in
   [parallel-simulation.md L234](../ai/parallel-simulation.md#L234)
   shows users how to attach a `FileHandler` themselves.
-- `show_trace_messages` is undiscoverable.
 
 ---
 
@@ -375,17 +380,16 @@ There is no `simulation.log` for stdout — system A goes only to stdout.
 | Flag | Where defined | Default | Controls | System |
 |---|---|---|---|---|
 | `Kernel.skip_log` | [kernel.py L54, 133](../../abides-core/abides_core/kernel.py#L54) | `True` | Suppress disk writes for B + C (but see bug 3.3 — C ignores it today) | B + C |
-| `Kernel.log_dir` | [kernel.py L56, 136](../../abides-core/abides_core/kernel.py#L56) | `str(unix_seconds)` | Subdirectory under `./log/` | B + C |
-| `Kernel.show_trace_messages` | [kernel.py L202](../../abides-core/abides_core/kernel.py#L202) | `False` | Hot-loop DEBUG traces | A |
+| `Kernel.log_dir` | [kernel.py L56, 136](../../abides-core/abides_core/kernel.py#L56) | `uuid.uuid4().hex` | Subdirectory under `./log/` | B + C |
 | `Agent.log_events` | [agent.py L33](../../abides-core/abides_core/agent.py#L33) | `True` | Whether `logEvent()` records anything in memory | B |
 | `Agent.log_to_file` | [agent.py L34](../../abides-core/abides_core/agent.py#L34) | `True` | Whether the agent's log is written at termination | B |
 | `SimulationConfig.simulation.log_level` | [config_system/models.py L404](../../abides-markets/abides_markets/config_system/models.py#L404) | `"INFO"` | `basicConfig(level=...)` for stdout | A |
 
 Notable: the user-facing config system exposes `log_level` (system A)
 and `log_orders` overrides per agent (system B), but **does not expose**
-`skip_log`, `log_dir`, or `show_trace_messages`. Those are reachable
-only by passing them to `Kernel(...)` directly or by post-construction
-mutation.
+`skip_log` or `log_dir`. Those are reachable only by passing them to
+`Kernel(...)` directly or by post-construction mutation. Trace logging
+is enabled by setting the `abides_core.kernel` logger level to `DEBUG`.
 
 ---
 
@@ -450,8 +454,6 @@ filesystem ([test_kernel.py L47, 54, 63, 83](../../abides-core/tests/test_kernel
 - **`summary_log` is dead code with an externally visible artifact.**
   Kept for one release for safety, but nobody uses it. Either remove
   it or design it properly.
-- **`show_trace_messages` is invisible.** No config path. Discoverable
-  only by reading kernel source.
 - **`log_events` / `log_to_file` are per-instance, not per-type.**
   Setting them across "all noise agents" requires loop-and-mutate at
   build time.
@@ -519,16 +521,13 @@ avoid:
 4. **`./log/` root.** Resolved by PR 7: `Kernel(log_root=...)` is now
    a kwarg with `"./log"` as default. CWD-relative remains the default
    for backwards compatibility.
-5. **`log_dir` collision.** Make UUID the default in `Kernel` itself
-   (today only `run_simulation()` does this), or keep the wall-clock
-   default for backwards compatibility?
-6. **Trace flag exposure.** Promote `show_trace_messages` to a
-   `SimulationConfig` field, or leave it as a programmatic-only escape
-   hatch?
-7. **Per-instance vs per-type log flags.** Add a config-system
+5. **`log_dir` collision.** Resolved: `Kernel.log_dir` defaults to
+   `uuid.uuid4().hex` to avoid wall-clock collisions under
+   multiprocessing.
+6. **Per-instance vs per-type log flags.** Add a config-system
    convenience for "disable order logs for this agent type globally",
    or accept the loop-and-mutate idiom?
-8. **Standard logging to file.** Should ABIDES attach a `FileHandler`
+7. **Standard logging to file.** Should ABIDES attach a `FileHandler`
    that writes `simulation.log` next to the per-agent files, or keep
    stdout-only and let users add it themselves?
 9. **Pickle vs portable format.** Is the `.bz2` file an internal cache

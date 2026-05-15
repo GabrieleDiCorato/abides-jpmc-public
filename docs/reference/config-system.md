@@ -280,8 +280,17 @@ config = (SimulationBuilder()
 #       computation_delay: 10
 ```
 
-The compiler produces a `per_agent_computation_delays` dict in the runtime
-config, which the Kernel applies on initialization.
+The compiler produces an `agent_computation_delays` numpy array
+(`dtype=int64`, shape `(n_agents,)`) in the runtime config, which the
+Kernel applies on initialization. Two builder methods control the
+overrides:
+
+- `agent_computation_delay_by_type(agent_type, delay)` — applies to all
+  agents of a registered type (e.g. `"noise"`).
+- `agent_computation_delay_by_name(agent_name, delay)` — applies to a
+  single agent by its assigned `name` (e.g. `"NoiseAgent 17"`); takes
+  precedence over the by-type setting. Unknown names raise at compile
+  time.
 
 ---
 
