@@ -21,9 +21,7 @@ class KernelObserver(Protocol):
     loop. Implementations must not block.
     """
 
-    def on_metric(
-        self, agent_id: int, agent_type: str, key: str, value: float
-    ) -> None:
+    def on_metric(self, agent_id: int, agent_type: str, key: str, value: float) -> None:
         """Called once per :meth:`Agent.report_metric` call."""
 
     def on_terminate(self, kernel: Kernel) -> None:
@@ -42,9 +40,7 @@ class DefaultMetricsObserver:
     def __init__(self) -> None:
         self._aggregates: dict[str, dict[str, dict[str, float]]] = {}
 
-    def on_metric(
-        self, agent_id: int, agent_type: str, key: str, value: float
-    ) -> None:
+    def on_metric(self, agent_id: int, agent_type: str, key: str, value: float) -> None:
         type_bucket = self._aggregates.setdefault(agent_type, {})
         agg = type_bucket.setdefault(key, {"sum": 0.0, "count": 0.0})
         agg["sum"] += float(value)

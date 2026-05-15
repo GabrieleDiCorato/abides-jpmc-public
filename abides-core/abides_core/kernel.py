@@ -98,7 +98,7 @@ class Kernel:
         log_writer: LogWriter | None = None,
         oracle: Oracle | None = None,
         observers: Sequence[KernelObserver] = (),
-        per_agent_computation_delays: dict[int, int] | None = None,
+        agent_computation_delays: np.ndarray | None = None,
         runner_hook: RunnerHook | None = None,
     ) -> None:
         # Enforce the agents[i].id == i invariant before anything else uses
@@ -202,15 +202,22 @@ class Kernel:
         # (for itself only).  It represents the time penalty applied to
         # an agent each time it is awakened  (wakeup or recvMsg).  The
         # penalty applies _after_ the agent acts, before it may act again.
-        self._agent_computation_delays: np.ndarray = np.full(
-            n, default_computation_delay, dtype=np.int64
-        )
-
-        # Apply any per-agent computation delay overrides from the config.
-        if per_agent_computation_delays:
-            for agent_id, delay in per_agent_computation_delays.items():
-                if 0 <= agent_id < n:
-                    self._agent_computation_delays[agent_id] = delay
+        if agent_computation_delays is None:
+            self._agent_computation_delays: np.ndarray = np.full(
+                n, default_computation_delay, dtype=np.int64
+            )
+        else:
+            if agent_computation_delays.dtype != np.int64:
+                raise ValueError(
+                    "agent_computation_delays must have dtype int64, got "
+                    f"{agent_computation_delays.dtype}"
+                )
+            if agent_computation_delays.shape != (n,):
+                raise ValueError(
+                    "agent_computation_delays must have shape (n_agents,), got "
+                    f"{agent_computation_delays.shape} for n_agents={n}"
+                )
+            self._agent_computation_delays = agent_computation_delays.copy()
 
         # Type index for O(1) ``find_agents_by_type`` lookups. Walks each
         # agent's MRO so callers may query with a base class and still

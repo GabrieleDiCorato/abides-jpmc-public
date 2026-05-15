@@ -276,10 +276,24 @@ class Agent:
 
         self.kernel.set_wakeup(self.id, requested_time)
 
+    @property
+    def computation_delay(self) -> int:
+        """The agent's per-action computation delay in nanoseconds.
+
+        Reads directly from the kernel's contiguous ``int64`` storage.
+        """
+        assert self.kernel is not None
+        return int(self.kernel._agent_computation_delays[self.id])
+
+    @computation_delay.setter
+    def computation_delay(self, value: int) -> None:
+        assert self.kernel is not None
+        self.kernel.set_agent_compute_delay(self.id, value)
+
     def get_computation_delay(self):
         """Queries thr agent's current computation delay from the kernel."""
 
-        return self.kernel.get_agent_compute_delay(sender_id=self.id)
+        return self.computation_delay
 
     def set_computation_delay(self, requested_delay: int) -> None:
         """

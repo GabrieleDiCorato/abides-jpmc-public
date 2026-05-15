@@ -385,6 +385,16 @@ class InfrastructureConfig(BaseModel):
         ),
         json_schema_extra={"unit": "nanoseconds"},
     )
+    computation_delay_by_name: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Per-agent-name overrides for computation delay (in nanoseconds). "
+            "Resolved by the compiler against ``Agent.name`` after agents are "
+            "instantiated; unmatched names raise an error.  Highest precedence: "
+            "wins over both ``default_computation_delay`` and the per-type "
+            "override on the agent group config."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

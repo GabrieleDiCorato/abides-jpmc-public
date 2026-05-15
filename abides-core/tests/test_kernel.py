@@ -577,14 +577,42 @@ class TestPerAgentStateNumpy:
 
     def test_per_agent_computation_delays_overrides_applied(self):
         agents = [StubAgent(i) for i in range(4)]
+        delays = np.array([10, 100, 10, 300], dtype=np.int64)
         kernel = Kernel(
             agents=agents,
             skip_log=True,
             random_state=np.random.RandomState(seed=1),
             default_computation_delay=10,
-            per_agent_computation_delays={1: 100, 3: 300},
+            agent_computation_delays=delays,
         )
         assert list(kernel._agent_computation_delays) == [10, 100, 10, 300]
+        # Kernel must defensively copy.
+        delays[1] = 999
+        assert kernel._agent_computation_delays[1] == 100
+
+    def test_agent_computation_delays_dtype_validation(self):
+        import pytest
+
+        agents = [StubAgent(0), StubAgent(1)]
+        with pytest.raises(ValueError, match="dtype int64"):
+            Kernel(
+                agents=agents,
+                skip_log=True,
+                random_state=np.random.RandomState(seed=1),
+                agent_computation_delays=np.array([0, 0], dtype=np.int32),
+            )
+
+    def test_agent_computation_delays_shape_validation(self):
+        import pytest
+
+        agents = [StubAgent(0), StubAgent(1)]
+        with pytest.raises(ValueError, match="shape"):
+            Kernel(
+                agents=agents,
+                skip_log=True,
+                random_state=np.random.RandomState(seed=1),
+                agent_computation_delays=np.array([0, 0, 0], dtype=np.int64),
+            )
 
     def test_initialize_resets_current_times_in_place(self):
         # The slice-assign reset must mutate the same numpy buffer (no realloc),

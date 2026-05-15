@@ -61,7 +61,7 @@ def run(
             "default_computation_delay",
             "oracle",
             "observers",
-            "per_agent_computation_delays",
+            "agent_computation_delays",
             "skip_log",
         ],
     )

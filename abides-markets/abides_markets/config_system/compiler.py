@@ -70,6 +70,7 @@ def compile(
             "agents": List[Agent],
             "agent_latency_model": LatencyModel,
             "default_computation_delay": int,
+            "agent_computation_delays": np.ndarray,  # int64, shape (n_agents,)
             "oracle": Oracle | None,
             "random_state_kernel": np.random.RandomState,
             "stdout_log_level": str,
@@ -123,7 +124,9 @@ def compile(
     # ── Agents ────────────────────────────────────────────────────
     agents = []
     agent_count = 0
-    per_agent_computation_delays: dict[int, int] = {}
+    # Track per-agent compute delay overrides as ``None`` placeholders;
+    # the actual int64 array is materialised after agent_count is final.
+    delay_overrides: dict[int, int] = {}
 
     # Exchange is always agent id=0
     exc = config.market.exchange
@@ -192,7 +195,7 @@ def compile(
         # Record per-agent computation delay overrides
         if agent_config.computation_delay is not None:
             for agent_id in range(agent_count, agent_count + group.count):
-                per_agent_computation_delays[agent_id] = agent_config.computation_delay
+                delay_overrides[agent_id] = agent_config.computation_delay
 
         agent_count += group.count
 
@@ -211,20 +214,36 @@ def compile(
     kernel_start = date_ns
     kernel_stop = mkt_close + str_to_ns("1s")
 
+    # ── Per-agent computation-delay array ─────────────────────────
+    default_delay = config.infrastructure.default_computation_delay
+    agent_computation_delays = np.full(agent_count, default_delay, dtype=np.int64)
+    for agent_id, delay in delay_overrides.items():
+        agent_computation_delays[agent_id] = delay
+    # Highest-precedence by-name overrides (applied last).
+    name_overrides = config.infrastructure.computation_delay_by_name
+    if name_overrides:
+        name_to_id = {a.name: a.id for a in agents}
+        unknown = set(name_overrides) - set(name_to_id)
+        if unknown:
+            raise ValueError(
+                "infrastructure.computation_delay_by_name references unknown "
+                f"agent name(s): {sorted(unknown)}"
+            )
+        for agent_name, delay in name_overrides.items():
+            agent_computation_delays[name_to_id[agent_name]] = delay
+
     runtime: dict[str, Any] = {
         "seed": seed,
         "start_time": kernel_start,
         "stop_time": kernel_stop,
         "agents": agents,
         "agent_latency_model": latency_model,
-        "default_computation_delay": config.infrastructure.default_computation_delay,
+        "default_computation_delay": default_delay,
+        "agent_computation_delays": agent_computation_delays,
         "oracle": oracle,
         "random_state_kernel": random_state_kernel,
         "stdout_log_level": config.simulation.log_level,
     }
-
-    if per_agent_computation_delays:
-        runtime["per_agent_computation_delays"] = per_agent_computation_delays
 
     return runtime
 

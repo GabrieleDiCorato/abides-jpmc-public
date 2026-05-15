@@ -489,24 +489,24 @@ class TestOrderLogs:
 
 class TestExtractors:
     def test_function_extractor_satisfies_protocol(self):
-        ext = FunctionExtractor("key", lambda e: 42)
+        ext = FunctionExtractor("key", lambda r, a: 42)
         assert isinstance(ext, ResultExtractor)
 
     def test_function_extractor_calls_fn(self):
-        ext = FunctionExtractor("n_agents", lambda e: len(e.get("agents", [])))
-        result = ext.extract({"agents": [object(), object()]})
+        ext = FunctionExtractor("n_agents", lambda r, a: len(a))
+        result = ext.extract(None, [object(), object()])
         assert result == 2
 
     def test_base_extractor_satisfies_protocol(self):
         class MyExt(BaseResultExtractor):
             key = "my_key"
 
-            def extract(self, end_state):
+            def extract(self, result, agents):
                 return "value"
 
         ext = MyExt()
         assert isinstance(ext, ResultExtractor)
-        assert ext.extract({}) == "value"
+        assert ext.extract(None, []) == "value"
 
 
 # ---------------------------------------------------------------------------
@@ -609,7 +609,7 @@ class TestRunSimulationQuant:
 
 class TestRunSimulationExtractor:
     def test_function_extractor_injected(self, short_config, tmp_path_factory):
-        ext = FunctionExtractor("agent_count", lambda e: len(e["agents"]))
+        ext = FunctionExtractor("agent_count", lambda r, a: len(a))
         log_dir = str(tmp_path_factory.mktemp("sim_logs_ext"))
         result = run_simulation(short_config, extractors=[ext], log_dir=log_dir)
         assert "agent_count" in result.extensions

@@ -203,4 +203,15 @@ def config_add_agents(orig_config_state, agents, random_state):
     # adding an agent to the config implies regenerating the latency model for the full fleet
     lat_mod = generate_latency_model(agent_count + len(agents), random_state)
     orig_config_state["agent_latency_model"] = lat_mod
+    # Extend the per-agent computation-delay array to cover the new agents,
+    # broadcasting the simulation-wide default to each new slot.
+    if "agent_computation_delays" in orig_config_state:
+        import numpy as np
+
+        existing = orig_config_state["agent_computation_delays"]
+        default = orig_config_state.get("default_computation_delay", 0)
+        extension = np.full(len(agents), default, dtype=np.int64)
+        orig_config_state["agent_computation_delays"] = np.concatenate(
+            [existing, extension]
+        )
     return orig_config_state

@@ -957,7 +957,7 @@ class TestPerAgentComputationDelay:
         assert config.agents["noise"].params["computation_delay"] == 200
 
     def test_compiler_produces_per_agent_delays(self):
-        """Compiler should include per_agent_computation_delays when agents set them."""
+        """Compiler should emit a per-agent delay array reflecting overrides."""
         config = (
             SimulationBuilder()
             .from_template("rmsc04")
@@ -968,8 +968,11 @@ class TestPerAgentComputationDelay:
         )
         runtime = compile(config)
 
-        assert "per_agent_computation_delays" in runtime
-        delays = runtime["per_agent_computation_delays"]
+        assert "agent_computation_delays" in runtime
+        delays = runtime["agent_computation_delays"]
+        assert isinstance(delays, np.ndarray)
+        assert delays.dtype == np.int64
+        assert delays.shape == (len(runtime["agents"]),)
 
         # Group agents by type (skip exchange at id=0)
         noise_ids = [a.id for a in runtime["agents"] if a.type == "NoiseAgent"]
@@ -980,14 +983,18 @@ class TestPerAgentComputationDelay:
             assert delays[aid] == 200
         for aid in value_ids:
             assert delays[aid] == 500
-        # Exchange should not have a per-agent override
-        assert 0 not in delays
+        # Exchange (id=0) gets the simulation-wide default.
+        assert delays[0] == config.infrastructure.default_computation_delay
 
-    def test_compiler_omits_delays_when_none(self):
-        """No per_agent_computation_delays key when no agent sets a custom delay."""
+    def test_compiler_emits_default_delays_when_none(self):
+        """All entries equal default_computation_delay when no overrides set."""
         config = SimulationBuilder().from_template("rmsc04").seed(42).build()
         runtime = compile(config)
-        assert "per_agent_computation_delays" not in runtime
+        assert "agent_computation_delays" in runtime
+        delays = runtime["agent_computation_delays"]
+        assert isinstance(delays, np.ndarray)
+        assert delays.shape == (len(runtime["agents"]),)
+        assert (delays == config.infrastructure.default_computation_delay).all()
 
     def test_builder_agent_computation_delay(self):
         """Builder's agent_computation_delay() method should set the param."""
@@ -1000,15 +1007,43 @@ class TestPerAgentComputationDelay:
         )
         assert config.agents["noise"].params["computation_delay"] == 300
 
+    def test_builder_by_name_override_applied_by_compiler(self):
+        """``agent_computation_delay_by_name`` resolves against Agent.name."""
+        # First build a config to discover the actual agent names assigned by
+        # the noise factory (``"NoiseAgent {id}"``), then re-build with a
+        # by-name override targeting the second one.
+        probe = (
+            SimulationBuilder()
+            .from_template("rmsc04")
+            .enable_agent("noise", count=2)
+            .seed(42)
+            .build()
+        )
+        target_name = next(
+            a.name for a in compile(probe)["agents"] if a.type == "NoiseAgent"
+        )
+        config = (
+            SimulationBuilder()
+            .from_template("rmsc04")
+            .enable_agent("noise", count=2)
+            .agent_computation_delay_by_name(target_name, 777)
+            .seed(42)
+            .build()
+        )
+        runtime = compile(config)
+        delays = runtime["agent_computation_delays"]
+        target = next(a for a in runtime["agents"] if a.name == target_name)
+        assert delays[target.id] == 777
+
     def test_kernel_applies_per_agent_delays(self):
-        """Kernel should apply per_agent_computation_delays when provided."""
+        """Kernel should apply agent_computation_delays array when provided."""
         from abides_core.kernel import Kernel
 
         agents = [type("FakeAgent", (), {"id": i, "type": "Test"})() for i in range(5)]
         kernel = Kernel(
             agents=agents,
             default_computation_delay=50,
-            per_agent_computation_delays={1: 100, 3: 200},
+            agent_computation_delays=np.array([50, 100, 50, 200, 50], dtype=np.int64),
             random_state=np.random.RandomState(seed=1),
         )
         assert kernel._agent_computation_delays[0] == 50
@@ -1042,13 +1077,14 @@ class TestPerAgentComputationDelay:
             .build()
         )
         runtime = compile(config)
-        delays = runtime.get("per_agent_computation_delays", {})
+        delays = runtime["agent_computation_delays"]
+        default = config.infrastructure.default_computation_delay
 
-        # Noise agents (ids 1-5) should NOT have overrides
+        # Noise agents (ids 1-5) inherit the simulation-wide default.
         for aid in range(1, 6):
-            assert aid not in delays
+            assert delays[aid] == default
 
-        # Value agents (ids 6-8) should have overrides
+        # Value agents (ids 6-8) have the by-type override.
         for aid in range(6, 9):
             assert delays[aid] == 999
 

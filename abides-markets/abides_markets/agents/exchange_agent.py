@@ -193,7 +193,9 @@ class ExchangeAgent(FinancialAgent):
         self.pipeline_delay: int = pipeline_delay
 
         # Computation delay is applied on every wakeup call or message received.
-        self.computation_delay: int = computation_delay
+        # Stashed here at construction time and pushed to the kernel on the
+        # first message (kernel attachment happens later).
+        self._initial_computation_delay: int = computation_delay
 
         # The exchange maintains an order stream of all orders leading to the last L trades
         # to support certain agents from the auction literature (GD, HBL, etc).
@@ -364,7 +366,7 @@ class ExchangeAgent(FinancialAgent):
         # activity.
 
         # Note that computation delay MUST be updated before any calls to send_message.
-        self.set_computation_delay(self.computation_delay)
+        self.set_computation_delay(self._initial_computation_delay)
 
         # Is the exchange closed?  (This block only affects post-close, not pre-open.)
         if current_time > self.mkt_close:

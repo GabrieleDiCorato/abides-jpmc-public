@@ -137,16 +137,46 @@ class SimulationBuilder:
         }
         return self
 
-    def agent_computation_delay(self, name: str, delay: int) -> SimulationBuilder:
-        """Set the computation delay for a specific agent type.
+    def agent_computation_delay_by_type(
+        self, agent_type: str, delay: int
+    ) -> SimulationBuilder:
+        """Set the computation delay for every agent of a registered type.
 
-        This overrides the simulation-level default_computation_delay for
-        all agents of the named type.
+        Overrides the simulation-level ``default_computation_delay`` for all
+        agents created from the given group config (``agent_type`` is the
+        registry name, e.g. ``"value"`` or ``"momentum"``).
         """
         agents = self._data.setdefault("agents", {})
-        group = agents.setdefault(name, {"enabled": True, "count": 0, "params": {}})
+        group = agents.setdefault(
+            agent_type, {"enabled": True, "count": 0, "params": {}}
+        )
         group["params"]["computation_delay"] = delay
         return self
+
+    def agent_computation_delay_by_name(
+        self, agent_name: str, delay: int
+    ) -> SimulationBuilder:
+        """Override the computation delay of a single agent by its ``name``.
+
+        Resolved post-instantiation by the compiler against
+        :attr:`abides_core.Agent.name`.
+        """
+        overrides = self._data.setdefault("infrastructure", {}).setdefault(
+            "computation_delay_by_name", {}
+        )
+        overrides[agent_name] = delay
+        return self
+
+    # Back-compat alias: pre-G4 callers passed the registered agent type
+    # name (e.g. ``"value"``); the method stored the delay on the group
+    # params, i.e. it was a by-type override.
+    def agent_computation_delay(self, name: str, delay: int) -> SimulationBuilder:
+        """Alias for :meth:`agent_computation_delay_by_type`.
+
+        Kept so existing user code keeps working; new code should call the
+        explicit ``_by_type`` / ``_by_name`` variants.
+        """
+        return self.agent_computation_delay_by_type(name, delay)
 
     def disable_agent(self, name: str) -> SimulationBuilder:
         """Disable an agent type."""
