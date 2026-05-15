@@ -477,7 +477,7 @@ class TestValueAgentReplaceOrder:
             def observe_price(self, symbol, current_time, sigma_n=0, random_state=None):
                 return 100_000
 
-        agent.oracle = _FakeOracle()
+        agent.oracle = _FakeOracle()  # type: ignore[assignment]
         return agent
 
     def test_first_cycle_uses_place_limit_order(self):

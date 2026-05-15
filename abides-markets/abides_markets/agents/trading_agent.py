@@ -227,8 +227,6 @@ class TradingAgent(FinancialAgent):
             start_time: The time that the simulation started.
         """
 
-        assert self.kernel is not None
-
         # self.kernel is set in Agent.kernel_initializing()
         self.logEvent("STARTING_CASH", self.starting_cash, True)
 
@@ -246,8 +244,6 @@ class TradingAgent(FinancialAgent):
     def kernel_stopping(self) -> None:
         # Always call parent method to be safe.
         super().kernel_stopping()
-
-        assert self.kernel is not None
 
         # Print end of day holdings.
         self.logEvent(
@@ -428,8 +424,6 @@ class TradingAgent(FinancialAgent):
             sender_id: The ID of the agent who sent the message.
             message: The message contents.
         """
-
-        assert self.kernel is not None
 
         super().receive_message(current_time, sender_id, message)
 

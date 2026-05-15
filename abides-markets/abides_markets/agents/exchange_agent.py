@@ -258,8 +258,6 @@ class ExchangeAgent(FinancialAgent):
 
         super().kernel_initializing(kernel)
 
-        assert self.kernel is not None
-
         self.oracle = self.kernel.oracle
 
         # Obtain opening prices (in integer cents).  These are not noisy right now.

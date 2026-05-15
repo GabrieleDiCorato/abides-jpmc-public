@@ -15,6 +15,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class _UninitializedKernel:
+    """Sentinel used as the placeholder ``Agent.kernel`` value before
+    the kernel has attached itself via :meth:`Agent.kernel_initializing`.
+
+    Any attribute access raises :class:`RuntimeError` with a clear
+    message, surfacing the underlying bug (an agent method ran before
+    kernel attach) instead of an opaque ``AttributeError`` on ``None``.
+    The sentinel is typed as :class:`Kernel` at the attribute level so
+    static type checkers do not have to deal with ``Kernel | None``
+    everywhere.
+    """
+
+    __slots__ = ()
+
+    def __getattr__(self, name: str) -> Any:
+        raise RuntimeError(
+            f"Agent.kernel accessed before kernel_initializing(); attribute={name!r}"
+        )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        return "<UninitializedKernel>"
+
+
+_UNINITIALIZED_KERNEL: "Kernel" = _UninitializedKernel()  # type: ignore[assignment]
+
+
 class Agent:
     """
     Base Agent class
@@ -49,7 +75,10 @@ class Agent:
         self.log_to_file: bool = log_to_file & log_events
 
         # Kernel is supplied via kernel_initializing method of kernel lifecycle.
-        self.kernel: Kernel | None = None
+        # Sentinel default raises RuntimeError on any attribute access so
+        # pre-attach use is loud, and static type-checkers see ``Kernel``
+        # rather than ``Kernel | None``.
+        self.kernel: Kernel = _UNINITIALIZED_KERNEL
 
         # What time does the agent think it is?  Should be updated each time
         # the agent wakes via wakeup or receive_message.  (For convenience
@@ -104,8 +133,6 @@ class Agent:
             start_time: The earliest time for which the agent can schedule a wakeup call
                 (or could receive a message).
         """
-
-        assert self.kernel is not None
 
         logger.debug(
             f"Agent {self.id} ({self.name}) requesting kernel wakeup at time {fmt_ts(start_time)}"
@@ -170,7 +197,6 @@ class Agent:
         self.log.append((self.current_time, event_type, event))
 
         if append_summary_log:
-            assert self.kernel is not None
             self.kernel.append_summary_log(self.id, event_type, event)
 
     ### Methods required for communication from other agents.
@@ -191,8 +217,6 @@ class Agent:
             message: An object guaranteed to inherit from the message.Message class.
         """
 
-        assert self.kernel is not None
-
         self.current_time = current_time
 
         if logger.isEnabledFor(logging.DEBUG):
@@ -211,8 +235,6 @@ class Agent:
             current_time: The simulation time at which the kernel is delivering this
                 message -- the agent should treat this as "now".
         """
-
-        assert self.kernel is not None
 
         self.current_time = current_time
 
@@ -238,8 +260,6 @@ class Agent:
                 messages)
         """
 
-        assert self.kernel is not None
-
         self.kernel.send_message(self.id, recipient_id, message, delay=delay)
 
     def send_message_batch(
@@ -257,8 +277,6 @@ class Agent:
             but do not make the agent "busy" and unable to respond to new messages)
         """
 
-        assert self.kernel is not None
-
         self.kernel.send_message(
             self.id, recipient_id, MessageBatch(messages), delay=delay
         )
@@ -272,8 +290,6 @@ class Agent:
                 be the current time or a past time.
         """
 
-        assert self.kernel is not None
-
         self.kernel.set_wakeup(self.id, requested_time)
 
     @property
@@ -282,12 +298,10 @@ class Agent:
 
         Reads directly from the kernel's contiguous ``int64`` storage.
         """
-        assert self.kernel is not None
         return int(self.kernel._agent_computation_delays[self.id])
 
     @computation_delay.setter
     def computation_delay(self, value: int) -> None:
-        assert self.kernel is not None
         self.kernel.set_agent_compute_delay(self.id, value)
 
     def get_computation_delay(self):
@@ -314,8 +328,6 @@ class Agent:
             requested_delay: delay given in nanoseconds.
         """
 
-        assert self.kernel is not None
-
         self.kernel.set_agent_compute_delay(
             sender_id=self.id, requested_delay=requested_delay
         )
@@ -333,8 +345,6 @@ class Agent:
             additional_delay: additional delay given in nanoseconds.
         """
 
-        assert self.kernel is not None
-
         self.kernel.delay_agent(sender_id=self.id, additional_delay=additional_delay)
 
     def report_metric(self, key: str, value: float) -> None:
@@ -347,7 +357,6 @@ class Agent:
             key: short metric name (e.g. ``"ending_value"``).
             value: numeric value, cast to ``float`` by each observer.
         """
-        assert self.kernel is not None
         for observer in self.kernel._observers:
             observer.on_metric(self.id, self.type, key, float(value))
 
@@ -369,8 +378,6 @@ class Agent:
             df_log: dataframe that contains all the logged events during the simulation
             filename: Location on disk to write the log to.
         """
-
-        assert self.kernel is not None
 
         self.kernel.write_log(self.id, df_log, filename)
 
